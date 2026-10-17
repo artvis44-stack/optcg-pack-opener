@@ -1,16 +1,21 @@
 import QtQuick
-import Quickshell
-import Quickshell.Io
 import "tiers.js" as Tiers
 
 // Full-screen overlay: sealed pack -> tear -> reveal one by one -> summary.
 // Box mode wraps that: sealed box -> grid of 24 packs -> box summary, with the
 // boxes dealt from a saved virtual case.
+//
+// Platform-independent: everything outside the window comes from `host`
+// (env / readText / writeText, see QuickshellHost.qml).
 Item {
     id: stage
 
+    required property QtObject host
+    readonly property string home: host.env("HOME")
+    readonly property string cacheRoot: (host.env("XDG_CACHE_HOME") || home + "/.cache") + "/optcg"
+    readonly property string dataDir: (host.env("XDG_DATA_HOME") || home + "/.local/share") + "/optcg"
+
     property string setId: "OP-17"
-    readonly property string cacheRoot: (Quickshell.env("XDG_CACHE_HOME") || (Quickshell.env("HOME") + "/.cache")) + "/optcg"
     readonly property string cacheDir: cacheRoot + "/" + setId
     // official images built by fetch_cards.py; each falls back to a drawn version
     readonly property string packImage: packProbe.status === Image.Ready ? packProbe.source : ""
@@ -36,7 +41,7 @@ Item {
     property string error: ""
     property string phase: "loading"   // loading | error | pack | reveal | summary | binder
                                        // | boxSealed | boxGrid | boxSummary
-    property string mode: Quickshell.env("OPTCG_MODE") === "box" ? "box" : "pack"
+    property string mode: host.env("OPTCG_MODE") === "box" ? "box" : "pack"
     readonly property bool inBoxScreen: phase === "boxSealed" || phase === "boxGrid" || phase === "boxSummary"
     property var pack: []
     property int revealed: 0
@@ -56,16 +61,15 @@ Item {
     readonly property var nextTier: revealed < pack.length ? Tiers.tierOf(pack[revealed]) : Tiers.info.C
 
     // ---- collection: every opened pack is saved (forced packs aren't) -----
-    readonly property string collectionPath: Quickshell.env("OPTCG_COLLECTION")
-        || (Quickshell.env("XDG_DATA_HOME") || (Quickshell.env("HOME") + "/.local/share")) + "/optcg/collection.json"
-    readonly property bool cheating: !!Quickshell.env("OPTCG_FORCE_HIT")
+    readonly property string collectionPath: host.env("OPTCG_COLLECTION") || dataDir + "/collection.json"
+    readonly property string forceHit: host.env("OPTCG_FORCE_HIT")
+    readonly property bool cheating: forceHit !== ""
     property var collection: ({ packs: 0, cards: {} })
     property var packNew: []            // per card of the current pack: first time pulled?
     property string binderReturn: "pack"
 
     // ---- box mode: a saved virtual case, opened box by box --------------
-    readonly property string dataDir: (Quickshell.env("XDG_DATA_HOME") || (Quickshell.env("HOME") + "/.local/share")) + "/optcg"
-    readonly property string casePath: Quickshell.env("OPTCG_CASE") || dataDir + "/case-" + setId + ".json"
+    readonly property string casePath: host.env("OPTCG_CASE") || dataDir + "/case-" + setId + ".json"
     property var caseState: null        // { set, box, opened: [24 bools], boxes: [12][24][12] card keys }
     property var boxPacks: []           // the current box: 24 packs of cards
     property var boxOpened: []
@@ -76,60 +80,37 @@ Item {
     opacity: 0
     NumberAnimation on opacity { id: fadeIn; to: 1; duration: 250 }
 
-    // scriptable: qs ipc -p ~/.config/quickshell/optcg call optcg advance
-    IpcHandler {
-        target: "optcg"
-        function advance(): void { stage.advance(); }
-        function revealAll(): void { stage.revealAll(); }
-        function newPack(): void { if (stage.db) stage.newPack(); }
-        function close(): void { stage.close(); }
-        function inspect(index: int): void { if (stage.phase === "summary") stage.inspectIndex = index; }
-        function binder(): void { stage.toggleBinder(); }
-        function switchMode(): void { stage.switchMode(); }
-        function openAll(): void { stage.openAllRemaining(); }
-        function openPack(index: int): void { if (stage.phase === "boxGrid") stage.openBoxPack(index); }
-        // debugging: render the overlay to a PNG
-        function snapshot(path: string): void { stage.grabToImage(r => r.saveToFile(path)); }
-    }
-
-    FileView {
-        id: collectionFile
-        path: stage.collectionPath
-        printErrors: false   // no file yet just means an empty collection
-        onLoaded: {
+    Component.onCompleted: {
+        var saved = host.readText(collectionPath);
+        if (saved) {
             try {
-                stage.collection = JSON.parse(text());
+                collection = JSON.parse(saved);
             } catch (e) {
                 console.warn("collection file unreadable, starting a new one:", e);
             }
         }
-        onSaveFailed: err => console.warn("couldn't save the collection:", err)
+        loadSet(setId);
     }
 
-    FileView {
-        id: caseFile
-        path: stage.casePath
-        blockLoading: true
-        printErrors: false   // no file yet just means no case started
-        onSaveFailed: err => console.warn("couldn't save the case:", err)
-    }
-
-    FileView {
-        path: stage.cacheDir + "/cards.json"
-        onLoaded: {
-            try {
-                stage.db = JSON.parse(text());
-                if (stage.mode === "box") stage.startBox();
-                else stage.newPack();
-            } catch (e) {
-                stage.error = "cards.json is unreadable: " + e;
-                stage.phase = "error";
-            }
+    // load a set's card data and start (a pack or a box, by mode)
+    function loadSet(id) {
+        setId = id;
+        caseState = null;
+        var text = host.readText(cacheDir + "/cards.json");
+        if (!text) {
+            error = "No card data for " + id + " yet. Run ~/.config/quickshell/optcg/fetch_cards.py " + id;
+            phase = "error";
+            return;
         }
-        onLoadFailed: {
-            stage.error = "No card data yet. Run ~/.config/quickshell/optcg/fetch_cards.py";
-            stage.phase = "error";
+        try {
+            db = JSON.parse(text);
+        } catch (e) {
+            error = "cards.json is unreadable: " + e;
+            phase = "error";
+            return;
         }
+        if (mode === "box") startBox();
+        else newPack();
     }
 
     function switchMode() {
@@ -152,7 +133,7 @@ Item {
 
     function saveCase() {
         caseState.opened = boxOpened;
-        caseFile.setText(JSON.stringify(caseState));
+        host.writeText(casePath, JSON.stringify(caseState));
     }
 
     function newCase() {
@@ -168,7 +149,7 @@ Item {
     function startBox() {
         if (!caseState) {
             try {
-                caseState = JSON.parse(caseFile.text());
+                caseState = JSON.parse(host.readText(casePath));
                 if (caseState.set !== setId || caseState.boxes.length !== Tiers.CASE.boxes) caseState = null;
             } catch (e) {
                 caseState = null;
@@ -231,7 +212,7 @@ Item {
     function newPack() {
         var leaders = db.cards.filter(c => c.tier === "L");
         packArt = leaders.length ? "file://" + leaders[Math.floor(Math.random() * leaders.length)].image : "";
-        pack = Tiers.makePack(db.cards, Quickshell.env("OPTCG_FORCE_HIT"));
+        pack = Tiers.makePack(db.cards, forceHit);
         revealed = 0;
         cardsIn = false;
         inspectIndex = -1;
@@ -297,7 +278,7 @@ Item {
         });
         col.packs = (col.packs || 0) + 1;
         collection = col;
-        collectionFile.setText(JSON.stringify(col, null, 1));
+        host.writeText(collectionPath, JSON.stringify(col, null, 1));
     }
 
     function toggleBinder() {
