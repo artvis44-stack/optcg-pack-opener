@@ -39,24 +39,27 @@ void main() {
         h += 0.08 * sin(uv.y * 24.0 + uv.x * 9.0);
         vec3 goldc = mix(vec3(1.0, 0.72, 0.28), vec3(1.0, 0.96, 0.75), 0.5 + 0.5 * sin(h * 6.28318));
         vec3 foil = mix(spectrum(h), goldc, gold);
-        float foilMask = 0.3 + 0.7 * smoothstep(0.12, 0.85, lum);
-        col = 1.0 - (1.0 - col) * (1.0 - foil * intensity * 0.5 * foilMask);
+        // tint the art with the foil colour (keeps darks dark) and add only a
+        // little light on the brighter areas, so the card stays readable
+        float foilMask = smoothstep(0.25, 0.9, lum);
+        col = mix(col, col * (0.7 + 0.6 * foil), intensity * 0.45);
+        col += foil * intensity * 0.07 * foilMask;
 
         // twinkling sparkles on a grid, phase shifted by tilt
         vec2 g = uv * size * 70.0;
         float r = hash(floor(g));
         float tw = max(sin(time * 3.0 + r * 40.0 + (tilt.x + tilt.y) * 12.0), 0.0);
-        float s = step(0.86, r) * smoothstep(0.35, 0.0, length(fract(g) - 0.5)) * tw;
-        col += s * intensity * mix(spectrum(r + h), vec3(1.0), 0.5);
+        float s = step(0.9, r) * smoothstep(0.3, 0.0, length(fract(g) - 0.5)) * tw;
+        col += s * intensity * 0.45 * mix(spectrum(r + h), vec3(1.0), 0.5);
 
         // glare band sweeping across with tilt
         float band = uv.x * 0.7 + uv.y * 0.3 - (0.5 + tilt.x * 0.6 + tilt.y * 0.3);
-        col += exp(-band * band * 90.0) * (0.12 + 0.25 * intensity);
+        col += exp(-band * band * 120.0) * (0.04 + 0.08 * intensity);
     }
 
     // soft specular so even commons catch the light
     vec2 lp = vec2(0.5 + tilt.x * 0.5, 0.35 + tilt.y * 0.5);
-    col += 0.08 * exp(-dot(uv - lp, uv - lp) * 6.0);
+    col += 0.04 * exp(-dot(uv - lp, uv - lp) * 6.0);
 
     fragColor = vec4(col, 1.0) * base.a * mask * qt_Opacity;
 }

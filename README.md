@@ -11,6 +11,8 @@ pack (OP-17 by default), card by card, with holo foil shaders.
 | Tab | reveal everything |
 | Click a card (summary) | inspect it (move the mouse to tilt it) |
 | R | open another pack (summary) |
+| B | binder: your collection (from the sealed pack or the summary) |
+| O | binder: show owned only / the whole set |
 | Esc / right-click | close |
 
 ## Files
@@ -18,6 +20,7 @@ pack (OP-17 by default), card by card, with holo foil shaders.
 - `shell.qml`: the layer-shell window (namespace `optcg`, blurred by a Hyprland layerrule)
 - `Stage.qml`: the flow (pack → reveal → summary), layout, effects and IPC
 - `Pack.qml`, `PackFace.qml`: the booster wrapper (official photo, or the drawn fallback) and the tear animation
+- `Binder.qml`: the collection view (owned cards first with counts, missing ones faded)
 - `Card.qml`, `CardBack.qml`: the flipping, tilting card (Leaders get the red back), plus the drawn fallback back
 - `tiers.js`: rarity tiers, the pack slot structure and pull rates (community estimates; Bandai publishes none) and the pack generator
 - `shaders/*.frag`: the holo foil, pack foil and god-ray shaders. Run `./build-shaders.sh` after editing them.
@@ -28,6 +31,12 @@ pack (OP-17 by default), card by card, with holo foil shaders.
   DON!! cards (not in optcgapi) come from TCGplayer scans listed in `DON_CARDS`, with the official
   DON!! back. If optcgapi is unreachable, the cached card list is reused.
 - `open-pack.sh`: the toggle launcher (fetches data on the first run)
+
+## Collection
+
+Every pack you open is saved to `~/.local/share/optcg/collection.json` (count per printing,
+date first pulled). Cards you pull for the first time get a NEW! badge. Packs opened with
+`OPTCG_FORCE_HIT` are not saved. `OPTCG_COLLECTION=/path/to/file.json` uses a different file.
 
 ## Tweaks
 

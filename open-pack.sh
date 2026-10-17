@@ -17,4 +17,7 @@ if [ ! -f "$CACHE/cards.json" ] || [ ! -f "$CACHE/../assets/back_don.png" ]; the
     fi
 fi
 
+# the binder saves to $XDG_DATA_HOME/optcg/collection.json
+mkdir -p "${XDG_DATA_HOME:-$HOME/.local/share}/optcg"
+
 exec qs -n -p "$DIR"

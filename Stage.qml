@@ -43,6 +43,14 @@ Item {
     readonly property var centerTier: revealed > 0 && revealed <= pack.length ? Tiers.tierOf(pack[revealed - 1]) : Tiers.info.C
     readonly property var nextTier: revealed < pack.length ? Tiers.tierOf(pack[revealed]) : Tiers.info.C
 
+    // ---- collection: every opened pack is saved (forced packs aren't) -----
+    readonly property string collectionPath: Quickshell.env("OPTCG_COLLECTION")
+        || (Quickshell.env("XDG_DATA_HOME") || (Quickshell.env("HOME") + "/.local/share")) + "/optcg/collection.json"
+    readonly property bool cheating: !!Quickshell.env("OPTCG_FORCE_HIT")
+    property var collection: ({ packs: 0, cards: {} })
+    property var packNew: []            // per card of the current pack: first time pulled?
+    property string binderReturn: "pack"
+
     focus: true
     opacity: 0
     NumberAnimation on opacity { id: fadeIn; to: 1; duration: 250 }
@@ -55,6 +63,21 @@ Item {
         function newPack(): void { if (stage.db) stage.newPack(); }
         function close(): void { stage.close(); }
         function inspect(index: int): void { if (stage.phase === "summary") stage.inspectIndex = index; }
+        function binder(): void { stage.toggleBinder(); }
+    }
+
+    FileView {
+        id: collectionFile
+        path: stage.collectionPath
+        printErrors: false   // no file yet just means an empty collection
+        onLoaded: {
+            try {
+                stage.collection = JSON.parse(text());
+            } catch (e) {
+                console.warn("collection file unreadable, starting a new one:", e);
+            }
+        }
+        onSaveFailed: err => console.warn("couldn't save the collection:", err)
     }
 
     FileView {
@@ -111,6 +134,33 @@ Item {
         }
     }
 
+    function cardKey(c) {
+        return setId + ":" + c.image.split("/").pop();   // unique per printing
+    }
+
+    function recordPack() {
+        var col = JSON.parse(JSON.stringify(collection));
+        packNew = pack.map(c => !col.cards[cardKey(c)]);
+        if (cheating) return;   // forced pulls don't go in the binder
+        pack.forEach(c => {
+            var e = col.cards[cardKey(c)];
+            if (e) e.count++;
+            else col.cards[cardKey(c)] = { id: c.id, name: c.name, tier: c.tier, count: 1, first: new Date().toISOString() };
+        });
+        col.packs = (col.packs || 0) + 1;
+        collection = col;
+        collectionFile.setText(JSON.stringify(col, null, 1));
+    }
+
+    function toggleBinder() {
+        if (phase === "binder") {
+            phase = binderReturn;
+        } else if ((phase === "pack" && !cardsIn) || phase === "summary") {
+            binderReturn = phase;
+            phase = "binder";
+        }
+    }
+
     function close() {
         fadeIn.stop();
         closeAnim.start();
@@ -151,8 +201,15 @@ Item {
     Keys.onPressed: event => {
         switch (event.key) {
         case Qt.Key_Escape:
-            if (inspectIndex >= 0) inspectIndex = -1;
+            if (phase === "binder") binderView.back();
+            else if (inspectIndex >= 0) inspectIndex = -1;
             else close();
+            break;
+        case Qt.Key_B:
+            toggleBinder();
+            break;
+        case Qt.Key_O:
+            if (phase === "binder") binderView.ownedOnly = !binderView.ownedOnly;
             break;
         case Qt.Key_Space:
         case Qt.Key_Return:
@@ -214,7 +271,10 @@ Item {
             setCode: stage.db.set
             setName: stage.db.set_name
             onTearStarted: stage.cardsIn = true
-            onTorn: stage.phase = "reveal"
+            onTorn: {
+                stage.recordPack();
+                stage.phase = "reveal";
+            }
         }
     }
 
@@ -282,7 +342,8 @@ Item {
             faceUp: stage.phase !== "pack" && index < stage.revealed
             sway: stage.phase === "reveal" && index === stage.revealed - 1
             hoverTilt: stage.phase === "summary"
-            opacity: !stage.cardsIn ? 0 : (stage.inspectIndex >= 0 && stage.inspectIndex !== index ? 0.25 : 1)
+            opacity: !stage.cardsIn || stage.phase === "binder" ? 0
+                     : (stage.inspectIndex >= 0 && stage.inspectIndex !== index ? 0.25 : 1)
             onClicked: stage.inspectIndex = stage.inspectIndex === index ? -1 : index
 
             Behavior on x { enabled: !cardItem.chargingMe; NumberAnimation { duration: 520; easing.type: Easing.OutCubic } }
@@ -297,7 +358,7 @@ Item {
                 anchors.top: parent.bottom
                 anchors.topMargin: 6 / Math.max(0.01, cardItem.scale)
                 anchors.horizontalCenter: parent.horizontalCenter
-                text: cardItem.tier.label
+                text: (stage.packNew[cardItem.index] ? "NEW · " : "") + cardItem.tier.label
                 color: cardItem.tier.color
                 font { pixelSize: 15 / Math.max(0.01, cardItem.scale); weight: Font.Bold }
             }
@@ -313,6 +374,21 @@ Item {
         anchors.horizontalCenter: parent.horizontalCenter
         y: stage.height / 2 - 40 + stage.cw / 0.716 / 2 + 14
         spacing: 2
+        Rectangle {
+            anchors.horizontalCenter: parent.horizontalCenter
+            visible: !!stage.packNew[stage.revealed - 1]
+            width: newText.width + 16
+            height: newText.height + 4
+            radius: height / 2
+            color: "#ff4d6d"
+            Text {
+                id: newText
+                anchors.centerIn: parent
+                text: "NEW!"
+                color: "white"
+                font { pixelSize: 13; weight: Font.Black; letterSpacing: 1 }
+            }
+        }
         Text {
             id: tierLabel
             anchors.horizontalCenter: parent.horizontalCenter
@@ -377,10 +453,11 @@ Item {
         text: ({
             loading: "Loading cards…",
             error: "Esc to close",
-            pack: "Click or Space to tear it open   ·   Esc to close",
+            pack: "Click or Space to tear it open   ·   B: binder   ·   Esc to close",
+            binder: "",
             reveal: "Space / click: next card   ·   Tab: reveal all   ·   Esc: close",
             summary: stage.inspectIndex >= 0 ? "Move the mouse to tilt   ·   click or Esc to go back"
-                     : "Hover to tilt   ·   click a card to inspect   ·   Space: open another pack   ·   Esc: close"
+                     : "Hover to tilt   ·   click a card to inspect   ·   Space: open another pack   ·   B: binder   ·   Esc: close"
         })[stage.phase]
     }
 
@@ -391,6 +468,14 @@ Item {
         text: stage.error
         color: "#ff8080"
         font.pixelSize: 20
+    }
+
+    Binder {
+        id: binderView
+        anchors.fill: parent
+        z: 250
+        visible: stage.phase === "binder"
+        stage: stage
     }
 
     Rectangle {
