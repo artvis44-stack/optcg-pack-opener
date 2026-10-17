@@ -6,12 +6,13 @@
 // aggregate, retailer box guides), converted to per-pack odds at
 // 24 packs/box and 12 boxes/case.
 //
-//   slots 1-7   Common            (a regular Leader replaces one ~1 in 5 packs,
-//                                 a DON!! card replaces one ~2 per box)
+//   slots 1-7   Common            (a regular Leader replaces one ~1 in 5 packs)
 //   slots 8-10  Uncommon
 //   slot 11     Rare              (Pandaman variant takes this slot ~7/case)
 //   slot 12     hit slot          Rare unless upgraded (table below). A Leader
 //                                 here is only ever a parallel, never a plain L.
+//   DON!!       ~2 per box a DON!! replaces a common and sits at the very back
+//               of the pack, after the hit -- so its green back is the tease.
 
 var info = {
     C:       { label: "Common",                 holo: 0.0,  gold: 0.0, rank: 0,  color: "#9aa4b2" },
@@ -96,13 +97,13 @@ function makePack(cards, forceHit) {
             : r < DON_FOIL_RATE ? (Math.random() < 0.75 ? "DON_GOLD" : "DON_SP")
             : r < DON_FOIL_RATE + DON_RATE ? "DON" : "";
 
-    var commons = ["C", "C", "C", "C", "C", "C", "C"];
-    if (don) commons[6] = don;
-    if (leader) commons[don ? 5 : 6] = "L";
+    var commons = don ? ["C", "C", "C", "C", "C", "C"] : ["C", "C", "C", "C", "C", "C", "C"];
+    if (leader) commons[commons.length - 1] = "L";
     commons.forEach(add);
     for (var i = 0; i < 3; i++) add("UC");
     add(forceHit === "PANDA" || Math.random() < PANDA_RATE ? "PANDA" : "R");
     add(forceHit && special.indexOf(forceHit) < 0 ? forceHit : rollHit());
+    if (don) add(don);
     return out;
 }
 

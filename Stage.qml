@@ -131,8 +131,13 @@ Item {
                      y: height / 2 + 20 - totalH / 2 + row * (h + gy) + h / 2, s: s, z: i };
         }
         if (phase === "pack" || i >= revealed) {
+            var rise = cardsIn ? 0 : height * 0.35;
+            // the tease: the last card peeks out from behind the stack, back
+            // showing (red = Leader, green = DON!!) until it's next up
+            if (i === pack.length - 1 && i > revealed)
+                return { x: cx + W * 0.24, y: cy + H * 0.03 + rise, s: 1, z: 20, r: 9 };
             var d = i - revealed;
-            return { x: cx + d * 1.2, y: cy + d * 1.5 + (cardsIn ? 0 : height * 0.35), s: 1, z: i === revealed ? 90 : 50 - i };
+            return { x: cx + d * 1.2, y: cy + d * 1.5 + rise, s: 1, z: i === revealed ? 90 : 50 - i };
         }
         // while charging, the last card moves aside so the shaking one is visible
         if (i === revealed - 1 && !charging)
@@ -273,6 +278,7 @@ Item {
             y: slot.y - height / 2
             z: slot.z
             scale: slot.s
+            rotation: slot.r || 0
             faceUp: stage.phase !== "pack" && index < stage.revealed
             sway: stage.phase === "reveal" && index === stage.revealed - 1
             hoverTilt: stage.phase === "summary"
@@ -282,6 +288,7 @@ Item {
             Behavior on x { enabled: !cardItem.chargingMe; NumberAnimation { duration: 520; easing.type: Easing.OutCubic } }
             Behavior on y { NumberAnimation { duration: 560; easing.type: Easing.OutCubic } }
             Behavior on scale { NumberAnimation { duration: 520; easing.type: Easing.OutCubic } }
+            Behavior on rotation { NumberAnimation { duration: 520; easing.type: Easing.OutCubic } }
             Behavior on opacity { NumberAnimation { duration: 300 } }
 
             // rarity tag under each summary card
