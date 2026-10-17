@@ -38,7 +38,7 @@ The app is split into a platform-independent part (`app/`) and a thin host.
 - `app/Card.qml`, `app/CardBack.qml`: the flipping, tilting card (Leaders get the red back), plus the drawn fallback back
 - `app/tiers.js`: rarity tiers, pack layouts and case budgets per product family, and the pack / case generators
 - `app/shaders/*.frag`: the holo foil, pack foil and god-ray shaders. Run `./build-shaders.sh` after editing them.
-- `fetch_cards.py SET | all | list`: downloads a set's data and images from optcgapi.com into
+- `fetch_cards.py SET | all | list | previews`: downloads a set's data and images from optcgapi.com into
   `~/.cache/optcg/<SET>/` (the app runs it itself when you pick a new set). It also fetches the
   pack and box photos (Bandai's for OP-17, TCGplayer's for the rest, background removed), the
   set's booster DON!! cards (TCGplayer scans) and the blue deck, red Leader and DON!! card backs
@@ -65,7 +65,8 @@ hold an SR, OP-17 fully random with 1–4 premium hits per box.
 ## Box mode
 
 Boxes are dealt from a virtual 12-box case saved in `~/.local/share/optcg/case-<SET>.json`
-(premium boosters have 20 packs per box; OP-01/02 boxes come with a box topper),
+(premium boosters have 20 packs per box and a DON!! at the front of every pack, 2 gold per box;
+OP-01/02 boxes come with a box topper),
 so the boxes of a case share one hit budget like real ones, and a half-opened box is resumed.
 OP-17 has no fixed hit mapping (premium hits land randomly, 1–4 per box), but a case still holds
 about: 8 of each SR (6–7 SR per box), 5 Leaders and 2 DON!! per box, 10 alt arts, 5 SEC,

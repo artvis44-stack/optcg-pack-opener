@@ -1,18 +1,27 @@
 import QtQuick
 
 // Pick a set: every booster in sets.json, release order. Sets that aren't
-// downloaded yet show TCGplayer's pack photo and download when picked.
+// downloaded yet download when picked; their pack photos are fetched up front.
 Item {
     id: picker
 
     property Item stage
     property var have: ({})        // set id -> downloaded?
+    property bool previewsFetched: false
+    property bool reloading: false
 
     onVisibleChanged: {
         if (!visible) return;
         var h = {};
         Object.keys(stage.sets).forEach(id => h[id] = stage.downloaded(id));
         have = h;
+        if (!previewsFetched) {   // pack photos of every set (skips ones already cached)
+            previewsFetched = true;
+            stage.host.run(["python3", "-I", "-u", stage.fetchScript, "previews"], null, code => {
+                reloading = true;   // pick up the new files
+                reloading = false;
+            });
+        }
     }
 
     function owned(id) {
@@ -102,9 +111,7 @@ Item {
                     asynchronous: true
                     smooth: true
                     mipmap: true
-                    source: tile.local ? "file://" + picker.stage.cacheRoot + "/" + tile.modelData + "/pack.png"
-                                       : "https://tcgplayer-cdn.tcgplayer.com/product/" + tile.info.pack + "_in_1000x1000.jpg"
-                    opacity: tile.local ? 1 : 0.55
+                    source: picker.reloading ? "" : "file://" + picker.stage.cacheRoot + "/" + tile.modelData + "/pack.png"
                 }
                 Text {
                     anchors.centerIn: parent

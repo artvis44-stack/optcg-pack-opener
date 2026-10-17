@@ -13,8 +13,9 @@
 //   slot 12     hit slot          Rare unless it holds an SR or premium hit. A
 //                                 Leader here is only ever a parallel.
 //   DON!!       replaces a common and sits at the very back, after the hit.
-// Extra boosters have no uncommons; premium boosters are 10-card packs with a
-// foil reprint slot.
+// Extra boosters have no uncommons. Premium boosters are 10-card packs with a
+// foil reprint slot, and every pack has a DON!! (at the front) -- 2 per box
+// are gold.
 //
 // Case/box: a case (12 boxes) holds a roughly fixed budget of each hit, so
 // hits trade off between its boxes. How hits sit in the case changed:
@@ -69,11 +70,11 @@ var FAMILIES = {
         fixed:   { AA: 12, SEC: 4, L_AA: 2, SEC_AA: 1, DON_GOLD: 2 },
         lottery: { SP: 3, MANGA: 0.3, TR: 0.5 }
     },
-    premium: { // PRB: 10-card packs, 20 per box, 2 foil DON!! per box; rates unpublished
+    premium: { // PRB: 10-card packs, 20 per box, a DON!! in every pack; rates unpublished
         packsPerBox: 20, boxes: 12,
         slots: ["C", "C", "C", "UC", "UC", "UC", "R", "FOIL", "RARE", "HIT"],
-        srPerBox: 8, leadersPerBox: 0, donPerBox: 2, hitsPerBox: null,
-        fixed:   { AA: 40, TEX: 12, SEC: 12, SEC_AA: 4, L_AA: 1, DON_GOLD: 4 },
+        srPerBox: 8, leadersPerBox: 0, donPerBox: 20, goldDonPerBox: 2, donFront: true, hitsPerBox: null,
+        fixed:   { AA: 40, TEX: 12, SEC: 12, SEC_AA: 4, L_AA: 1 },
         lottery: { SP: 2, MANGA: 1 }
     }
 };
@@ -89,7 +90,7 @@ function setConfig(setInfo) {
         packsPerBox: fam.packsPerBox, boxes: fam.boxes, slots: fam.slots,
         fixed: Object.assign({}, fam.fixed), lottery: Object.assign({}, fam.lottery)
     };
-    ["srPerBox", "leadersPerBox", "donPerBox", "hitsPerBox"].forEach(function (k) {
+    ["srPerBox", "leadersPerBox", "donPerBox", "goldDonPerBox", "donFront", "hitsPerBox"].forEach(function (k) {
         cfg[k] = setInfo && setInfo[k] !== undefined ? setInfo[k] : fam[k];
     });
     var over = (setInfo && setInfo.case) || {};
@@ -168,6 +169,7 @@ function buildPack(byTier, cfg, spec) {
         used[c.image] = true;
         out.push(c);
     }
+    if (spec.don && cfg.donFront) add(spec.don);      // premium boosters: up front
     var slots = cfg.slots.slice();
     var lastC = slots.lastIndexOf("C");
     if (spec.don) slots.splice(lastC--, 1);           // the DON!! takes a common's place...
@@ -175,7 +177,7 @@ function buildPack(byTier, cfg, spec) {
     slots.forEach(function (s) {
         add(s === "RARE" ? (spec.rare || "R") : s === "HIT" ? (spec.hit || "R") : s);
     });
-    if (spec.don) add(spec.don);                      // ...at the very back
+    if (spec.don && !cfg.donFront) add(spec.don);     // ...at the very back
     return out;
 }
 
@@ -205,7 +207,8 @@ function makePack(cards, setInfo, forceHit) {
 
     var leader = !!byTier.L && (forceHit === "L" || Math.random() < cfg.leadersPerBox / cfg.packsPerBox);
     var foils = ["DON_GOLD", "DON_SP"].filter(function (t) { return byTier[t]; });
-    var foilRate = foils.reduce(function (a, t) { return a + caseAmount(cfg, t); }, 0) / cfg.packsPerCase;
+    var foilRate = cfg.goldDonPerBox ? cfg.goldDonPerBox / cfg.packsPerBox
+                 : foils.reduce(function (a, t) { return a + caseAmount(cfg, t); }, 0) / cfg.packsPerCase;
     var r = Math.random();
     var don = forceHit.indexOf("DON") === 0 ? forceHit
             : !byTier.DON ? ""
@@ -287,7 +290,10 @@ function makeCase(cards, setInfo) {
     if (byTier.DON) {
         boxes.forEach(function (box) { for (var k = 0; k < Math.round(cfg.donPerBox); k++) box.dons.push("DON"); });
         var foils = [];
-        for (i = 0; byTier.DON_GOLD && i < Math.round(cfg.fixed.DON_GOLD || 0); i++) foils.push("DON_GOLD");
+        if (cfg.goldDonPerBox && byTier.DON_GOLD) {   // a fixed number in every box
+            boxes.forEach(function (box) { box.dons.fill("DON_GOLD", 0, cfg.goldDonPerBox); });
+        }
+        for (i = 0; byTier.DON_GOLD && !cfg.goldDonPerBox && i < Math.round(cfg.fixed.DON_GOLD || 0); i++) foils.push("DON_GOLD");
         for (i = byTier.DON_SP ? poisson(cfg.lottery.DON_SP || 0) : 0; i > 0; i--) foils.push("DON_SP");
         foils.forEach(function (t) {
             var box = pick(boxes.filter(function (x) { return x.dons.indexOf("DON") >= 0; }));

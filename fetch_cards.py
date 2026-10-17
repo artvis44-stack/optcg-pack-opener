@@ -4,6 +4,7 @@
 Usage: fetch_cards.py [SET_ID]   one set (default OP-17), e.g. OP-05, EB-01, PRB-02
        fetch_cards.py all        every set in app/sets.json (~40 MB each)
        fetch_cards.py list       the known sets and whether they're downloaded
+       fetch_cards.py previews   just the pack/box photos of every set (for the set picker)
 
 Writes $XDG_CACHE_HOME/optcg/<SET_ID>/cards.json, one image per card, and the
 set's pack/box photos; the card backs (shared by all sets) go in assets/.
@@ -279,6 +280,11 @@ def main():
         for set_id, info in SETS.items():
             have = os.path.exists(os.path.join(ROOT, set_id, "cards.json"))
             print(f"{set_id:10} {'downloaded' if have else '-':11} {info['name']}")
+    elif arg == "previews":
+        for set_id, info in SETS.items():
+            cache = os.path.join(ROOT, set_id)
+            os.makedirs(cache, exist_ok=True)
+            fetch_product_images(set_id, info, cache)
     elif arg == "all":
         for set_id in SETS:
             fetch_set(set_id)
