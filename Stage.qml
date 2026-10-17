@@ -338,7 +338,7 @@ Item {
         }
         Text {
             anchors.horizontalCenter: parent.horizontalCenter
-            readonly property var best: stage.pack.length ? stage.pack[stage.pack.length - 1] : null
+            readonly property var best: stage.pack.length ? Tiers.best(stage.pack) : null
             text: best ? "Best pull: " + Tiers.displayName(best) + " (" + Tiers.tierOf(best).label + ")   ·   packs opened: " + stage.packsOpened : ""
             color: "#d0d4dc"
             font.pixelSize: 16

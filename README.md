@@ -19,7 +19,7 @@ pack (OP-17 by default), card by card, with holo foil shaders.
 - `Stage.qml`: the flow (pack → reveal → summary), layout, effects and IPC
 - `Pack.qml`, `PackFace.qml`: the booster wrapper (official photo, or the drawn fallback) and the tear animation
 - `Card.qml`, `CardBack.qml`: the flipping, tilting card (Leaders get the red back), plus the drawn fallback back
-- `tiers.js`: rarity tiers, pull rates (approximate, not official) and the pack generator
+- `tiers.js`: rarity tiers, the pack slot structure and pull rates (community estimates; Bandai publishes none) and the pack generator
 - `shaders/*.frag`: the holo foil, pack foil and god-ray shaders. Run `./build-shaders.sh` after editing them.
 - `fetch_cards.py [SET]`: downloads set data and images from optcgapi.com into `~/.cache/optcg/<SET>/`.
   It also builds Bandai's official pack photo (`<SET>/pack.png`) and the blue deck and red Leader

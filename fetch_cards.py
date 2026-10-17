@@ -39,12 +39,15 @@ def tier_of(card):
         return "SP"
     if "(Manga)" in name:
         return "MANGA"
+    leader = card.get("card_type") == "Leader"
     if "Super" in name and "Alternate Art" in name:
-        return "SUPER"
+        return "SUPER_L" if leader else "SUPER"
     if rarity == "TR" or "(TR)" in name:
         return "TR"
     if "(Alternate Art)" in name:
-        return "SEC_AA" if rarity == "SEC" else "AA"
+        if rarity == "SEC":
+            return "SEC_AA"
+        return "L_AA" if leader else "AA"
     return rarity
 
 
