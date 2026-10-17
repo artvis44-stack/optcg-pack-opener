@@ -22,6 +22,21 @@ API = "https://optcgapi.com/api/sets/{}/"
 PACK_URL = "https://en.onepiece-cardgame.com/products/boosters/{}/images/others/product_pack.webp"
 # The official rule manual has flat scans of the card backs
 RULES_PDF = "https://en.onepiece-cardgame.com/pdf/rule_manual.pdf"
+# DON!! cards aren't in optcgapi; these are TCGplayer's scans of the booster
+# DON!! (the Double Pack Set ones don't come in boosters, so they're left out)
+TCGPLAYER_IMG = "https://tcgplayer-cdn.tcgplayer.com/product/{}_in_1000x1000.jpg"
+DON_CARDS = {
+    "OP-17": [
+        (712747, "DON!! Card", "DON"),
+        (712749, "DON!! Card (Rocks)", "DON"),
+        (712750, "DON!! Card (The Four Emperors)", "DON"),
+        (712748, "DON!! Card (Luffy and Loki)", "DON"),
+        (710859, "DON!! Card (Gold)", "DON_GOLD"),
+        (710860, "DON!! Card (Luffy and Loki) (Gold)", "DON_GOLD"),
+        (711421, "DON!! Card (The Four Emperors) (Gold)", "DON_GOLD"),
+        (711420, "DON!! Card (Rocks) (Special Foil)", "DON_SP"),
+    ],
+}
 UA = {"User-Agent": "Mozilla/5.0 (optcg-pack-widget/1.0)"}
 
 SET_ID = sys.argv[1] if len(sys.argv) > 1 else "OP-17"
@@ -100,11 +115,42 @@ def fetch_pack_image():
     print("pack image ->", dest)
 
 
+def mean_brightness(path):
+    out = subprocess.run(["magick", path, "-format", "%[fx:mean]", "info:"],
+                         check=True, capture_output=True, text=True).stdout
+    return float(out)
+
+
+def fetch_don_cards():
+    """DON!! scans for the set, trimmed to the card and sized like the others."""
+    cards = []
+    for n, (product, name, tier) in enumerate(DON_CARDS.get(SET_ID, []), 1):
+        dest = os.path.join(CACHE, f"don_{product}.png")
+        if not os.path.exists(dest):
+            raw = dest + ".jpg"
+            try:
+                with open(raw, "wb") as f:
+                    f.write(fetch(TCGPLAYER_IMG.format(product)))
+            except Exception as e:
+                print(f"couldn't download {name} ({e})")
+                continue
+            if shutil.which("magick"):
+                # product photos have a light margin around the card
+                magick(raw, "-fuzz", "12%", "-trim", "+repage", "-resize", "600x838!", dest)
+                os.remove(raw)
+            else:
+                os.replace(raw, dest)
+        cards.append({"id": f"{SET_ID.replace('-', '')}-DON-{n}", "name": name, "rarity": "DON",
+                      "tier": tier, "color": "", "type": "DON!!", "image": dest})
+    return cards
+
+
 def fetch_card_backs():
-    """Blue (deck) and red (Leader) card backs from the rule manual -> assets/"""
+    """Blue (deck), red (Leader) and DON!! card backs from the rule manual -> assets/"""
     blue = os.path.join(ASSETS, "back.png")
     red = os.path.join(ASSETS, "back_leader.png")
-    if os.path.exists(blue) and os.path.exists(red):
+    don = os.path.join(ASSETS, "back_don.png")
+    if all(os.path.exists(p) for p in (blue, red, don)):
         return
     if not (shutil.which("pdfimages") and shutil.which("magick")):
         print("card backs need poppler (pdfimages) + imagemagick; using the drawn back")
@@ -133,7 +179,12 @@ def fetch_card_backs():
                        "-alpha", "off", "-compose", "CopyOpacity", "-composite",
                        "-resize", "600x", red)
                 break
-    for path in (blue, red):
+        # DON!! back: the white/green one among the 301x421 image + mask pairs
+        pairs = [i for i, size in enumerate(sizes[:-1]) if size == (301, 421) and sizes[i + 1] == size]
+        if pairs:
+            i = max(pairs, key=lambda i: mean_brightness(imgs[i]))
+            magick(imgs[i], imgs[i + 1], "-alpha", "off", "-compose", "CopyOpacity", "-composite", don)
+    for path in (blue, red, don):
         print(("card back -> " if os.path.exists(path) else "couldn't find card back for ") + path)
 
 
@@ -141,7 +192,21 @@ def main():
     os.makedirs(CACHE, exist_ok=True)
     fetch_pack_image()
     fetch_card_backs()
-    raw = json.loads(fetch(API.format(SET_ID)))
+    out_path = os.path.join(CACHE, "cards.json")
+    try:
+        raw = json.loads(fetch(API.format(SET_ID)))
+    except Exception as e:
+        if not os.path.exists(out_path):
+            raise
+        # API down: keep the cached card list, just refresh the DON!! cards
+        print(f"optcgapi unreachable ({e}); reusing cached card list")
+        with open(out_path) as f:
+            out = json.load(f)
+        out["cards"] = [c for c in out["cards"] if c["type"] != "DON!!"] + fetch_don_cards()
+        with open(out_path, "w") as f:
+            json.dump(out, f, indent=1)
+        print("done")
+        return
 
     cards, seen = [], set()
     for c in raw:
@@ -163,9 +228,10 @@ def main():
     print(f"{SET_ID}: {len(cards)} cards, downloading images to {CACHE}")
     with ThreadPoolExecutor(max_workers=8) as pool:
         cards = list(pool.map(download, cards))
+    cards += fetch_don_cards()
 
     out = {"set": SET_ID, "set_name": raw[0]["set_name"] if raw else SET_ID, "cards": cards}
-    with open(os.path.join(CACHE, "cards.json"), "w") as f:
+    with open(out_path, "w") as f:
         json.dump(out, f, indent=1)
     print("done")
 

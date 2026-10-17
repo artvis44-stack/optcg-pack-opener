@@ -25,6 +25,8 @@ pack (OP-17 by default), card by card, with holo foil shaders.
   It also builds Bandai's official pack photo (`<SET>/pack.png`) and the blue deck and red Leader
   card backs (`assets/back*.png`, extracted from the official rule-manual PDF; needs `poppler` and
   `imagemagick`). If any of these are missing, the widget falls back to its drawn pack/back.
+  DON!! cards (not in optcgapi) come from TCGplayer scans listed in `DON_CARDS`, with the official
+  DON!! back. If optcgapi is unreachable, the cached card list is reused.
 - `open-pack.sh`: the toggle launcher (fetches data on the first run)
 
 ## Tweaks

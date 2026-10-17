@@ -15,6 +15,7 @@ Item {
     readonly property real packAspect: packImage ? packProbe.implicitWidth / packProbe.implicitHeight : 0.625
     readonly property string deckBack: "file://" + cacheRoot + "/assets/back.png"
     readonly property string leaderBack: "file://" + cacheRoot + "/assets/back_leader.png"
+    readonly property string donBack: "file://" + cacheRoot + "/assets/back_don.png"
 
     Image {
         id: packProbe
@@ -133,7 +134,8 @@ Item {
             var d = i - revealed;
             return { x: cx + d * 1.2, y: cy + d * 1.5 + (cardsIn ? 0 : height * 0.35), s: 1, z: i === revealed ? 90 : 50 - i };
         }
-        if (i === revealed - 1)
+        // while charging, the last card moves aside so the shaking one is visible
+        if (i === revealed - 1 && !charging)
             return { x: cx, y: cy, s: 1, z: 100 };
         var gap = 12;
         var s2 = Math.min(0.3, (width * 0.92 - 11 * gap) / 12 / W);
@@ -263,7 +265,8 @@ Item {
             readonly property bool chargingMe: stage.charging && index === stage.revealed
 
             card: modelData
-            backSource: modelData.type === "Leader" ? stage.leaderBack : stage.deckBack
+            backSource: modelData.type === "Leader" ? stage.leaderBack
+                      : modelData.type === "DON!!" ? stage.donBack : stage.deckBack
             width: stage.cw
             time: stage.t
             x: slot.x - width / 2 + (chargingMe ? stage.shake : 0)
@@ -299,7 +302,7 @@ Item {
     Column {
         id: banner
         z: 150
-        visible: stage.phase === "reveal" && stage.revealed > 0
+        visible: stage.phase === "reveal" && stage.revealed > 0 && !stage.charging
         anchors.horizontalCenter: parent.horizontalCenter
         y: stage.height / 2 - 40 + stage.cw / 0.716 / 2 + 14
         spacing: 2
