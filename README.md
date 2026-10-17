@@ -3,7 +3,7 @@
 A Quickshell overlay for Hyprland that opens a One Piece Card Game booster
 pack (OP-17 by default), card by card, with holo foil shaders.
 
-**SUPER+SHIFT+P** opens it, and pressing it again closes it.
+**SUPER+SHIFT+P** opens a single pack and **SUPER+SHIFT+B** opens a booster box. Pressing either again closes it.
 
 | Key | Action |
 |---|---|
@@ -11,6 +11,8 @@ pack (OP-17 by default), card by card, with holo foil shaders.
 | Tab | reveal everything |
 | Click a card (summary) | inspect it (move the mouse to tilt it) |
 | R | open another pack (summary) |
+| X | switch between single packs and box mode |
+| A | box: open all remaining packs |
 | B | binder: your collection (from the sealed pack or the summary) |
 | O | binder: show owned only / the whole set |
 | Esc / right-click | close |
@@ -20,6 +22,7 @@ pack (OP-17 by default), card by card, with holo foil shaders.
 - `shell.qml`: the layer-shell window (namespace `optcg`, blurred by a Hyprland layerrule)
 - `Stage.qml`: the flow (pack → reveal → summary), layout, effects and IPC
 - `Pack.qml`, `PackFace.qml`: the booster wrapper (official photo, or the drawn fallback) and the tear animation
+- `BoxView.qml`: box mode (the sealed display box, the grid of 24 packs, the box summary)
 - `Binder.qml`: the collection view (owned cards first with counts, missing ones faded)
 - `Card.qml`, `CardBack.qml`: the flipping, tilting card (Leaders get the red back), plus the drawn fallback back
 - `tiers.js`: rarity tiers, the pack slot structure and pull rates (community estimates; Bandai publishes none) and the pack generator
@@ -31,6 +34,16 @@ pack (OP-17 by default), card by card, with holo foil shaders.
   DON!! cards (not in optcgapi) come from TCGplayer scans listed in `DON_CARDS`, with the official
   DON!! back. If optcgapi is unreachable, the cached card list is reused.
 - `open-pack.sh`: the toggle launcher (fetches data on the first run)
+
+## Box mode
+
+Boxes are dealt from a virtual 12-box case saved in `~/.local/share/optcg/case-<SET>.json`,
+so the boxes of a case share one hit budget like real ones, and a half-opened box is resumed.
+OP-17 has no fixed hit mapping (premium hits land randomly, 1–4 per box), but a case still holds
+about: 8 of each SR (6–7 SR per box), 5 Leaders and 2 DON!! per box, 10 alt arts, 5 SEC,
+4 alt-art Leaders, 2 SEC alt arts, 7 Pandaman and 1 Gold DON!!, plus lottery hits (SP, Special
+Foil DON!!, TR, super parallels, Manga). See `CASE` in `tiers.js`. Single packs use the same
+budget as odds. `OPTCG_CASE=/path/to/case.json` uses a different file.
 
 ## Collection
 

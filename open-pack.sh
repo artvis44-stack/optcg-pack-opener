@@ -1,5 +1,6 @@
 #!/usr/bin/env bash
 # Toggle the OPTCG pack opener. Downloads card data on first run.
+# usage: open-pack.sh [box]   ("box" starts in booster box mode)
 DIR="$(dirname "$(readlink -f "$0")")"
 SET="${OPTCG_SET:-OP-17}"
 CACHE="${XDG_CACHE_HOME:-$HOME/.cache}/optcg/$SET"
@@ -20,4 +21,5 @@ fi
 # the binder saves to $XDG_DATA_HOME/optcg/collection.json
 mkdir -p "${XDG_DATA_HOME:-$HOME/.local/share}/optcg"
 
+[ "$1" = "box" ] && export OPTCG_MODE=box
 exec qs -n -p "$DIR"

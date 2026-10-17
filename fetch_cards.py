@@ -18,8 +18,8 @@ import urllib.request
 from concurrent.futures import ThreadPoolExecutor
 
 API = "https://optcgapi.com/api/sets/{}/"
-# Bandai's official product shot of the sealed pack (e.g. .../boosters/op17/...)
-PACK_URL = "https://en.onepiece-cardgame.com/products/boosters/{}/images/others/product_pack.webp"
+# Bandai's official product shots of the sealed pack and the display box
+PRODUCT_URL = "https://en.onepiece-cardgame.com/products/boosters/{}/images/others/{}.webp"
 # The official rule manual has flat scans of the card backs
 RULES_PDF = "https://en.onepiece-cardgame.com/pdf/rule_manual.pdf"
 # DON!! cards aren't in optcgapi; these are TCGplayer's scans of the booster
@@ -94,17 +94,17 @@ def image_size(path):
     return tuple(int(v) for v in out.split())
 
 
-def fetch_pack_image():
-    """Official sealed-pack photo, trimmed to the pack -> <set>/pack.png"""
-    dest = os.path.join(CACHE, "pack.png")
+def fetch_product_image(product, name):
+    """Official product photo, trimmed -> <set>/<name>.png"""
+    dest = os.path.join(CACHE, name + ".png")
     if os.path.exists(dest):
         return
     try:
-        data = fetch(PACK_URL.format(SET_ID.lower().replace("-", "")))
+        data = fetch(PRODUCT_URL.format(SET_ID.lower().replace("-", ""), product))
     except Exception as e:
-        print(f"no official pack image for {SET_ID} ({e}); using the drawn pack")
+        print(f"no official {name} image for {SET_ID} ({e}); using the drawn one")
         return
-    raw = os.path.join(CACHE, "pack.webp")
+    raw = os.path.join(CACHE, name + ".webp")
     with open(raw, "wb") as f:
         f.write(data)
     if shutil.which("magick"):
@@ -112,7 +112,7 @@ def fetch_pack_image():
         os.remove(raw)
     else:
         os.replace(raw, dest)  # Qt sniffs the format, untrimmed is fine
-    print("pack image ->", dest)
+    print(name, "image ->", dest)
 
 
 def mean_brightness(path):
@@ -190,7 +190,8 @@ def fetch_card_backs():
 
 def main():
     os.makedirs(CACHE, exist_ok=True)
-    fetch_pack_image()
+    fetch_product_image("product_pack", "pack")
+    fetch_product_image("product_booster", "box")
     fetch_card_backs()
     out_path = os.path.join(CACHE, "cards.json")
     try:
