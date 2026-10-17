@@ -6,7 +6,7 @@ import "tiers.js" as Tiers
 // boxes dealt from a saved virtual case.
 //
 // Platform-independent: everything outside the window comes from `host`
-// (env / readText / writeText, see QuickshellHost.qml).
+// (env / readText / writeText / run, see QuickshellHost.qml).
 Item {
     id: stage
 
@@ -15,7 +15,16 @@ Item {
     readonly property string cacheRoot: (host.env("XDG_CACHE_HOME") || home + "/.cache") + "/optcg"
     readonly property string dataDir: (host.env("XDG_DATA_HOME") || home + "/.local/share") + "/optcg"
 
-    property string setId: "OP-17"
+    // ---- sets -------------------------------------------------------------
+    readonly property string appDir: Qt.resolvedUrl(".").toString().replace("file://", "")
+    readonly property string fetchScript: Qt.resolvedUrl("../fetch_cards.py").toString().replace("file://", "")
+    property var sets: ({})             // sets.json, loaded once at startup
+    readonly property string settingsPath: dataDir + "/settings.json"
+    property string setId: host.env("OPTCG_SET") || "OP-17"
+    readonly property var setInfo: sets[setId] || {}
+    readonly property var cfg: Tiers.setConfig(setInfo)
+    property string downloadLine: ""
+    property string pickerReturn: "pack"
     readonly property string cacheDir: cacheRoot + "/" + setId
     // official images built by fetch_cards.py; each falls back to a drawn version
     readonly property string packImage: packProbe.status === Image.Ready ? packProbe.source : ""
@@ -28,19 +37,19 @@ Item {
 
     Image {
         id: packProbe
-        source: "file://" + stage.cacheDir + "/pack.png"
+        source: stage.db ? "file://" + stage.cacheDir + "/pack.png" : ""   // only once the set is on disk
         visible: false
     }
     Image {
         id: boxProbe
-        source: "file://" + stage.cacheDir + "/box.png"
+        source: stage.db ? "file://" + stage.cacheDir + "/box.png" : ""
         visible: false
     }
 
     property var db: null
     property string error: ""
     property string phase: "loading"   // loading | error | pack | reveal | summary | binder
-                                       // | boxSealed | boxGrid | boxSummary
+                                       // | boxSealed | boxGrid | boxSummary | sets | downloading
     property string mode: host.env("OPTCG_MODE") === "box" ? "box" : "pack"
     readonly property bool inBoxScreen: phase === "boxSealed" || phase === "boxGrid" || phase === "boxSummary"
     property var pack: []
@@ -70,10 +79,12 @@ Item {
 
     // ---- box mode: a saved virtual case, opened box by box --------------
     readonly property string casePath: host.env("OPTCG_CASE") || dataDir + "/case-" + setId + ".json"
-    property var caseState: null        // { set, box, opened: [24 bools], boxes: [12][24][12] card keys }
-    property var boxPacks: []           // the current box: 24 packs of cards
+    property var caseState: null        // { set, box, opened, topperTaken, boxes: [box][pack][card key], toppers: [key] }
+    property var boxPacks: []           // the current box: its packs of cards
     property var boxOpened: []
-    property int boxIndex: 0            // 0-11 within the case
+    property var boxTopper: null        // OP-01/02: a card on top of the box, outside the packs
+    property bool topperTaken: false
+    property int boxIndex: 0            // within the case
     property int currentPackIdx: -1     // pack of the box being opened
 
     focus: true
@@ -81,6 +92,7 @@ Item {
     NumberAnimation on opacity { id: fadeIn; to: 1; duration: 250 }
 
     Component.onCompleted: {
+        sets = JSON.parse(host.readText(appDir + "sets.json") || "{}");
         var saved = host.readText(collectionPath);
         if (saved) {
             try {
@@ -89,16 +101,31 @@ Item {
                 console.warn("collection file unreadable, starting a new one:", e);
             }
         }
+        if (!host.env("OPTCG_SET")) {
+            try {
+                var last = JSON.parse(host.readText(settingsPath) || "{}").set;
+                if (last && sets[last]) setId = last;
+            } catch (e) {}
+        }
         loadSet(setId);
     }
 
-    // load a set's card data and start (a pack or a box, by mode)
-    function loadSet(id) {
+    function downloaded(id) {
+        return host.readText(cacheRoot + "/" + id + "/cards.json") !== "";
+    }
+
+    // load a set's card data (downloading it first if needed) and start a
+    // pack or a box, by mode
+    function loadSet(id, afterDownload) {
         setId = id;
         caseState = null;
         var text = host.readText(cacheDir + "/cards.json");
+        if (!text && !afterDownload) {
+            downloadSet(id);
+            return;
+        }
         if (!text) {
-            error = "No card data for " + id + " yet. Run ~/.config/quickshell/optcg/fetch_cards.py " + id;
+            error = "Couldn't download " + id + ". Check your connection, or run ~/.config/quickshell/optcg/fetch_cards.py " + id;
             phase = "error";
             return;
         }
@@ -109,8 +136,37 @@ Item {
             phase = "error";
             return;
         }
+        host.writeText(settingsPath, JSON.stringify({ set: id }));
         if (mode === "box") startBox();
         else newPack();
+    }
+
+    function downloadSet(id) {
+        setId = id;
+        db = null;
+        downloadLine = "";
+        phase = "downloading";
+        host.run(["python3", "-I", "-u", fetchScript, id],
+                 line => downloadLine = line,
+                 code => loadSet(id, true));
+    }
+
+    function toggleSets() {
+        if (phase === "sets") {
+            phase = pickerReturn;
+        } else if (phase === "error" || (phase === "pack" && !cardsIn) || phase === "summary" || inBoxScreen) {
+            pickerReturn = phase;
+            phase = "sets";
+        }
+    }
+
+    function chooseSet(id) {
+        if (id === setId && db && db.set === id) {
+            phase = pickerReturn;
+            return;
+        }
+        db = null;
+        loadSet(id);
     }
 
     function switchMode() {
@@ -141,8 +197,13 @@ Item {
             set: setId,
             box: 0,
             opened: [],
-            boxes: Tiers.makeCase(db.cards).map(box => box.map(p => p.map(c => cardKey(c))))
+            topperTaken: false,
+            toppers: [],
+            boxes: []
         };
+        var dealt = Tiers.makeCase(db.cards, setInfo);
+        caseState.boxes = dealt.boxes.map(box => box.map(p => p.map(c => cardKey(c))));
+        caseState.toppers = dealt.toppers.map(c => c ? cardKey(c) : null);
     }
 
     // resume the saved case (unfinished box first), or deal a new one
@@ -150,17 +211,18 @@ Item {
         if (!caseState) {
             try {
                 caseState = JSON.parse(host.readText(casePath));
-                if (caseState.set !== setId || caseState.boxes.length !== Tiers.CASE.boxes) caseState = null;
+                if (caseState.set !== setId || caseState.boxes.length !== cfg.boxes) caseState = null;
             } catch (e) {
                 caseState = null;
             }
         }
         if (!caseState) newCase();
-        var done = caseState.opened.length === Tiers.CASE.packsPerBox && caseState.opened.every(o => o);
+        var done = caseState.opened.length === cfg.packsPerBox && caseState.opened.every(o => o);
         if (done) {
             caseState.box++;
             caseState.opened = [];
-            if (caseState.box >= Tiers.CASE.boxes) newCase();
+            caseState.topperTaken = false;
+            if (caseState.box >= cfg.boxes) newCase();
         }
         boxIndex = caseState.box;
         var packs = caseState.boxes[boxIndex].map(p => p.map(k => cardByKey[k]));
@@ -171,6 +233,8 @@ Item {
         }
         boxPacks = packs;
         boxOpened = caseState.opened.length ? caseState.opened : packs.map(() => false);
+        boxTopper = caseState.toppers && caseState.toppers[boxIndex] ? cardByKey[caseState.toppers[boxIndex]] || null : null;
+        topperTaken = !!caseState.topperTaken;
         saveCase();
         inspectIndex = -1;
         cardsIn = false;
@@ -212,7 +276,7 @@ Item {
     function newPack() {
         var leaders = db.cards.filter(c => c.tier === "L");
         packArt = leaders.length ? "file://" + leaders[Math.floor(Math.random() * leaders.length)].image : "";
-        pack = Tiers.makePack(db.cards, forceHit);
+        pack = Tiers.makePack(db.cards, setInfo, forceHit);
         revealed = 0;
         cardsIn = false;
         inspectIndex = -1;
@@ -224,6 +288,13 @@ Item {
         if (charging) return;
         if (phase === "boxSealed") {
             phase = "boxGrid";
+            if (boxTopper && !topperTaken) {   // the box topper comes off first
+                recordCards([boxTopper]);
+                topperTaken = true;
+                caseState.topperTaken = true;
+                saveCase();
+                boxView.inspected = boxTopper;
+            }
         } else if (phase === "boxGrid") {
             openBoxPack(nextUnopened());
         } else if (phase === "boxSummary") {
@@ -331,6 +402,7 @@ Item {
         switch (event.key) {
         case Qt.Key_Escape:
             if (phase === "binder") binderView.back();
+            else if (phase === "sets") toggleSets();
             else if (inBoxScreen && boxView.inspected) boxView.inspected = null;
             else if (mode === "box" && phase === "pack" && !cardsIn) backToBox();
             else if (inspectIndex >= 0) inspectIndex = -1;
@@ -359,6 +431,9 @@ Item {
             break;
         case Qt.Key_X:
             switchMode();
+            break;
+        case Qt.Key_S:
+            toggleSets();
             break;
         default:
             return;
@@ -479,7 +554,7 @@ Item {
             faceUp: stage.phase !== "pack" && index < stage.revealed
             sway: stage.phase === "reveal" && index === stage.revealed - 1
             hoverTilt: stage.phase === "summary"
-            opacity: !stage.cardsIn || stage.phase === "binder" || stage.inBoxScreen ? 0
+            opacity: !stage.cardsIn || stage.phase === "binder" || stage.phase === "sets" || stage.inBoxScreen ? 0
                      : (stage.inspectIndex >= 0 && stage.inspectIndex !== index ? 0.25 : 1)
             onClicked: stage.inspectIndex = stage.inspectIndex === index ? -1 : index
 
@@ -564,7 +639,8 @@ Item {
             readonly property var best: stage.pack.length ? Tiers.best(stage.pack) : null
             text: !best ? ""
                   : "Best pull: " + Tiers.displayName(best) + " (" + Tiers.tierOf(best).label + ")   ·   "
-                    + (stage.mode === "box" ? "box " + (stage.boxIndex + 1) + " of 12, " + stage.boxOpened.filter(o => o).length + " / 24 packs opened"
+                    + (stage.mode === "box" ? "box " + (stage.boxIndex + 1) + " of " + stage.cfg.boxes + ", "
+                                              + stage.boxOpened.filter(o => o).length + " / " + stage.boxPacks.length + " packs opened"
                                             : "packs opened: " + stage.packsOpened)
             color: "#d0d4dc"
             font.pixelSize: 16
@@ -592,17 +668,19 @@ Item {
         font.pixelSize: 14
         text: ({
             loading: "Loading cards…",
-            error: "Esc to close",
+            error: "S: choose another set   ·   Esc to close",
             pack: stage.mode === "box" ? "Click or Space to tear it open   ·   Esc: back to the box"
-                  : "Click or Space to tear it open   ·   X: open a box   ·   B: binder   ·   Esc to close",
+                  : "Click or Space to tear it open   ·   X: open a box   ·   S: sets   ·   B: binder   ·   Esc to close",
             binder: "",
             boxSealed: "",
+            sets: "",
+            downloading: "",
             boxGrid: "",
             boxSummary: "",
             reveal: "Space / click: next card   ·   Tab: reveal all   ·   Esc: close",
             summary: stage.inspectIndex >= 0 ? "Move the mouse to tilt   ·   click or Esc to go back"
                      : stage.mode === "box" ? "Hover to tilt   ·   click a card to inspect   ·   Space: back to the box   ·   B: binder   ·   Esc: close"
-                     : "Hover to tilt   ·   click a card to inspect   ·   Space: open another pack   ·   X: open a box   ·   B: binder   ·   Esc: close"
+                     : "Hover to tilt   ·   click a card to inspect   ·   Space: open another pack   ·   X: open a box   ·   S: sets   ·   B: binder   ·   Esc: close"
         })[stage.phase]
     }
 
@@ -613,6 +691,39 @@ Item {
         text: stage.error
         color: "#ff8080"
         font.pixelSize: 20
+    }
+
+    Column {
+        z: 150
+        visible: stage.phase === "downloading"
+        anchors.centerIn: parent
+        spacing: 14
+        Text {
+            anchors.horizontalCenter: parent.horizontalCenter
+            text: "Downloading " + stage.setId + (stage.setInfo.name ? "  ·  " + stage.setInfo.name : "")
+            color: "#ffd56b"
+            font { pixelSize: 26; weight: Font.Black; italic: true }
+        }
+        Text {
+            anchors.horizontalCenter: parent.horizontalCenter
+            text: stage.downloadLine || "Starting…"
+            color: "#c8ccd6"
+            font.pixelSize: 15
+        }
+        Text {
+            anchors.horizontalCenter: parent.horizontalCenter
+            text: "card images (~40 MB) go to ~/.cache/optcg, once per set"
+            color: "#7a8090"
+            font.pixelSize: 13
+        }
+    }
+
+    SetPicker {
+        id: setPicker
+        anchors.fill: parent
+        z: 245
+        visible: stage.phase === "sets"
+        stage: stage
     }
 
     BoxView {

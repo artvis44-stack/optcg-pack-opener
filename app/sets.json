@@ -1,0 +1,1007 @@
+{
+ "OP-01": {
+  "name": "Romance Dawn",
+  "family": "main",
+  "era": "mapped",
+  "confidence": "estimated",
+  "pack": 450085,
+  "box": 450086,
+  "dons": [],
+  "case": {
+   "SEC": 4
+  },
+  "note": "First English print had lower SEC rates (~1 per 3 boxes); box toppers 1 per box."
+ },
+ "OP-02": {
+  "name": "Paramount War",
+  "family": "main",
+  "era": "mapped",
+  "confidence": "estimated",
+  "pack": 455865,
+  "box": 455866,
+  "dons": [],
+  "note": "Box toppers 1 per box."
+ },
+ "OP-03": {
+  "name": "Pillars of Strength",
+  "family": "main",
+  "era": "mapped",
+  "confidence": "estimated",
+  "pack": 477175,
+  "box": 477176,
+  "dons": []
+ },
+ "OP-04": {
+  "name": "Kingdoms of Intrigue",
+  "family": "main",
+  "era": "mapped",
+  "confidence": "estimated",
+  "pack": 485832,
+  "box": 485833,
+  "dons": []
+ },
+ "OP-05": {
+  "name": "Awakening of the New Era",
+  "family": "main",
+  "era": "mapped",
+  "confidence": "estimated",
+  "pack": 498733,
+  "box": 498734,
+  "dons": [
+   [
+    529792,
+    "DON!! Card (Alternate Art)",
+    "DON"
+   ]
+  ],
+  "case": {
+   "SP": 2.5
+  },
+  "note": "SP ran higher than usual (~2-3 per case)."
+ },
+ "OP-06": {
+  "name": "Wings of the Captain",
+  "family": "main",
+  "era": "mapped",
+  "confidence": "estimated",
+  "pack": 515077,
+  "box": 515080,
+  "dons": []
+ },
+ "OP-07": {
+  "name": "500 Years in the Future",
+  "family": "main",
+  "era": "mapped",
+  "confidence": "estimated",
+  "pack": 532104,
+  "box": 532106,
+  "dons": [
+   [
+    555894,
+    "DON!! Card (Alternate Art)",
+    "DON"
+   ]
+  ]
+ },
+ "EB-01": {
+  "name": "Extra Booster: Memorial Collection",
+  "family": "extra",
+  "era": "random",
+  "confidence": "rough",
+  "pack": 521160,
+  "box": 521161,
+  "dons": []
+ },
+ "OP-08": {
+  "name": "Two Legends",
+  "family": "main",
+  "era": "mapped",
+  "confidence": "estimated",
+  "pack": 542502,
+  "box": 542504,
+  "dons": [
+   [
+    577568,
+    "DON!! Card (Alternate Art)",
+    "DON"
+   ]
+  ]
+ },
+ "OP-09": {
+  "name": "Emperors in the New World",
+  "family": "main",
+  "era": "mapped",
+  "confidence": "estimated",
+  "pack": 563833,
+  "box": 563834,
+  "dons": [
+   [
+    604246,
+    "DON!! Card (Alternate Art)",
+    "DON"
+   ]
+  ],
+  "case": {
+   "SUPER": 0.17
+  },
+  "note": "Gold super parallel Roger ~1 per 72 boxes."
+ },
+ "OP-10": {
+  "name": "Royal Blood",
+  "family": "main",
+  "era": "mapped",
+  "confidence": "estimated",
+  "pack": 586670,
+  "box": 586671,
+  "dons": [
+   [
+    624357,
+    "DON!! Card (Alternate Art)",
+    "DON"
+   ]
+  ]
+ },
+ "OP-11": {
+  "name": "A Fist of Divine Speed",
+  "family": "main",
+  "era": "mapped",
+  "confidence": "estimated",
+  "pack": 620179,
+  "box": 620180,
+  "dons": [
+   [
+    636742,
+    "DON!! Card (Alternate Art)",
+    "DON"
+   ]
+  ]
+ },
+ "EB-02": {
+  "name": "Extra Booster: Anime 25th Collection",
+  "family": "extra",
+  "era": "random",
+  "confidence": "rough",
+  "pack": 594068,
+  "box": 594069,
+  "dons": []
+ },
+ "OP-12": {
+  "name": "Legacy of the Master",
+  "family": "main",
+  "era": "mapped",
+  "confidence": "estimated",
+  "pack": 628345,
+  "box": 628346,
+  "dons": [
+   [
+    646574,
+    "DON!! Card (Alternate Art)",
+    "DON"
+   ]
+  ]
+ },
+ "PRB-01": {
+  "name": "Premium Booster - The Best",
+  "family": "premium",
+  "era": "random",
+  "confidence": "rough",
+  "pack": 545398,
+  "box": 545399,
+  "dons": [
+   [
+    593820,
+    "DON!! Card (Reiju)",
+    "DON"
+   ],
+   [
+    593826,
+    "DON!! Card (Uta)",
+    "DON"
+   ],
+   [
+    593818,
+    "DON!! Card (Queen)",
+    "DON"
+   ],
+   [
+    593822,
+    "DON!! Card (Rosinante)",
+    "DON"
+   ],
+   [
+    593830,
+    "DON!! Card (Zoro)",
+    "DON"
+   ],
+   [
+    593809,
+    "DON!! Card (Iceberg)",
+    "DON"
+   ],
+   [
+    593812,
+    "DON!! Card (Katakuri)",
+    "DON"
+   ],
+   [
+    593810,
+    "DON!! Card (Ivankov)",
+    "DON"
+   ],
+   [
+    593805,
+    "DON!! Card (Enel)",
+    "DON"
+   ],
+   [
+    593829,
+    "DON!! Card (Yamato)",
+    "DON"
+   ],
+   [
+    593823,
+    "DON!! Card (Sabo)",
+    "DON"
+   ],
+   [
+    593801,
+    "DON!! Card (Ace)",
+    "DON"
+   ],
+   [
+    593828,
+    "DON!! Card (Whitebeard)",
+    "DON"
+   ],
+   [
+    593814,
+    "DON!! Card (Luffy)",
+    "DON"
+   ],
+   [
+    593811,
+    "DON!! Card (Kaido)",
+    "DON"
+   ],
+   [
+    593813,
+    "DON!! Card (King)",
+    "DON"
+   ],
+   [
+    593819,
+    "DON!! Card (Rebecca)",
+    "DON"
+   ],
+   [
+    593817,
+    "DON!! Card (Perona)",
+    "DON"
+   ],
+   [
+    593803,
+    "DON!! Card (Crocodile)",
+    "DON"
+   ],
+   [
+    593816,
+    "DON!! Card (Oden)",
+    "DON"
+   ],
+   [
+    593807,
+    "DON!! Card (Gecko Moria)",
+    "DON"
+   ],
+   [
+    593815,
+    "DON!! Card (Magellan)",
+    "DON"
+   ],
+   [
+    593802,
+    "DON!! Card (Big Mom)",
+    "DON"
+   ],
+   [
+    593825,
+    "DON!! Card (Trafalgar Law)",
+    "DON"
+   ],
+   [
+    593821,
+    "DON!! Card (Rob Lucci)",
+    "DON"
+   ],
+   [
+    586181,
+    "DON!! Card (Uta) (Gold)",
+    "DON_GOLD"
+   ],
+   [
+    587705,
+    "DON!! Card (Enel) (Gold)",
+    "DON_GOLD"
+   ],
+   [
+    587706,
+    "DON!! Card (Luffy) (Gold)",
+    "DON_GOLD"
+   ],
+   [
+    586886,
+    "DON!! Card (Perona) (Gold)",
+    "DON_GOLD"
+   ],
+   [
+    587191,
+    "DON!! Card (Rosinante) (Gold)",
+    "DON_GOLD"
+   ],
+   [
+    586552,
+    "DON!! Card (Kaido) (Gold)",
+    "DON_GOLD"
+   ],
+   [
+    586556,
+    "DON!! Card (King) (Gold)",
+    "DON_GOLD"
+   ],
+   [
+    586887,
+    "DON!! Card (Iceberg) (Gold)",
+    "DON_GOLD"
+   ],
+   [
+    593804,
+    "DON!! Card (Donquixote Doflamingo)",
+    "DON"
+   ],
+   [
+    586550,
+    "DON!! Card (Rebecca) (Gold)",
+    "DON_GOLD"
+   ],
+   [
+    593808,
+    "DON!! Card (Hody Jones)",
+    "DON"
+   ],
+   [
+    586481,
+    "DON!! Card (Katakuri) (Gold)",
+    "DON_GOLD"
+   ],
+   [
+    586810,
+    "DON!! Card (Yamato) (Gold)",
+    "DON_GOLD"
+   ],
+   [
+    587192,
+    "DON!! Card (Zoro) (Gold)",
+    "DON_GOLD"
+   ],
+   [
+    587573,
+    "DON!! Card (Reiju) (Gold)",
+    "DON_GOLD"
+   ],
+   [
+    586553,
+    "DON!! Card (Crocodile) (Gold)",
+    "DON_GOLD"
+   ],
+   [
+    586188,
+    "DON!! Card (Sakazuki) (Gold)",
+    "DON_GOLD"
+   ],
+   [
+    586884,
+    "DON!! Card (Sabo) (Gold)",
+    "DON_GOLD"
+   ],
+   [
+    587957,
+    "DON!! Card (Ace) (Gold)",
+    "DON_GOLD"
+   ],
+   [
+    586554,
+    "DON!! Card (Vivi) (Gold)",
+    "DON_GOLD"
+   ],
+   [
+    587955,
+    "DON!! Card (Whitebeard) (Gold)",
+    "DON_GOLD"
+   ],
+   [
+    586191,
+    "DON!! Card (Ivankov) (Gold)",
+    "DON_GOLD"
+   ],
+   [
+    586888,
+    "DON!! Card (Hody Jones) (Gold)",
+    "DON_GOLD"
+   ],
+   [
+    586202,
+    "DON!! Card (Oden) (Gold)",
+    "DON_GOLD"
+   ],
+   [
+    586558,
+    "DON!! Card (Rob Lucci) (Gold)",
+    "DON_GOLD"
+   ],
+   [
+    587954,
+    "DON!! Card (Big Mom) (Gold)",
+    "DON_GOLD"
+   ],
+   [
+    586482,
+    "DON!! Card (Magellan) (Gold)",
+    "DON_GOLD"
+   ],
+   [
+    587399,
+    "DON!! Card (Queen) (Gold)",
+    "DON_GOLD"
+   ],
+   [
+    587237,
+    "DON!! Card (Donquixote Doflamingo) (Gold)",
+    "DON_GOLD"
+   ],
+   [
+    586885,
+    "DON!! Card (Gecko Moria) (Gold)",
+    "DON_GOLD"
+   ],
+   [
+    586723,
+    "DON!! Card (Trafalgar Law) (Gold)",
+    "DON_GOLD"
+   ],
+   [
+    586557,
+    "DON!! Card (Eustass \"Captain\" Kid) (Gold)",
+    "DON_GOLD"
+   ]
+  ]
+ },
+ "PRB-02": {
+  "name": "Premium Booster - The Best - Vol. 2",
+  "family": "premium",
+  "era": "random",
+  "confidence": "rough",
+  "pack": 628451,
+  "box": 628452,
+  "dons": [
+   [
+    655513,
+    "DON!! Card (Shirahoshi)",
+    "DON"
+   ],
+   [
+    655130,
+    "DON!! Card (Buggy)",
+    "DON"
+   ],
+   [
+    655140,
+    "DON!! Card (Pudding)",
+    "DON"
+   ],
+   [
+    655917,
+    "DON!! Card (Robin)",
+    "DON"
+   ],
+   [
+    655898,
+    "DON!! Card (Nami)",
+    "DON"
+   ],
+   [
+    655489,
+    "DON!! Card (Foxy)",
+    "DON"
+   ],
+   [
+    655128,
+    "DON!! Card (Teach)",
+    "DON"
+   ],
+   [
+    655110,
+    "DON!! Card (Marco)",
+    "DON"
+   ],
+   [
+    655135,
+    "DON!! Card (Jinbe)",
+    "DON"
+   ],
+   [
+    655515,
+    "DON!! Card (Sugar)",
+    "DON"
+   ],
+   [
+    655913,
+    "DON!! Card (Chopper)",
+    "DON"
+   ],
+   [
+    655113,
+    "DON!! Card (Bonney)",
+    "DON"
+   ],
+   [
+    655133,
+    "DON!! Card (Smoker)",
+    "DON"
+   ],
+   [
+    655742,
+    "DON!! Card (Kyros)",
+    "DON"
+   ],
+   [
+    655127,
+    "DON!! Card (Koby)",
+    "DON"
+   ],
+   [
+    655114,
+    "DON!! Card (Dragon)",
+    "DON"
+   ],
+   [
+    655125,
+    "DON!! Card (Hannyabal)",
+    "DON"
+   ],
+   [
+    655136,
+    "DON!! Card (Yamato)",
+    "DON"
+   ],
+   [
+    655741,
+    "DON!! Card (Kalgara)",
+    "DON"
+   ],
+   [
+    655482,
+    "DON!! Card (Lim)",
+    "DON"
+   ],
+   [
+    655916,
+    "DON!! Card (Sanji)",
+    "DON"
+   ],
+   [
+    655912,
+    "DON!! Card (Usopp)",
+    "DON"
+   ],
+   [
+    655139,
+    "DON!! Card (Carrot)",
+    "DON"
+   ],
+   [
+    655480,
+    "DON!! Card (Vegapunk)",
+    "DON"
+   ],
+   [
+    655119,
+    "DON!! Card (GEAR5 Luffy)",
+    "DON"
+   ],
+   [
+    655120,
+    "DON!! Card (Rob Lucci)",
+    "DON"
+   ],
+   [
+    655918,
+    "DON!! Card (Robin) (Gold)",
+    "DON_GOLD"
+   ],
+   [
+    655131,
+    "DON!! Card (Buggy) (Gold)",
+    "DON_GOLD"
+   ],
+   [
+    655112,
+    "DON!! Card (Bonney) (Gold)",
+    "DON_GOLD"
+   ],
+   [
+    655138,
+    "DON!! Card (Carrot) (Gold)",
+    "DON_GOLD"
+   ],
+   [
+    655914,
+    "DON!! Card (Chopper) (Gold)",
+    "DON_GOLD"
+   ],
+   [
+    655141,
+    "DON!! Card (Pudding) (Gold)",
+    "DON_GOLD"
+   ],
+   [
+    655134,
+    "DON!! Card (Jinbe) (Gold)",
+    "DON_GOLD"
+   ],
+   [
+    655117,
+    "DON!! Card (Boa Hancock)",
+    "DON"
+   ],
+   [
+    655740,
+    "DON!! Card (Kalgara) (Gold)",
+    "DON_GOLD"
+   ],
+   [
+    655911,
+    "DON!! Card (Usopp) (Gold)",
+    "DON_GOLD"
+   ],
+   [
+    655514,
+    "DON!! Card (Shirahoshi) (Gold)",
+    "DON_GOLD"
+   ],
+   [
+    655485,
+    "DON!! Card (Caesar Clown)",
+    "DON"
+   ],
+   [
+    655115,
+    "DON!! Card (Dragon) (Gold)",
+    "DON_GOLD"
+   ],
+   [
+    655132,
+    "DON!! Card (Smoker) (Gold)",
+    "DON_GOLD"
+   ],
+   [
+    655895,
+    "DON!! Card (Gear 4 Luffy)",
+    "DON"
+   ],
+   [
+    655111,
+    "DON!! Card (Marco) (Gold)",
+    "DON_GOLD"
+   ],
+   [
+    655487,
+    "DON!! Card (Foxy) (Gold)",
+    "DON_GOLD"
+   ],
+   [
+    655124,
+    "DON!! Card (Shanks) (Gold)",
+    "DON_GOLD"
+   ],
+   [
+    655899,
+    "DON!! Card (Nami) (Gold)",
+    "DON_GOLD"
+   ],
+   [
+    655129,
+    "DON!! Card (Koby) (Gold)",
+    "DON_GOLD"
+   ],
+   [
+    655516,
+    "DON!! Card (Sugar) (Gold)",
+    "DON_GOLD"
+   ],
+   [
+    655123,
+    "DON!! Card (Hannyabal) (Gold)",
+    "DON_GOLD"
+   ],
+   [
+    655915,
+    "DON!! Card (Sanji) (Gold)",
+    "DON_GOLD"
+   ],
+   [
+    655137,
+    "DON!! Card (Yamato) (Gold)",
+    "DON_GOLD"
+   ],
+   [
+    655481,
+    "DON!! Card (Vegapunk) (Gold)",
+    "DON_GOLD"
+   ],
+   [
+    655486,
+    "DON!! Card (Caesar Clown) (Gold)",
+    "DON_GOLD"
+   ],
+   [
+    655118,
+    "DON!! Card (GEAR5 Luffy) (Gold)",
+    "DON_GOLD"
+   ],
+   [
+    655126,
+    "DON!! Card (Teach) (Gold)",
+    "DON_GOLD"
+   ],
+   [
+    655116,
+    "DON!! Card (Boa Hancock) (Gold)",
+    "DON_GOLD"
+   ],
+   [
+    655896,
+    "DON!! Card (Gear 4 Luffy) (Gold)",
+    "DON_GOLD"
+   ],
+   [
+    655121,
+    "DON!! Card (Rob Lucci) (Gold)",
+    "DON_GOLD"
+   ]
+  ]
+ },
+ "OP-13": {
+  "name": "Carrying On His Will",
+  "family": "main",
+  "era": "mapped",
+  "confidence": "estimated",
+  "pack": 628351,
+  "box": 628352,
+  "dons": [
+   [
+    660744,
+    "DON!! Card (Gol.D.Roger)",
+    "DON"
+   ],
+   [
+    660710,
+    "DON!! Card (Gol.D.Roger) (Gold)",
+    "DON_GOLD"
+   ]
+  ],
+  "case": {
+   "SUPER": 0.3
+  }
+ },
+ "OP14-EB04": {
+  "name": "The Azure Sea's Seven",
+  "family": "main",
+  "era": "mapped",
+  "confidence": "estimated",
+  "pack": 666577,
+  "box": 665598,
+  "dons": [
+   [
+    672188,
+    "DON!! Card (Egghead)",
+    "DON"
+   ],
+   [
+    672190,
+    "DON!! Card (Egghead) (Gold)",
+    "DON_GOLD"
+   ],
+   [
+    672185,
+    "DON!! Card (Dracule Mihawk)",
+    "DON"
+   ],
+   [
+    672186,
+    "DON!! Card (Dracule Mihawk) (Gold)",
+    "DON_GOLD"
+   ]
+  ]
+ },
+ "EB-03": {
+  "name": "Extra Booster: One Piece Heroines Edition",
+  "family": "extra",
+  "era": "random",
+  "confidence": "rough",
+  "pack": 666727,
+  "box": 666891,
+  "dons": [
+   [
+    677566,
+    "DON!! Card (Uta)",
+    "DON"
+   ],
+   [
+    677560,
+    "DON!! Card (Nami)",
+    "DON"
+   ],
+   [
+    677567,
+    "DON!! Card (Uta) (Gold)",
+    "DON_GOLD"
+   ],
+   [
+    677559,
+    "DON!! Card (Nami) (Gold)",
+    "DON_GOLD"
+   ],
+   [
+    677570,
+    "DON!! Card (Boa Hancock)",
+    "DON"
+   ],
+   [
+    677571,
+    "DON!! Card (Boa Hancock) (Gold)",
+    "DON_GOLD"
+   ],
+   [
+    677569,
+    "DON!! Card (Nico Robin) (Gold)",
+    "DON_GOLD"
+   ]
+  ]
+ },
+ "OP15-EB04": {
+  "name": "Adventure on Kami's Island",
+  "family": "main",
+  "era": "mapped",
+  "confidence": "documented",
+  "pack": 682056,
+  "box": 682057,
+  "dons": [
+   [
+    686650,
+    "DON!! Card (Luffy)",
+    "DON"
+   ],
+   [
+    686651,
+    "DON!! Card (Luffy) (Gold)",
+    "DON_GOLD"
+   ]
+  ],
+  "srPerBox": 3.5,
+  "leadersPerBox": 1,
+  "case": {
+   "AA": 10,
+   "SEC": 7,
+   "L_AA": 4,
+   "SP": 2.5,
+   "MANGA": 0.5,
+   "DON_GOLD": 2
+  },
+  "note": "TCGTalk OP15 case data: 3-4 SR and 1 Leader per box, SEC ~7/case."
+ },
+ "OP-16": {
+  "name": "The Time of Battle",
+  "family": "main",
+  "era": "transition",
+  "confidence": "documented",
+  "pack": 689341,
+  "box": 689336,
+  "dons": [
+   [
+    698313,
+    "DON!! Card (Alternate Art)",
+    "DON"
+   ],
+   [
+    698314,
+    "DON!! Card (Alternate Art) (Gold)",
+    "DON_GOLD"
+   ]
+  ],
+  "srPerBox": 5.5,
+  "leadersPerBox": 3,
+  "case": {
+   "AA": 10,
+   "SEC": 8,
+   "L_AA": 3,
+   "SP": 2,
+   "DON_GOLD": 2,
+   "TR": 0.5,
+   "MANGA": 0.1
+  },
+  "note": "TCGTalk OP16 data: 4-7 SR, 2-3 Leaders per box, ~8 SEC/case; Leader packs can hold an SR."
+ },
+ "OP-17": {
+  "name": "The World's Strongest Warriors",
+  "family": "main",
+  "era": "random",
+  "confidence": "documented",
+  "pack": 704756,
+  "box": 704752,
+  "dons": [
+   [
+    712747,
+    "DON!! Card",
+    "DON"
+   ],
+   [
+    712749,
+    "DON!! Card (Rocks)",
+    "DON"
+   ],
+   [
+    712750,
+    "DON!! Card (The Four Emperors)",
+    "DON"
+   ],
+   [
+    712748,
+    "DON!! Card (Luffy and Loki)",
+    "DON"
+   ],
+   [
+    710859,
+    "DON!! Card (Gold)",
+    "DON_GOLD"
+   ],
+   [
+    710860,
+    "DON!! Card (Luffy and Loki) (Gold)",
+    "DON_GOLD"
+   ],
+   [
+    711421,
+    "DON!! Card (The Four Emperors) (Gold)",
+    "DON_GOLD"
+   ],
+   [
+    711420,
+    "DON!! Card (Rocks) (Special Foil)",
+    "DON_SP"
+   ]
+  ],
+  "official": "op17",
+  "srPerBox": 6.67,
+  "leadersPerBox": 5,
+  "donPerBox": 2,
+  "hitsPerBox": [
+   1,
+   4
+  ],
+  "case": {
+   "AA": 10,
+   "SEC": 5,
+   "L_AA": 4,
+   "SEC_AA": 2,
+   "PANDA": 7,
+   "DON_GOLD": 1,
+   "SP": 2,
+   "DON_SP": 1,
+   "TR": 0.75,
+   "SUPER_L": 0.5,
+   "MANGA": 0.4,
+   "SUPER": 0.15
+  },
+  "note": "TCGTalk OP17 case mapping data (1,000+ packs); no fixed hit mapping."
+ }
+}

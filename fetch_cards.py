@@ -1,15 +1,20 @@
 #!/usr/bin/env python3
 """Download OPTCG set data + card images into the local cache.
 
-Usage: fetch_cards.py [SET_ID]   (default OP-17)
+Usage: fetch_cards.py [SET_ID]   one set (default OP-17), e.g. OP-05, EB-01, PRB-02
+       fetch_cards.py all        every set in app/sets.json (~40 MB each)
+       fetch_cards.py list       the known sets and whether they're downloaded
 
-Writes $XDG_CACHE_HOME/optcg/<SET_ID>/cards.json and one image per card.
-Data comes from the community API at optcgapi.com. Card art belongs to
-Bandai / Eiichiro Oda -- this is a personal cache, don't redistribute it.
+Writes $XDG_CACHE_HOME/optcg/<SET_ID>/cards.json, one image per card, and the
+set's pack/box photos; the card backs (shared by all sets) go in assets/.
+Card data comes from the community API at optcgapi.com, product and DON!!
+photos from Bandai / TCGplayer. Card art belongs to Bandai / Eiichiro Oda --
+this is a personal cache, don't redistribute it.
 """
 import glob
 import json
 import os
+import re
 import shutil
 import subprocess
 import sys
@@ -18,70 +23,64 @@ import urllib.request
 from concurrent.futures import ThreadPoolExecutor
 
 API = "https://optcgapi.com/api/sets/{}/"
-# Bandai's official product shots of the sealed pack and the display box
-PRODUCT_URL = "https://en.onepiece-cardgame.com/products/boosters/{}/images/others/{}.webp"
+# Bandai's own product shots, where a set's product page has them
+OFFICIAL_URL = "https://en.onepiece-cardgame.com/products/boosters/{}/images/others/{}.webp"
 # The official rule manual has flat scans of the card backs
 RULES_PDF = "https://en.onepiece-cardgame.com/pdf/rule_manual.pdf"
-# DON!! cards aren't in optcgapi; these are TCGplayer's scans of the booster
-# DON!! (the Double Pack Set ones don't come in boosters, so they're left out)
+# TCGplayer product photos: sealed packs/boxes and DON!! cards (ids in app/sets.json)
 TCGPLAYER_IMG = "https://tcgplayer-cdn.tcgplayer.com/product/{}_in_1000x1000.jpg"
-DON_CARDS = {
-    "OP-17": [
-        (712747, "DON!! Card", "DON"),
-        (712749, "DON!! Card (Rocks)", "DON"),
-        (712750, "DON!! Card (The Four Emperors)", "DON"),
-        (712748, "DON!! Card (Luffy and Loki)", "DON"),
-        (710859, "DON!! Card (Gold)", "DON_GOLD"),
-        (710860, "DON!! Card (Luffy and Loki) (Gold)", "DON_GOLD"),
-        (711421, "DON!! Card (The Four Emperors) (Gold)", "DON_GOLD"),
-        (711420, "DON!! Card (Rocks) (Special Foil)", "DON_SP"),
-    ],
-}
 UA = {"User-Agent": "Mozilla/5.0 (optcg-pack-widget/1.0)"}
 
-SET_ID = sys.argv[1] if len(sys.argv) > 1 else "OP-17"
+HERE = os.path.dirname(os.path.realpath(__file__))
+with open(os.path.join(HERE, "app", "sets.json")) as f:
+    SETS = json.load(f)
 ROOT = os.path.join(os.environ.get("XDG_CACHE_HOME") or os.path.expanduser("~/.cache"), "optcg")
-CACHE = os.path.join(ROOT, SET_ID)
 ASSETS = os.path.join(ROOT, "assets")
 
 
 def tier_of(card):
-    """Map a card to the pull tier used by the pack generator."""
+    """Map a card to the pull tier used by the pack generator (None = not in boosters).
+
+    Variant naming changed over the years: "(Parallel)" / "(Alternate Art)",
+    "(SP)" / "(Wanted Poster)" / "(SPR)", premium-booster foil treatments, ...
+    """
     name, rarity = card["card_name"], card["rarity"]
-    if "Pandaman" in name:
-        return "PANDA"
-    if "(SP)" in name:
-        return "SP"
-    if "(Manga)" in name:
-        return "MANGA"
+    tags = set(re.findall(r"\(([^)]*)\)", name))
     leader = card.get("card_type") == "Leader"
-    if "Super" in name and "Alternate Art" in name:
+    if "Dash Pack" in tags:
+        return None
+    if "Box Topper" in tags:
+        return "TOPPER"
+    if "Pandaman Art" in tags:
+        return "PANDA"
+    if "Gold-Stamped Signature" in tags:
+        return "SIGNED"
+    if "SP" in tags and tags & {"Gold", "Silver"}:
+        return "SP_GOLD"
+    if any("Super" in t and "Alternate Art" in t for t in tags):
         return "SUPER_L" if leader else "SUPER"
-    if rarity == "TR" or "(TR)" in name:
+    if "Manga" in tags:
+        return "MANGA"
+    if tags & {"SP", "Wanted Poster", "SPR"}:
+        return "SP"
+    if rarity == "TR" or "TR" in tags:
         return "TR"
-    if "(Alternate Art)" in name:
+    if tags & {"Jolly Roger Foil", "Pirate Foil"}:
+        return "FOIL"
+    if "Textured Foil" in tags:
+        return "TEX"
+    if tags & {"Alternate Art", "Parallel", "Full Art"}:
         if rarity == "SEC":
             return "SEC_AA"
         return "L_AA" if leader else "AA"
+    if rarity == "PR":
+        return "R"   # promo reprints in the premium boosters
     return rarity
 
 
 def fetch(url):
     with urllib.request.urlopen(urllib.request.Request(url, headers=UA), timeout=30) as r:
         return r.read()
-
-
-def download(card):
-    # variants can share a card id, so name files after the (unique) URL
-    dest = os.path.join(CACHE, os.path.basename(card["url"]))
-    if not os.path.exists(dest) or os.path.getsize(dest) == 0:
-        data = fetch(card["url"])
-        with open(dest + ".part", "wb") as f:
-            f.write(data)
-        os.replace(dest + ".part", dest)
-    card["image"] = dest
-    del card["url"]
-    return card
 
 
 def magick(*args):
@@ -94,38 +93,62 @@ def image_size(path):
     return tuple(int(v) for v in out.split())
 
 
-def fetch_product_image(product, name):
-    """Official product photo, trimmed -> <set>/<name>.png"""
-    dest = os.path.join(CACHE, name + ".png")
-    if os.path.exists(dest):
-        return
-    try:
-        data = fetch(PRODUCT_URL.format(SET_ID.lower().replace("-", ""), product))
-    except Exception as e:
-        print(f"no official {name} image for {SET_ID} ({e}); using the drawn one")
-        return
-    raw = os.path.join(CACHE, name + ".webp")
-    with open(raw, "wb") as f:
-        f.write(data)
-    if shutil.which("magick"):
-        magick(raw, "-trim", "+repage", dest)
-        os.remove(raw)
-    else:
-        os.replace(raw, dest)  # Qt sniffs the format, untrimmed is fine
-    print(name, "image ->", dest)
-
-
 def mean_brightness(path):
     out = subprocess.run(["magick", path, "-format", "%[fx:mean]", "info:"],
                          check=True, capture_output=True, text=True).stdout
     return float(out)
 
 
-def fetch_don_cards():
+def download(card, cache):
+    # variants can share a card id, so name files after the (unique) URL
+    dest = os.path.join(cache, os.path.basename(card["url"]))
+    if not os.path.exists(dest) or os.path.getsize(dest) == 0:
+        data = fetch(card["url"])
+        with open(dest + ".part", "wb") as f:
+            f.write(data)
+        os.replace(dest + ".part", dest)
+    card["image"] = dest
+    del card["url"]
+    return card
+
+
+def fetch_product_images(set_id, info, cache):
+    """Sealed pack and box photos -> <set>/pack.png, <set>/box.png"""
+    for name, official, tcg in (("pack", "product_pack", info["pack"]), ("box", "product_booster", info["box"])):
+        dest = os.path.join(cache, name + ".png")
+        if os.path.exists(dest):
+            continue
+        try:
+            if "official" in info:
+                data, studio = fetch(OFFICIAL_URL.format(info["official"], official)), True
+            else:
+                data, studio = fetch(TCGPLAYER_IMG.format(tcg)), False
+        except Exception as e:
+            print(f"no {name} image for {set_id} ({e}); using the drawn one")
+            continue
+        raw = os.path.join(cache, name + ".src")
+        with open(raw, "wb") as f:
+            f.write(data)
+        if not shutil.which("magick"):
+            os.replace(raw, dest)   # Qt sniffs the format; untrimmed is fine
+        elif studio:
+            magick(raw, "-trim", "+repage", dest)
+        else:
+            # product photo on white: flood the background away from the corners
+            magick(raw, "-bordercolor", "white", "-border", "1", "-fuzz", "6%", "-fill", "none",
+                   "-floodfill", "+0+0", "white", "-shave", "1x1", "-trim", "+repage", dest)
+        if os.path.exists(raw):
+            os.remove(raw)
+        print(name, "image ->", dest)
+
+
+def fetch_don_cards(set_id, info, cache):
     """DON!! scans for the set, trimmed to the card and sized like the others."""
     cards = []
-    for n, (product, name, tier) in enumerate(DON_CARDS.get(SET_ID, []), 1):
-        dest = os.path.join(CACHE, f"don_{product}.png")
+
+    def one(item):
+        n, (product, name, tier) = item
+        dest = os.path.join(cache, f"don_{product}.png")
         if not os.path.exists(dest):
             raw = dest + ".jpg"
             try:
@@ -133,15 +156,18 @@ def fetch_don_cards():
                     f.write(fetch(TCGPLAYER_IMG.format(product)))
             except Exception as e:
                 print(f"couldn't download {name} ({e})")
-                continue
+                return None
             if shutil.which("magick"):
                 # product photos have a light margin around the card
                 magick(raw, "-fuzz", "12%", "-trim", "+repage", "-resize", "600x838!", dest)
                 os.remove(raw)
             else:
                 os.replace(raw, dest)
-        cards.append({"id": f"{SET_ID.replace('-', '')}-DON-{n}", "name": name, "rarity": "DON",
-                      "tier": tier, "color": "", "type": "DON!!", "image": dest})
+        return {"id": f"{set_id.replace('-', '')}-DON-{n}", "name": name, "rarity": "DON",
+                "tier": tier, "color": "", "type": "DON!!", "image": dest}
+
+    with ThreadPoolExecutor(max_workers=8) as pool:
+        cards = [c for c in pool.map(one, enumerate(info.get("dons", []), 1)) if c]
     return cards
 
 
@@ -188,14 +214,17 @@ def fetch_card_backs():
         print(("card back -> " if os.path.exists(path) else "couldn't find card back for ") + path)
 
 
-def main():
-    os.makedirs(CACHE, exist_ok=True)
-    fetch_product_image("product_pack", "pack")
-    fetch_product_image("product_booster", "box")
+def fetch_set(set_id):
+    if set_id not in SETS:
+        sys.exit(f"unknown set {set_id}; known: {', '.join(SETS)}")
+    info = SETS[set_id]
+    cache = os.path.join(ROOT, set_id)
+    os.makedirs(cache, exist_ok=True)
+    fetch_product_images(set_id, info, cache)
     fetch_card_backs()
-    out_path = os.path.join(CACHE, "cards.json")
+    out_path = os.path.join(cache, "cards.json")
     try:
-        raw = json.loads(fetch(API.format(SET_ID)))
+        raw = json.loads(fetch(API.format(set_id)))
     except Exception as e:
         if not os.path.exists(out_path):
             raise
@@ -203,7 +232,7 @@ def main():
         print(f"optcgapi unreachable ({e}); reusing cached card list")
         with open(out_path) as f:
             out = json.load(f)
-        out["cards"] = [c for c in out["cards"] if c["type"] != "DON!!"] + fetch_don_cards()
+        out["cards"] = [c for c in out["cards"] if c["type"] != "DON!!"] + fetch_don_cards(set_id, info, cache)
         with open(out_path, "w") as f:
             json.dump(out, f, indent=1)
         print("done")
@@ -213,28 +242,48 @@ def main():
     for c in raw:
         cid = c["card_image_id"]
         key = (cid, c["card_name"])
-        if key in seen or not c.get("card_image"):
+        tier = tier_of(c)
+        if key in seen or not c.get("card_image") or tier is None:
             continue
         seen.add(key)
         cards.append({
             "id": cid,
             "name": c["card_name"],
             "rarity": c["rarity"],
-            "tier": tier_of(c),
+            "tier": tier,
             "color": c.get("card_color") or "",
             "type": c.get("card_type") or "",
             "url": c["card_image"],
         })
 
-    print(f"{SET_ID}: {len(cards)} cards, downloading images to {CACHE}")
+    print(f"{set_id}: {len(cards)} cards, downloading images to {cache}", flush=True)
     with ThreadPoolExecutor(max_workers=8) as pool:
-        cards = list(pool.map(download, cards))
-    cards += fetch_don_cards()
+        done = []
+        for card in pool.map(lambda c: download(c, cache), cards):
+            done.append(card)
+            if len(done) % 10 == 0 or len(done) == len(cards):
+                print(f"{len(done)} / {len(cards)} card images", flush=True)
+        cards = done
+    print("DON!! cards...", flush=True)
+    cards += fetch_don_cards(set_id, info, cache)
 
-    out = {"set": SET_ID, "set_name": raw[0]["set_name"] if raw else SET_ID, "cards": cards}
+    out = {"set": set_id, "set_name": info["name"], "cards": cards}
     with open(out_path, "w") as f:
         json.dump(out, f, indent=1)
     print("done")
+
+
+def main():
+    arg = sys.argv[1] if len(sys.argv) > 1 else "OP-17"
+    if arg == "list":
+        for set_id, info in SETS.items():
+            have = os.path.exists(os.path.join(ROOT, set_id, "cards.json"))
+            print(f"{set_id:10} {'downloaded' if have else '-':11} {info['name']}")
+    elif arg == "all":
+        for set_id in SETS:
+            fetch_set(set_id)
+    else:
+        fetch_set(arg)
 
 
 if __name__ == "__main__":

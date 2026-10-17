@@ -1,7 +1,7 @@
 import QtQuick
 import "tiers.js" as Tiers
 
-// Box mode screens: the sealed display box, the 24 packs, and the box summary.
+// Box mode screens: the sealed display box, its packs, and the box summary.
 Item {
     id: view
 
@@ -15,6 +15,7 @@ Item {
         var out = [];
         if (!stage) return out;
         stage.boxPacks.forEach((p, i) => { if (stage.boxOpened[i]) out = out.concat(p); });
+        if (stage.boxTopper && stage.topperTaken) out.push(stage.boxTopper);
         return out;
     }
     // count per tier, best tiers first; commons/uncommons left out
@@ -52,8 +53,8 @@ Item {
         }
         Text {
             anchors.horizontalCenter: parent.horizontalCenter
-            text: "Booster box " + (view.stage.boxIndex + 1) + " of 12 in this case"
-                  + (view.phase === "boxGrid" ? "   ·   " + view.openedCount + " / 24 packs opened" : "")
+            text: "Booster box " + (view.stage.boxIndex + 1) + " of " + view.stage.cfg.boxes + " in this case"
+                  + (view.phase === "boxGrid" ? "   ·   " + view.openedCount + " / " + view.stage.boxPacks.length + " packs opened" : "")
             color: "#d0d4dc"
             font.pixelSize: 16
         }
@@ -168,17 +169,18 @@ Item {
         }
     }
 
-    // ---- 24 packs -------------------------------------------------------------
+    // ---- the packs ------------------------------------------------------------
 
     Item {
         id: gridScreen
         anchors.fill: parent
         visible: view.phase === "boxGrid"
 
-        readonly property int cols: 8
+        readonly property int cols: view.stage.boxPacks.length % 10 === 0 ? 10 : 8
+        readonly property int rows: Math.ceil(view.stage.boxPacks.length / cols)
         readonly property real gap: 18
         readonly property real labelH: 24
-        readonly property real tileH: Math.min((view.height * 0.66 - 2 * gap - 3 * labelH) / 3,
+        readonly property real tileH: Math.min((view.height * 0.66 - (rows - 1) * gap - rows * labelH) / rows,
                                                (view.width * 0.9 - (cols - 1) * gap) / cols / view.stage.packAspect)
         readonly property real tileW: tileH * view.stage.packAspect
 
@@ -314,10 +316,10 @@ Item {
         color: "#9aa0ad"
         font.pixelSize: 14
         text: view.inspected ? "Move the mouse to tilt   ·   click or Esc to go back"
-              : view.phase === "boxSealed" ? "Click or Space to open the box   ·   X: single packs   ·   B: binder   ·   Esc: close"
-              : view.phase === "boxGrid" ? "Click a pack or Space: open the next one   ·   A: open all remaining   ·   X: single packs   ·   B: binder   ·   Esc: close"
-              : view.stage.boxIndex + 1 < 12 ? "Space: open box " + (view.stage.boxIndex + 2) + " of 12   ·   X: single packs   ·   B: binder   ·   Esc: close"
-              : "Case finished!   ·   Space: start a new case   ·   X: single packs   ·   B: binder   ·   Esc: close"
+              : view.phase === "boxSealed" ? "Click or Space to open the box   ·   X: single packs   ·   S: sets   ·   B: binder   ·   Esc: close"
+              : view.phase === "boxGrid" ? "Click a pack or Space: open the next one   ·   A: open all remaining   ·   X: single packs   ·   S: sets   ·   B: binder   ·   Esc: close"
+              : view.stage.boxIndex + 1 < view.stage.cfg.boxes ? "Space: open box " + (view.stage.boxIndex + 2) + " of " + view.stage.cfg.boxes + "   ·   X: single packs   ·   S: sets   ·   B: binder   ·   Esc: close"
+              : "Case finished!   ·   Space: start a new case   ·   X: single packs   ·   S: sets   ·   B: binder   ·   Esc: close"
     }
 
     // ---- inspect a card --------------------------------------------------------
@@ -347,7 +349,9 @@ Item {
         visible: !!view.inspected
         anchors.horizontalCenter: parent.horizontalCenter
         y: 16
-        text: view.inspected ? Tiers.displayName(view.inspected) + "  ·  " + view.inspected.id + "  ·  " + Tiers.tierOf(view.inspected).label : ""
+        text: !view.inspected ? ""
+              : (view.inspected.tier === "TOPPER" ? "Box topper!  ·  " : "")
+                + Tiers.displayName(view.inspected) + "  ·  " + view.inspected.id + "  ·  " + Tiers.tierOf(view.inspected).label
         color: view.inspected ? Tiers.tierOf(view.inspected).color : "white"
         style: Text.Outline; styleColor: "#000000"
         font { pixelSize: 20; weight: Font.Bold }

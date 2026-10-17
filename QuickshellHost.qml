@@ -3,36 +3,67 @@ import Quickshell
 import Quickshell.Io
 
 // The host interface the shared app (app/) needs, implemented with Quickshell.
-// A port to another platform provides an object with the same three functions:
-//   env(name)              -> string ("" if unset)
-//   readText(path)         -> file contents, "" if missing
-//   writeText(path, text)  -> writes the file (its directory already exists)
+// A port to another platform provides an object with the same functions:
+//   env(name)                       -> string ("" if unset)
+//   readText(path)                  -> file contents, "" if missing
+//   writeText(path, text)           -> writes the file (its directory already exists)
+//   run(command, onLine, onDone)    -> runs a program (argv list) in the background,
+//                                      onLine(text) per stdout line, onDone(exitCode)
 QtObject {
+    id: host
+
     function env(name) {
         return Quickshell.env(name) || "";
     }
 
+    // a fresh FileView per call: one reused across paths can hand back the
+    // previous file's text when the new path doesn't exist
     function readText(path) {
-        if (reader.path === path) reader.reload();
-        else reader.path = path;
-        return reader.text();
+        var view = readerComponent.createObject(host, { path: path });
+        var text = view.text();
+        view.destroy();
+        return text;
     }
 
     function writeText(path, text) {
-        writer.path = path;
-        writer.setText(text);
+        var view = writerComponent.createObject(host, { path: path });
+        view.setText(text);
+        view.destroy();
     }
 
-    property FileView reader: FileView {
-        preload: false
-        blockLoading: true
-        printErrors: false   // a missing file just reads as ""
+    function run(command, onLine, onDone) {
+        var proc = processComponent.createObject(host, { command: command, onLine: onLine, onDone: onDone });
+        proc.running = true;
     }
 
-    property FileView writer: FileView {
-        preload: false
-        blockWrites: true
-        atomicWrites: true
-        onSaveFailed: err => console.warn("couldn't write", path, ":", err)
+    property Component readerComponent: Component {
+        FileView {
+            blockLoading: true
+            printErrors: false   // a missing file just reads as ""
+        }
+    }
+
+    property Component writerComponent: Component {
+        FileView {
+            preload: false
+            blockWrites: true
+            atomicWrites: true
+            onSaveFailed: err => console.warn("couldn't write", path, ":", err)
+        }
+    }
+
+    property Component processComponent: Component {
+        Process {
+            id: proc
+            property var onLine
+            property var onDone
+            stdout: SplitParser {
+                onRead: data => { if (proc.onLine) proc.onLine(data); }
+            }
+            onExited: (code, status) => {
+                if (proc.onDone) proc.onDone(code);
+                proc.destroy();
+            }
+        }
     }
 }

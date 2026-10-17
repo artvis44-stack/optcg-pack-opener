@@ -1,33 +1,40 @@
 .pragma library
 // Pull tiers, their look, and the pack / case generators.
 //
-// English OP-17: 12 cards per pack, 24 packs per box, 12 boxes per case.
-// Bandai publishes no slot map or odds. Everything below is community data,
-// mostly TCGTalk's OP-17 case openings (1,000+ packs), with onepiece.app for
-// what that doesn't cover.
+// Bandai publishes no slot maps or odds. The structure and rates are community
+// data -- TCGTalk case openings (OP-15, OP-16, OP-17), onepiece.app, retailer
+// box guides -- plus Bandai's official per-set print runs. Per-set numbers
+// live in sets.json; the defaults below cover what isn't documented per set.
 //
-// Pack:
+// Main booster pack (12 cards):
 //   slots 1-7   Common            (a regular Leader replaces one)
 //   slots 8-10  Uncommon
-//   slot 11     Rare              (or a Pandaman variant)
+//   slot 11     Rare              (or a Pandaman variant, OP-17)
 //   slot 12     hit slot          Rare unless it holds an SR or premium hit. A
 //                                 Leader here is only ever a parallel.
 //   DON!!       replaces a common and sits at the very back, after the hit.
+// Extra boosters have no uncommons; premium boosters are 10-card packs with a
+// foil reprint slot.
 //
-// Box/case: OP-17 dropped fixed hit mapping -- premium hits land randomly,
-// 1-4 per box -- but a case still holds a roughly fixed budget of each hit,
-// so hits trade off between the boxes of a case. makeCase() deals a case
-// from that budget; makePack() uses the same budget as per-pack odds.
+// Case/box: a case (12 boxes) holds a roughly fixed budget of each hit, so
+// hits trade off between its boxes. How hits sit in the case changed:
+//   mapped      (up to OP-15) a fixed collated pattern -- the same box/pack
+//               positions every case -- and a Leader pack is a "dead pack"
+//   transition  (OP-16) random positions; a Leader pack can hold an SR
+//   random      (OP-17) random positions, 1-4 premium hits per box
 
 var info = {
     C:       { label: "Common",                 holo: 0.0,  gold: 0.0, rank: 0,  color: "#9aa4b2" },
     UC:      { label: "Uncommon",               holo: 0.0,  gold: 0.0, rank: 1,  color: "#7fd1b9" },
     DON:     { label: "DON!! Card",             holo: 0.25, gold: 0.0, rank: 1,  color: "#e6e6e6" },
     R:       { label: "Rare",                   holo: 0.35, gold: 0.0, rank: 2,  color: "#5fa8ff" },
+    FOIL:    { label: "Foil",                   holo: 0.6,  gold: 0.0, rank: 2,  color: "#8fd3ff" },
     L:       { label: "Leader",                 holo: 0.0,  gold: 0.0, rank: 3,  color: "#ff5a5a" },
     SR:      { label: "Super Rare",             holo: 0.75, gold: 0.0, rank: 4,  color: "#c07bff" },
     PANDA:   { label: "Pandaman Art",           holo: 0.6,  gold: 0.3, rank: 5,  color: "#ffe9a8" },
+    TOPPER:  { label: "Box Topper",             holo: 0.6,  gold: 0.2, rank: 5,  color: "#ffcf8a" },
     AA:      { label: "Alternate Art",          holo: 1.0,  gold: 0.0, rank: 6,  color: "#ff7bd5" },
+    TEX:     { label: "Textured Foil",          holo: 1.0,  gold: 0.3, rank: 6,  color: "#b8f0c0" },
     SEC:     { label: "Secret Rare",            holo: 1.0,  gold: 0.4, rank: 7,  color: "#ffd34d" },
     L_AA:    { label: "Alternate Art Leader",   holo: 1.0,  gold: 0.2, rank: 8,  color: "#ff6b6b" },
     SP:      { label: "Special Card",           holo: 1.0,  gold: 0.6, rank: 9,  color: "#ffb347" },
@@ -35,41 +42,68 @@ var info = {
     DON_SP:  { label: "Special Foil DON!!",     holo: 1.0,  gold: 0.0, rank: 9,  color: "#9be7ff" },
     SEC_AA:  { label: "Secret Rare Alt Art",    holo: 1.0,  gold: 0.5, rank: 10, color: "#ffd34d" },
     SUPER_L: { label: "Super Leader Parallel",  holo: 1.0,  gold: 0.7, rank: 11, color: "#ffd700" },
+    SP_GOLD: { label: "Gold / Silver SP",       holo: 1.0,  gold: 1.0, rank: 12, color: "#ffe08a" },
     TR:      { label: "Treasure Rare",          holo: 1.0,  gold: 1.0, rank: 12, color: "#ffe08a" },
     MANGA:   { label: "Manga Rare",             holo: 1.0,  gold: 0.2, rank: 13, color: "#ffffff" },
+    SIGNED:  { label: "Gold-Stamped Signature", holo: 1.0,  gold: 1.0, rank: 13, color: "#ffd700" },
     SUPER:   { label: "Super Alternate Art",    holo: 1.0,  gold: 0.8, rank: 14, color: "#ffd700" }
 };
 
-// What one case holds.
-var CASE = {
-    boxes: 12,
-    packsPerBox: 24,
-    srCopies: 8,         // each SR name ~7-8 times per case -> ~6.7 SR per box
-    leadersPerBox: 5,
-    donPerBox: 2,
-    hitsPerBox: [1, 4],  // premium hits per box
-    // always about this many per case ("reliable")
-    fixed:   { AA: 10, SEC: 5, L_AA: 4, SEC_AA: 2, PANDA: 7, DON_GOLD: 1 },
-    // lottery: Poisson mean per case. Sources disagree on the super parallels
-    // (1 in 6 vs 1 in 96 boxes for the Super Leader; 0.04-0.3 per case for the
-    // Pirates Crew) -- these sit between them.
-    lottery: { SP: 2, DON_SP: 1, TR: 0.75, SUPER_L: 0.5, MANGA: 0.4, SUPER: 0.15 }
+// premium tiers that take the hit slot
+var HIT_TIERS = ["AA", "TEX", "SEC", "L_AA", "SEC_AA", "SP", "TR", "SUPER_L", "SP_GOLD", "MANGA", "SIGNED", "SUPER"];
+
+// Per product family: pack layout and case budget (per 12-box case).
+// fixed = about this many per case; lottery = Poisson mean per case.
+var FAMILIES = {
+    main: {
+        packsPerBox: 24, boxes: 12,
+        slots: ["C", "C", "C", "C", "C", "C", "C", "UC", "UC", "UC", "RARE", "HIT"],
+        srPerBox: 7, leadersPerBox: 4, donPerBox: 1, hitsPerBox: null,
+        fixed:   { AA: 12, SEC: 6, L_AA: 4, SEC_AA: 1, PANDA: 0, DON_GOLD: 2 },
+        lottery: { SP: 1, TR: 0.75, MANGA: 0.3, SUPER: 0.15, SUPER_L: 0.15, SP_GOLD: 0.15, SIGNED: 0.05, DON_SP: 0 }
+    },
+    extra: {   // EB: 12 cards, no uncommons; no published rates at all
+        packsPerBox: 24, boxes: 12,
+        slots: ["C", "C", "C", "C", "C", "C", "C", "C", "R", "R", "RARE", "HIT"],
+        srPerBox: 6, leadersPerBox: 2, donPerBox: 1, hitsPerBox: null,
+        fixed:   { AA: 12, SEC: 4, L_AA: 2, SEC_AA: 1, DON_GOLD: 2 },
+        lottery: { SP: 3, MANGA: 0.3, TR: 0.5 }
+    },
+    premium: { // PRB: 10-card packs, 20 per box, 2 foil DON!! per box; rates unpublished
+        packsPerBox: 20, boxes: 12,
+        slots: ["C", "C", "C", "UC", "UC", "UC", "R", "FOIL", "RARE", "HIT"],
+        srPerBox: 8, leadersPerBox: 0, donPerBox: 2, hitsPerBox: null,
+        fixed:   { AA: 40, TEX: 12, SEC: 12, SEC_AA: 4, L_AA: 1, DON_GOLD: 4 },
+        lottery: { SP: 2, MANGA: 1 }
+    }
 };
 
-// premium tiers that take the hit slot
-var HIT_TIERS = ["AA", "SEC", "L_AA", "SEC_AA", "SP", "TR", "SUPER_L", "MANGA", "SUPER"];
-
-function caseAmount(tier) {
-    return CASE.fixed[tier] !== undefined ? CASE.fixed[tier] : CASE.lottery[tier];
+// The full config for a set: its family's defaults with the set's overrides
+// (from sets.json) merged in.
+function setConfig(setInfo) {
+    var family = (setInfo && setInfo.family) || "main";
+    var fam = FAMILIES[family];
+    var cfg = {
+        family: family,
+        era: (setInfo && setInfo.era) || "random",
+        packsPerBox: fam.packsPerBox, boxes: fam.boxes, slots: fam.slots,
+        fixed: Object.assign({}, fam.fixed), lottery: Object.assign({}, fam.lottery)
+    };
+    ["srPerBox", "leadersPerBox", "donPerBox", "hitsPerBox"].forEach(function (k) {
+        cfg[k] = setInfo && setInfo[k] !== undefined ? setInfo[k] : fam[k];
+    });
+    var over = (setInfo && setInfo.case) || {};
+    Object.keys(over).forEach(function (t) {
+        if (cfg.fixed[t] !== undefined || cfg.lottery[t] === undefined) cfg.fixed[t] = over[t];
+        else cfg.lottery[t] = over[t];
+    });
+    cfg.packsPerCase = cfg.packsPerBox * cfg.boxes;
+    return cfg;
 }
 
-// the same budget as per-pack odds
-var PACKS_PER_CASE = CASE.boxes * CASE.packsPerBox;
-var LEADER_RATE = CASE.leadersPerBox / CASE.packsPerBox;
-var PANDA_RATE = CASE.fixed.PANDA / PACKS_PER_CASE;
-var DON_RATE = CASE.donPerBox / CASE.packsPerBox;                        // any DON!!
-var DON_FOIL_RATE = (CASE.fixed.DON_GOLD + CASE.lottery.DON_SP) / PACKS_PER_CASE;
-var hitWeights = HIT_TIERS.map(function (t) { return [t, caseAmount(t) / PACKS_PER_CASE]; });
+function caseAmount(cfg, tier) {
+    return cfg.fixed[tier] !== undefined ? cfg.fixed[tier] : (cfg.lottery[tier] || 0);
+}
 
 function tierOf(card) {
     return card && info[card.tier] || info.C;   // card is briefly null while delegates tear down
@@ -77,16 +111,30 @@ function tierOf(card) {
 
 // "Kaido (062) (Super Alternate Art)" -> "Kaido (062)"; the tier label says the rest
 function displayName(card) {
-    return card.name.replace(/\s*\((Alternate Art|Manga|SP|TR|Super .*Alternate Art|Pandaman Art|Gold|Special Foil)\)/g, "");
+    return card.name.replace(/\s*\((Alternate Art|Parallel|Manga|SP|SPR|TR|Super .*Alternate Art|Red Super Alternate Art|Pandaman Art|Gold|Silver|Special Foil|Box Topper|Wanted Poster|Full Art|Textured Foil|Jolly Roger Foil|Pirate Foil|Reprint|Gold-Stamped Signature)\)/g, "");
 }
 
-function pick(list) {
-    return list[Math.floor(Math.random() * list.length)];
+// ---- randomness -------------------------------------------------------------
+
+function seededRandom(seedText) {   // mulberry32 over a string hash
+    var h = 2166136261;
+    for (var i = 0; i < seedText.length; i++) h = Math.imul(h ^ seedText.charCodeAt(i), 16777619);
+    return function () {
+        h = (h + 0x6D2B79F5) | 0;
+        var t = Math.imul(h ^ (h >>> 15), 1 | h);
+        t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
+        return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+    };
 }
 
-function shuffle(list) {
+function pick(list, rnd) {
+    return list[Math.floor((rnd || Math.random)() * list.length)];
+}
+
+function shuffle(list, rnd) {
+    rnd = rnd || Math.random;
     for (var i = list.length - 1; i > 0; i--) {
-        var j = Math.floor(Math.random() * (i + 1));
+        var j = Math.floor(rnd() * (i + 1));
         var tmp = list[i]; list[i] = list[j]; list[j] = tmp;
     }
     return list;
@@ -104,16 +152,11 @@ function group(cards) {
     return byTier;
 }
 
-// n distinct pack indices out of `count`
-function packSlots(count, n) {
-    var idx = [];
-    for (var i = 0; i < count; i++) idx.push(i);
-    return shuffle(idx).slice(0, n);
-}
+// ---- packs ------------------------------------------------------------------------
 
-// Builds one pack. Each slot in spec is a tier name (a random card of that
-// tier) or a card object; leader/don may be empty.
-function buildPack(byTier, spec) {
+// Builds one pack from the family's slot layout. Each spec slot is a tier
+// name (a random card of that tier) or a card object; leader/don may be empty.
+function buildPack(byTier, cfg, spec) {
     var out = [], used = {};
     function add(slot) {
         var c = slot;
@@ -125,22 +168,27 @@ function buildPack(byTier, spec) {
         used[c.image] = true;
         out.push(c);
     }
-    var commons = spec.don ? 6 : 7;
-    for (var i = 0; i < commons; i++) add(spec.leader && i === commons - 1 ? spec.leader : "C");
-    for (i = 0; i < 3; i++) add("UC");
-    add(spec.rare || "R");
-    add(spec.hit || "R");
-    if (spec.don) add(spec.don);
+    var slots = cfg.slots.slice();
+    var lastC = slots.lastIndexOf("C");
+    if (spec.don) slots.splice(lastC--, 1);           // the DON!! takes a common's place...
+    if (spec.leader) slots[lastC] = spec.leader;      // ...and a Leader replaces another
+    slots.forEach(function (s) {
+        add(s === "RARE" ? (spec.rare || "R") : s === "HIT" ? (spec.hit || "R") : s);
+    });
+    if (spec.don) add(spec.don);                      // ...at the very back
     return out;
 }
 
-function rollHit(byTier) {
+// srScale / premiumScale: how much likelier a hit is in a pack that may hold
+// one (dead Leader packs push the box's hits into the other packs)
+function rollHit(byTier, cfg, srScale, premiumScale) {
     var r = Math.random();
-    var acc = CASE.srCopies * (byTier.SR || []).length / PACKS_PER_CASE;
+    var acc = byTier.SR ? srScale * cfg.srPerBox / cfg.packsPerBox : 0;
     if (r < acc) return "SR";
-    for (var i = 0; i < hitWeights.length; i++) {
-        acc += hitWeights[i][1];
-        if (r < acc) return hitWeights[i][0];
+    for (var i = 0; i < HIT_TIERS.length; i++) {
+        if (!byTier[HIT_TIERS[i]]) continue;
+        acc += premiumScale * caseAmount(cfg, HIT_TIERS[i]) / cfg.packsPerCase;
+        if (r < acc) return HIT_TIERS[i];
     }
     return "R";
 }
@@ -149,85 +197,137 @@ function rollHit(byTier) {
 // forceHit (testing / cheating): "L" forces a regular Leader, "PANDA" the
 // Pandaman rare slot, "DON" / "DON_GOLD" / "DON_SP" the DON!! card,
 // anything else the hit slot.
-function makePack(cards, forceHit) {
+function makePack(cards, setInfo, forceHit) {
+    var cfg = setConfig(setInfo);
     var byTier = group(cards);
     forceHit = forceHit && byTier[forceHit] ? forceHit : "";
     var special = ["L", "PANDA", "DON", "DON_GOLD", "DON_SP"];
+
+    var leader = !!byTier.L && (forceHit === "L" || Math.random() < cfg.leadersPerBox / cfg.packsPerBox);
+    var foils = ["DON_GOLD", "DON_SP"].filter(function (t) { return byTier[t]; });
+    var foilRate = foils.reduce(function (a, t) { return a + caseAmount(cfg, t); }, 0) / cfg.packsPerCase;
     var r = Math.random();
-    return buildPack(byTier, {
-        leader: forceHit === "L" || Math.random() < LEADER_RATE ? "L" : "",
-        don: forceHit.indexOf("DON") === 0 ? forceHit
-             : r < DON_FOIL_RATE ? (Math.random() < 0.5 ? "DON_GOLD" : "DON_SP")
-             : r < DON_RATE ? "DON" : "",
-        rare: forceHit === "PANDA" || Math.random() < PANDA_RATE ? "PANDA" : "R",
-        hit: forceHit && special.indexOf(forceHit) < 0 ? forceHit : rollHit(byTier)
+    var don = forceHit.indexOf("DON") === 0 ? forceHit
+            : !byTier.DON ? ""
+            : r < foilRate ? pick(foils)
+            : r < cfg.donPerBox / cfg.packsPerBox ? "DON" : "";
+
+    // older eras: a Leader pack is a "dead pack"; OP-16 lets it keep an SR
+    var live = byTier.L ? cfg.packsPerBox / (cfg.packsPerBox - cfg.leadersPerBox) : 1;
+    var hit = forceHit && special.indexOf(forceHit) < 0 ? forceHit
+            : leader && cfg.era === "mapped" ? "R"
+            : leader && cfg.era === "transition" ? rollHit(byTier, cfg, 1, 0)
+            : rollHit(byTier, cfg, cfg.era === "mapped" ? live : 1, cfg.era === "random" ? 1 : live);
+    var panda = byTier.PANDA && Math.random() < caseAmount(cfg, "PANDA") / cfg.packsPerCase;
+    return buildPack(byTier, cfg, {
+        leader: leader ? "L" : "",
+        don: don,
+        rare: forceHit === "PANDA" || panda ? "PANDA" : "R",
+        hit: hit
     });
 }
 
-// A whole case: 12 boxes x 24 packs, dealt from the case budget.
-function makeCase(cards) {
+// ---- cases ------------------------------------------------------------------------
+
+// A whole case: { boxes: [boxes][packs][cards], toppers: [one card per box or null] }
+function makeCase(cards, setInfo) {
+    var cfg = setConfig(setInfo);
     var byTier = group(cards);
-    var B = CASE.boxes, P = CASE.packsPerBox, b, i;
+    var B = cfg.boxes, P = cfg.packsPerBox, b, i;
+    // the "mapped" era places hits in a fixed pattern per set (same every case);
+    // which card lands there is still random
+    var place = cfg.era === "mapped" ? seededRandom((setInfo && setInfo.name) || "") : Math.random;
     var boxes = [];
     for (b = 0; b < B; b++) boxes.push({ hits: [], srs: [], leaders: [], dons: [], pandas: 0 });
 
-    // premium hits: random boxes, then nudged into 1-4 per box
+    // premium hits
     var hits = [];
     HIT_TIERS.forEach(function (t) {
         if (!byTier[t]) return;
-        var n = CASE.fixed[t] !== undefined ? CASE.fixed[t] : poisson(CASE.lottery[t]);
+        var n = cfg.fixed[t] !== undefined ? Math.round(cfg.fixed[t]) : poisson(cfg.lottery[t] || 0);
         for (var k = 0; k < n; k++) hits.push(t);
     });
-    shuffle(hits).forEach(function (t) { boxes[Math.floor(Math.random() * B)].hits.push(t); });
-    var lo = CASE.hitsPerBox[0], hi = CASE.hitsPerBox[1];
-    for (var guard = 0; guard < 200; guard++) {
-        var sorted = boxes.slice().sort(function (x, y) { return x.hits.length - y.hits.length; });
-        var fewest = sorted[0], most = sorted[B - 1];
-        if (most.hits.length > hi || (fewest.hits.length < lo && most.hits.length > lo))
-            fewest.hits.push(most.hits.splice(Math.floor(Math.random() * most.hits.length), 1)[0]);
-        else
-            break;
+    if (cfg.era === "mapped") {
+        // collated: dealt evenly around the case in the set's fixed order
+        var boxOrder = shuffle(boxes.slice(), place);
+        hits.sort(function (x, y) { return info[y].rank - info[x].rank; });
+        hits.forEach(function (t, k) { boxOrder[k % B].hits.push(t); });
+    } else {
+        shuffle(hits).forEach(function (t) { boxes[Math.floor(Math.random() * B)].hits.push(t); });
+        if (cfg.hitsPerBox) {   // nudge into the documented per-box range
+            var lo = cfg.hitsPerBox[0], hi = cfg.hitsPerBox[1];
+            for (var guard = 0; guard < 200; guard++) {
+                var sorted = boxes.slice().sort(function (x, y) { return x.hits.length - y.hits.length; });
+                var fewest = sorted[0], most = sorted[B - 1];
+                if (most.hits.length > hi || (fewest.hits.length < lo && most.hits.length > lo))
+                    fewest.hits.push(most.hits.splice(Math.floor(Math.random() * most.hits.length), 1)[0]);
+                else
+                    break;
+            }
+        }
     }
 
-    // SRs: srCopies of each, dealt round-robin (6-7 per box), box order shuffled
+    // SRs: an even number of copies of each, dealt round-robin
+    var srCards = byTier.SR || [];
+    var copies = srCards.length ? Math.max(1, Math.round(cfg.srPerBox * B / srCards.length)) : 0;
     var srs = [];
-    (byTier.SR || []).forEach(function (c) { for (var k = 0; k < CASE.srCopies; k++) srs.push(c); });
+    srCards.forEach(function (c) { for (var k = 0; k < copies; k++) srs.push(c); });
     var order = shuffle(boxes.slice());
     shuffle(srs).forEach(function (c, k) { order[k % B].srs.push(c); });
 
-    // Leaders: an even pool of each Leader, leadersPerBox per box
-    var leaders = [];
+    // Leaders: an even pool of each Leader; fractional rates spread over boxes
     var lcards = byTier.L || [];
-    for (i = 0; lcards.length && i < B * CASE.leadersPerBox; i++) leaders.push(lcards[i % lcards.length]);
-    shuffle(leaders);
-    boxes.forEach(function (box, k) { box.leaders = leaders.slice(k * CASE.leadersPerBox, (k + 1) * CASE.leadersPerBox); });
+    var lTotal = lcards.length ? Math.round(cfg.leadersPerBox * B) : 0;
+    var leaders = [];
+    for (i = 0; i < lTotal; i++) leaders.push(lcards[i % lcards.length]);
+    var lorder = shuffle(boxes.slice());
+    shuffle(leaders).forEach(function (c, k) { lorder[k % B].leaders.push(c); });
 
-    // DON!!: donPerBox each; the gold / special foil ones replace a regular one
-    boxes.forEach(function (box) { for (var k = 0; k < CASE.donPerBox; k++) box.dons.push("DON"); });
-    var foils = [];
-    for (i = 0; i < CASE.fixed.DON_GOLD; i++) foils.push("DON_GOLD");
-    for (i = poisson(CASE.lottery.DON_SP); i > 0; i--) foils.push("DON_SP");
-    foils.forEach(function (t) {
-        if (!byTier[t]) return;
-        var box = pick(boxes.filter(function (x) { return x.dons.indexOf("DON") >= 0; }));
-        if (box) box.dons[box.dons.indexOf("DON")] = t;
-    });
+    // DON!!: donPerBox each; gold / special foil ones replace a regular one
+    if (byTier.DON) {
+        boxes.forEach(function (box) { for (var k = 0; k < Math.round(cfg.donPerBox); k++) box.dons.push("DON"); });
+        var foils = [];
+        for (i = 0; byTier.DON_GOLD && i < Math.round(cfg.fixed.DON_GOLD || 0); i++) foils.push("DON_GOLD");
+        for (i = byTier.DON_SP ? poisson(cfg.lottery.DON_SP || 0) : 0; i > 0; i--) foils.push("DON_SP");
+        foils.forEach(function (t) {
+            var box = pick(boxes.filter(function (x) { return x.dons.indexOf("DON") >= 0; }));
+            if (box) box.dons[box.dons.indexOf("DON")] = t;
+        });
+    }
 
     // Pandaman: random boxes, at most 2 in one box
-    for (i = 0; byTier.PANDA && i < CASE.fixed.PANDA; i++)
+    for (i = 0; byTier.PANDA && i < (cfg.fixed.PANDA || 0); i++)
         pick(boxes.filter(function (x) { return x.pandas < 2; })).pandas++;
 
     // deal each box's contents into distinct packs
-    return boxes.map(function (box) {
-        var specs = [];
-        for (var p = 0; p < P; p++) specs.push({ leader: "", don: "", rare: "R", hit: "R" });
-        var hitCards = box.srs.concat(box.hits);
-        packSlots(P, hitCards.length).forEach(function (p, k) { specs[p].hit = hitCards[k]; });
-        packSlots(P, box.leaders.length).forEach(function (p, k) { specs[p].leader = box.leaders[k]; });
-        packSlots(P, box.dons.length).forEach(function (p, k) { specs[p].don = box.dons[k]; });
-        packSlots(P, box.pandas).forEach(function (p) { specs[p].rare = "PANDA"; });
-        return specs.map(function (spec) { return buildPack(byTier, spec); });
+    var dealt = boxes.map(function (box) {
+        var specs = [], p, k;
+        for (p = 0; p < P; p++) specs.push({ leader: "", don: "", rare: "R", hit: "R" });
+        var slots = [];
+        for (p = 0; p < P; p++) slots.push(p);
+        shuffle(slots, place);
+        // Leader packs first; in the mapped era they stay dead (no SR / premium)
+        box.leaders.forEach(function (c, k) { specs[slots[k]].leader = c; });
+        var others = slots.slice(box.leaders.length);
+        if (cfg.era === "mapped") {
+            box.hits.concat(box.srs).forEach(function (c, k) { if (k < others.length) specs[others[k]].hit = c; });
+        } else if (cfg.era === "transition") {
+            // premium hits avoid Leader packs; SRs can land anywhere left
+            box.hits.forEach(function (t, k) { if (k < others.length) specs[others[k]].hit = t; });
+            var open = shuffle(slots.filter(function (s) { return specs[s].hit === "R"; }));
+            box.srs.forEach(function (c, k) { if (k < open.length) specs[open[k]].hit = c; });
+        } else {
+            var any = shuffle(slots.slice());
+            box.hits.concat(box.srs).forEach(function (c, k) { if (k < any.length) specs[any[k]].hit = c; });
+        }
+        shuffle(slots.slice()).slice(0, box.dons.length).forEach(function (s, k) { specs[s].don = box.dons[k]; });
+        shuffle(slots.slice()).slice(0, box.pandas).forEach(function (s) { specs[s].rare = "PANDA"; });
+        return specs.map(function (spec) { return buildPack(byTier, cfg, spec); });
     });
+
+    // box toppers (OP-01/02): one per box, outside the packs
+    var toppers = boxes.map(function () { return byTier.TOPPER ? pick(byTier.TOPPER) : null; });
+    return { boxes: dealt, toppers: toppers };
 }
 
 // highest-ranked card in a pack
