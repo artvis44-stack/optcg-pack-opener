@@ -7,19 +7,27 @@ Writes $XDG_CACHE_HOME/optcg/<SET_ID>/cards.json and one image per card.
 Data comes from the community API at optcgapi.com. Card art belongs to
 Bandai / Eiichiro Oda -- this is a personal cache, don't redistribute it.
 """
+import glob
 import json
 import os
+import shutil
+import subprocess
 import sys
+import tempfile
 import urllib.request
 from concurrent.futures import ThreadPoolExecutor
 
 API = "https://optcgapi.com/api/sets/{}/"
-UA = {"User-Agent": "optcg-pack-widget/1.0"}
+# Bandai's official product shot of the sealed pack (e.g. .../boosters/op17/...)
+PACK_URL = "https://en.onepiece-cardgame.com/products/boosters/{}/images/others/product_pack.webp"
+# The official rule manual has flat scans of the card backs
+RULES_PDF = "https://en.onepiece-cardgame.com/pdf/rule_manual.pdf"
+UA = {"User-Agent": "Mozilla/5.0 (optcg-pack-widget/1.0)"}
 
 SET_ID = sys.argv[1] if len(sys.argv) > 1 else "OP-17"
-CACHE = os.path.join(
-    os.environ.get("XDG_CACHE_HOME") or os.path.expanduser("~/.cache"), "optcg", SET_ID
-)
+ROOT = os.path.join(os.environ.get("XDG_CACHE_HOME") or os.path.expanduser("~/.cache"), "optcg")
+CACHE = os.path.join(ROOT, SET_ID)
+ASSETS = os.path.join(ROOT, "assets")
 
 
 def tier_of(card):
@@ -58,8 +66,78 @@ def download(card):
     return card
 
 
+def magick(*args):
+    subprocess.run(["magick", *args], check=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+
+
+def image_size(path):
+    out = subprocess.run(["magick", "identify", "-format", "%w %h", path],
+                         check=True, capture_output=True, text=True).stdout
+    return tuple(int(v) for v in out.split())
+
+
+def fetch_pack_image():
+    """Official sealed-pack photo, trimmed to the pack -> <set>/pack.png"""
+    dest = os.path.join(CACHE, "pack.png")
+    if os.path.exists(dest):
+        return
+    try:
+        data = fetch(PACK_URL.format(SET_ID.lower().replace("-", "")))
+    except Exception as e:
+        print(f"no official pack image for {SET_ID} ({e}); using the drawn pack")
+        return
+    raw = os.path.join(CACHE, "pack.webp")
+    with open(raw, "wb") as f:
+        f.write(data)
+    if shutil.which("magick"):
+        magick(raw, "-trim", "+repage", dest)
+        os.remove(raw)
+    else:
+        os.replace(raw, dest)  # Qt sniffs the format, untrimmed is fine
+    print("pack image ->", dest)
+
+
+def fetch_card_backs():
+    """Blue (deck) and red (Leader) card backs from the rule manual -> assets/"""
+    blue = os.path.join(ASSETS, "back.png")
+    red = os.path.join(ASSETS, "back_leader.png")
+    if os.path.exists(blue) and os.path.exists(red):
+        return
+    if not (shutil.which("pdfimages") and shutil.which("magick")):
+        print("card backs need poppler (pdfimages) + imagemagick; using the drawn back")
+        return
+    os.makedirs(ASSETS, exist_ok=True)
+    with tempfile.TemporaryDirectory() as tmp:
+        pdf = os.path.join(tmp, "rules.pdf")
+        with open(pdf, "wb") as f:
+            f.write(fetch(RULES_PDF))
+        subprocess.run(["pdfimages", "-png", pdf, os.path.join(tmp, "i")],
+                       check=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        imgs = sorted(glob.glob(os.path.join(tmp, "i-*.png")))
+        sizes = [image_size(p) for p in imgs]
+
+        # blue back: the 365x510 colour image, directly followed by its soft mask
+        for i, size in enumerate(sizes[:-1]):
+            if size == (365, 510) and sizes[i + 1] == size:
+                magick(imgs[i], imgs[i + 1], "-alpha", "off", "-compose", "CopyOpacity", "-composite", blue)
+                break
+        # red back: the large first-page scan; give it the same rounded corners
+        for p, (w, h) in zip(imgs, sizes):
+            if (w, h) == (869, 1214):
+                r = round(w * 0.05)
+                magick(p, "(", "-size", f"{w}x{h}", "xc:black", "-fill", "white",
+                       "-draw", f"roundrectangle 0,0 {w - 1},{h - 1} {r},{r}", ")",
+                       "-alpha", "off", "-compose", "CopyOpacity", "-composite",
+                       "-resize", "600x", red)
+                break
+    for path in (blue, red):
+        print(("card back -> " if os.path.exists(path) else "couldn't find card back for ") + path)
+
+
 def main():
     os.makedirs(CACHE, exist_ok=True)
+    fetch_pack_image()
+    fetch_card_backs()
     raw = json.loads(fetch(API.format(SET_ID)))
 
     cards, seen = [], set()

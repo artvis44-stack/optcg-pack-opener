@@ -6,6 +6,7 @@ Item {
     id: root
 
     property var card
+    property string backSource       // official back image, if cached
     property bool faceUp: false
     property real time: 0
     property bool sway: false        // gentle automatic tilt (showcase)
@@ -69,7 +70,20 @@ Item {
             }
         }
 
-        back: CardBack { anchors.fill: parent }
+        back: Item {
+            anchors.fill: parent
+            Image {
+                id: backImg
+                anchors.fill: parent
+                source: root.backSource
+                smooth: true
+                mipmap: true
+            }
+            CardBack {
+                anchors.fill: parent
+                visible: backImg.status !== Image.Ready
+            }
+        }
 
         transform: [
             Rotation {

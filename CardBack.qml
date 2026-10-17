@@ -1,6 +1,6 @@
 import QtQuick
 
-// Generic card back (drawn, not Bandai's artwork).
+// Drawn fallback card back, used when the official back isn't cached.
 Rectangle {
     id: back
     radius: width * 0.05

@@ -9,7 +9,7 @@ if qs ipc -p "$DIR" call optcg close >/dev/null 2>&1; then
     exit 0
 fi
 
-if [ ! -f "$CACHE/cards.json" ]; then
+if [ ! -f "$CACHE/cards.json" ] || [ ! -f "$CACHE/../assets/back.png" ]; then
     notify-send "OPTCG" "Downloading $SET cards (first run)…"
     if ! python3 -I "$DIR/fetch_cards.py" "$SET"; then
         notify-send -u critical "OPTCG" "Couldn't download $SET card data"

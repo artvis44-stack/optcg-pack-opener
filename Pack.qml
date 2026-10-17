@@ -7,6 +7,7 @@ Item {
     property string artSource
     property string setCode
     property string setName
+    property string packImage
     property real time: 0
     property bool tearing: false
     readonly property real seam: 0.09
@@ -60,6 +61,7 @@ Item {
                 y: -pack.height * pack.seam
                 width: pack.width; height: pack.height
                 artSource: pack.artSource; setCode: pack.setCode; setName: pack.setName
+                packImage: pack.packImage
                 tilt: Qt.vector2d(pack.tx, pack.ty); time: pack.time
             }
         }
@@ -73,6 +75,7 @@ Item {
             PackFace {
                 width: pack.width; height: pack.height
                 artSource: pack.artSource; setCode: pack.setCode; setName: pack.setName
+                packImage: pack.packImage
                 tilt: Qt.vector2d(pack.tx, pack.ty); time: pack.time
             }
         }
@@ -82,6 +85,7 @@ Item {
             y: pack.height * pack.seam - 1
             x: pack.width * 0.04
             spacing: pack.width * 0.02
+            visible: pack.packImage === ""
             opacity: pack.tearing ? 0 : 0.55
             Repeater {
                 model: 24

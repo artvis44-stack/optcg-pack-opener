@@ -8,7 +8,19 @@ Item {
     id: stage
 
     property string setId: "OP-17"
-    readonly property string cacheDir: (Quickshell.env("XDG_CACHE_HOME") || (Quickshell.env("HOME") + "/.cache")) + "/optcg/" + setId
+    readonly property string cacheRoot: (Quickshell.env("XDG_CACHE_HOME") || (Quickshell.env("HOME") + "/.cache")) + "/optcg"
+    readonly property string cacheDir: cacheRoot + "/" + setId
+    // official images built by fetch_cards.py; each falls back to a drawn version
+    readonly property string packImage: packProbe.status === Image.Ready ? packProbe.source : ""
+    readonly property real packAspect: packImage ? packProbe.implicitWidth / packProbe.implicitHeight : 0.625
+    readonly property string deckBack: "file://" + cacheRoot + "/assets/back.png"
+    readonly property string leaderBack: "file://" + cacheRoot + "/assets/back_leader.png"
+
+    Image {
+        id: packProbe
+        source: "file://" + stage.cacheDir + "/pack.png"
+        visible: false
+    }
 
     property var db: null
     property string error: ""
@@ -188,8 +200,9 @@ Item {
         z: 40
         sourceComponent: Pack {
             height: stage.height * 0.66
-            width: height * 0.625
+            width: height * stage.packAspect
             time: stage.t
+            packImage: stage.packImage
             artSource: stage.packArt
             setCode: stage.db.set
             setName: stage.db.set_name
@@ -250,6 +263,7 @@ Item {
             readonly property bool chargingMe: stage.charging && index === stage.revealed
 
             card: modelData
+            backSource: modelData.type === "Leader" ? stage.leaderBack : stage.deckBack
             width: stage.cw
             time: stage.t
             x: slot.x - width / 2 + (chargingMe ? stage.shake : 0)
