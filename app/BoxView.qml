@@ -315,7 +315,7 @@ Item {
         anchors { bottom: parent.bottom; bottomMargin: 14; horizontalCenter: parent.horizontalCenter }
         color: "#9aa0ad"
         font.pixelSize: 14
-        text: view.inspected ? "Move the mouse to tilt   ·   click or Esc to go back"
+        text: view.inspected ? "Move the mouse to tilt   ·   D: show on desktop   ·   click or Esc to go back"
               : view.phase === "boxSealed" ? "Click or Space to open the box   ·   X: single packs   ·   S: sets   ·   B: binder   ·   Esc: close"
               : view.phase === "boxGrid" ? "Click a pack or Space: open the next one   ·   A: open all remaining   ·   X: single packs   ·   S: sets   ·   B: binder   ·   Esc: close"
               : view.stage.boxIndex + 1 < view.stage.cfg.boxes ? "Space: open box " + (view.stage.boxIndex + 2) + " of " + view.stage.cfg.boxes + "   ·   X: single packs   ·   S: sets   ·   B: binder   ·   Esc: close"

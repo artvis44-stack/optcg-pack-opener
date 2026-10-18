@@ -39,6 +39,26 @@ rm -rf "$DIR/.venv"   # start clean (an earlier attempt may have used the wrong 
 "$DIR/.venv/bin/python" -c "import PySide6; print('PySide6', PySide6.__version__, 'OK')"
 chmod +x "$DIR/optcg"
 
+# bring the desktop showcase back after a restart (it exits right away if no card is picked)
+AGENT="$HOME/Library/LaunchAgents/com.optcg.showcase.plist"
+mkdir -p "$(dirname "$AGENT")"
+cat > "$AGENT" <<PLIST
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <key>Label</key><string>com.optcg.showcase</string>
+    <key>ProgramArguments</key>
+    <array>
+        <string>$DIR/.venv/bin/python</string>
+        <string>$DIR/optcg.py</string>
+        <string>--showcase</string>
+    </array>
+    <key>RunAtLoad</key><true/>
+</dict>
+</plist>
+PLIST
+
 cat <<EOF
 
 Installed. Try it:   $DIR/optcg        (run it again, or press Esc, to close)

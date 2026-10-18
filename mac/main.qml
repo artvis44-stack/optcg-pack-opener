@@ -29,5 +29,6 @@ Window {
     function openPack(index) { if (stage.phase === "boxGrid") stage.openBoxPack(parseInt(index)); }
     function sets() { stage.toggleSets(); }
     function chooseSet(id) { stage.chooseSet(String(id)); }
+    function showcase() { stage.showcase(stage.focusedCard()); }
     function snapshot(path) { stage.grabToImage(r => r.saveToFile(String(path))); }
 }

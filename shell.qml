@@ -37,6 +37,7 @@ ShellRoot {
         function openPack(index: int): void { if (stage.phase === "boxGrid") stage.openBoxPack(index); }
         function sets(): void { stage.toggleSets(); }
         function chooseSet(id: string): void { stage.chooseSet(id); }
+        function showcase(): void { stage.showcase(stage.focusedCard()); }
         // debugging: render the overlay to a PNG
         function snapshot(path: string): void { stage.grabToImage(r => r.saveToFile(path)); }
     }

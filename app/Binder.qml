@@ -9,6 +9,7 @@ Item {
     property Item stage
     property bool ownedOnly: false
     property var inspected: null
+    property var hoveredCard: null   // an owned card under the mouse (D shows it on the desktop)
 
     function back() {
         if (inspected) inspected = null;
@@ -121,6 +122,10 @@ Item {
                 hoverTilt: cell.owned
                 opacity: cell.owned ? 1 : 0.14
                 onClicked: binder.inspected = cell.modelData.card
+                onHoveredChanged: {
+                    if (hovered && cell.owned) binder.hoveredCard = cell.modelData.card;
+                    else if (binder.hoveredCard === cell.modelData.card) binder.hoveredCard = null;
+                }
             }
 
             Rectangle {
@@ -159,8 +164,8 @@ Item {
 
     Text {
         anchors { bottom: parent.bottom; bottomMargin: 14; horizontalCenter: parent.horizontalCenter }
-        text: binder.inspected ? "Move the mouse to tilt   ·   click or Esc to go back"
-              : "Scroll to browse   ·   hover to tilt   ·   click a card to inspect   ·   O: owned only / all   ·   B or Esc: back"
+        text: binder.inspected ? "Move the mouse to tilt   ·   D: show on desktop   ·   click or Esc to go back"
+              : "Scroll to browse   ·   hover to tilt   ·   click a card to inspect   ·   D: show the hovered card on your desktop   ·   O: owned only / all   ·   B or Esc: back"
         color: "#9aa0ad"
         font.pixelSize: 14
     }
@@ -176,6 +181,33 @@ Item {
         MouseArea {
             anchors.fill: parent
             onClicked: binder.inspected = null
+        }
+    }
+
+    Rectangle {   // "show on desktop" button under the inspected card
+        visible: !!binder.inspected
+        z: 1
+        anchors.horizontalCenter: parent.horizontalCenter
+        anchors.bottom: parent.bottom
+        anchors.bottomMargin: 46
+        width: showLabel.width + 30
+        height: showLabel.height + 14
+        radius: height / 2
+        color: showMouse.containsMouse ? "#ffd56b" : "#1b2236"
+        border.color: "#ffd56b"
+        Text {
+            id: showLabel
+            anchors.centerIn: parent
+            text: "Show on desktop (D)"
+            color: showMouse.containsMouse ? "#2a0a10" : "#ffd56b"
+            font { pixelSize: 14; weight: Font.Bold }
+        }
+        MouseArea {
+            id: showMouse
+            anchors.fill: parent
+            hoverEnabled: true
+            cursorShape: Qt.PointingHandCursor
+            onClicked: binder.stage.showcase(binder.inspected)
         }
     }
 

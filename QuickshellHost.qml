@@ -9,11 +9,22 @@ import Quickshell.Io
 //   writeText(path, text)           -> writes the file (its directory already exists)
 //   run(command, onLine, onDone)    -> runs a program (argv list) in the background,
 //                                      onLine(text) per stdout line, onDone(exitCode)
+//   startShowcase()                 -> starts the desktop showcase if it isn't running
+//   appPath(relative)               -> filesystem path of a file in this folder (e.g. "app/sets.json")
 QtObject {
     id: host
 
     function env(name) {
         return Quickshell.env(name) || "";
+    }
+
+    function appPath(relative) {
+        return Quickshell.shellPath(relative);   // Qt.resolvedUrl gives qs:@/... URLs here
+    }
+
+    function startShowcase() {
+        // detached, so it outlives the pack opener; -n: no second copy
+        Quickshell.execDetached(["qs", "-n", "-p", appPath("showcase.qml")]);
     }
 
     // a fresh FileView per call: one reused across paths can hand back the

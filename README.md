@@ -18,6 +18,7 @@ Boosters EB-01 to EB-03 and the Premium Boosters PRB-01 / PRB-02.
 | A | box: open all remaining packs |
 | B | binder: your collection (from the sealed pack or the summary) |
 | O | binder: show owned only / the whole set |
+| D | show the card you're looking at on your desktop (inspected, just revealed, or hovered in the binder) |
 | Esc / right-click | close |
 
 ## Files
@@ -27,7 +28,8 @@ The app is split into a platform-independent part (`app/`) and a thin host.
 - `shell.qml`: the Linux / Quickshell host: the layer-shell overlay window (namespace `optcg`, blurred
   by a Hyprland layerrule) and the `qs ipc` commands
 - `QuickshellHost.qml`: the host interface the app needs: `env()`, `readText()`, `writeText()`,
-  `run()`. A port to another platform (e.g. macOS with PySide6) only has to provide these and a window.
+  `run()`, `appPath()`, `startShowcase()`. A port (e.g. macOS with PySide6) provides these and the windows.
+- `showcase.qml`: the desktop showcase window (Linux); `app/ShowcaseCard.qml` is the shared card
 - `app/sets.json`: every booster set: product family (main / extra / premium), hit-mapping era,
   TCGplayer ids of its pack/box photos and DON!! cards, and the per-set rates the research found.
 - `app/SetPicker.qml`: the set picker
@@ -46,6 +48,15 @@ The app is split into a platform-independent part (`app/`) and a thin host.
   the photos and backs; without them the widget falls back to drawn versions. If optcgapi is
   unreachable, the cached card list is reused.
 - `open-pack.sh [box]`: the toggle launcher (fetches data on the first run)
+
+## Desktop showcase
+
+Press D on a card (or "Show on desktop" in the binder) and it sits on your desktop, above the
+wallpaper and below your windows. Hover to tilt it (the foil only animates while hovered), drag to
+move, scroll to resize, right-click to remove; pick another card to swap it. It's a separate small
+process (`showcase.qml` on Linux, `mac/optcg.py --showcase` on macOS) that reads
+`~/.local/share/optcg/showcase.json` and quits when no card is picked, so it's safe to start at
+login: Hyprland's `exec-once`, or the LaunchAgent `mac/install.sh` sets up.
 
 ## Sets and how sure the odds are
 

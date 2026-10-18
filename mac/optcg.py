@@ -2,12 +2,14 @@
 """OPTCG pack opener for macOS: a PySide6 host for the shared app in ../app.
 
 usage: optcg.py [box]          toggle the overlay (box = start in booster box mode)
+       optcg.py --showcase      the desktop showcase (a card you picked with D)
        optcg.py --ipc CMD [ARG] send a command to the running overlay, e.g.
                                 --ipc advance, --ipc chooseSet OP-05, --ipc snapshot /tmp/x.png
 
 The app itself (UI, shaders, pack logic, downloader) is shared with the Linux
 version; this file only provides what the app asks its host for -- env(),
-readText(), writeText(), run() -- plus the window, single-instance toggle and
+readText(), writeText(), run(), appPath(), startShowcase() -- plus the windows,
+single-instance toggle and
 the --ipc commands (the Linux version's `qs ipc`). It runs on Linux too,
 which is how it's tested.
 """
@@ -22,9 +24,10 @@ from PySide6.QtQml import QJSValue, QQmlApplicationEngine
 
 HERE = Path(__file__).resolve().parent
 SOCKET = "optcg-pack-opener"
+SHOWCASE_SOCKET = "optcg-showcase"
 # commands --ipc can send -> functions on the window in main.qml
 COMMANDS = {name: name for name in ("advance", "revealAll", "newPack", "inspect", "binder", "switchMode",
-                                    "openAll", "openPack", "sets", "chooseSet", "snapshot")}
+                                    "openAll", "openPack", "sets", "chooseSet", "snapshot", "showcase")}
 COMMANDS["close"] = "closeOverlay"
 
 
@@ -38,6 +41,15 @@ class Host(QObject):
     @Slot(str, result=str)
     def env(self, name):
         return os.environ.get(name, "")
+
+    @Slot(str, result=str)
+    def appPath(self, relative):
+        return str(HERE.parent / relative)
+
+    @Slot()
+    def startShowcase(self):
+        # detached, so it outlives the pack opener; it quits if one is already running
+        QProcess.startDetached(sys.executable, [str(HERE / "optcg.py"), "--showcase"])
 
     @Slot(str, result=str)
     def readText(self, path):
@@ -80,10 +92,10 @@ class Host(QObject):
         proc.start(str(command[0]), [str(a) for a in command[1:]])
 
 
-def send(message):
+def send(message, socket=SOCKET):
     """Send a message to a running instance; False if none is running."""
     sock = QLocalSocket()
-    sock.connectToServer(SOCKET)
+    sock.connectToServer(socket)
     if not sock.waitForConnected(300):
         return False
     sock.write(message.encode())
@@ -110,6 +122,41 @@ def mac_window_tweaks(window):
     nswindow.setCollectionBehavior_((1 << 0) | (1 << 8))   # all Spaces + over full-screen apps
 
 
+def mac_desktop_tweaks(window):
+    """Showcase window: on the desktop (just above the icons), on every Space,
+    left out of window cycling and Mission Control. Needs PyObjC."""
+    if sys.platform != "darwin":
+        return
+    try:
+        import objc
+        from AppKit import NSApplication
+    except ImportError:
+        return
+    NSApplication.sharedApplication().setActivationPolicy_(1)   # no Dock icon
+    nswindow = objc.objc_object(c_void_p=int(window.winId())).window()
+    nswindow.setLevel_(-2147483603 + 1)   # kCGDesktopIconWindowLevel + 1
+    # canJoinAllSpaces | stationary | ignoresCycle
+    nswindow.setCollectionBehavior_((1 << 0) | (1 << 4) | (1 << 6))
+
+
+def run_showcase(app):
+    if send("ping", SHOWCASE_SOCKET):   # already running: it picks up the new card itself
+        return 0
+    QLocalServer.removeServer(SHOWCASE_SOCKET)
+    server = QLocalServer()
+    server.listen(SHOWCASE_SOCKET)
+    host = Host()
+    engine = QQmlApplicationEngine()
+    engine.rootContext().setContextProperty("macHost", host)
+    engine.load(str(HERE / "showcase.qml"))
+    if not engine.rootObjects():
+        return "couldn't load showcase.qml"
+    mac_desktop_tweaks(engine.rootObjects()[0])
+    code = app.exec()
+    server.close()
+    return code
+
+
 def main():
     args = sys.argv[1:]
     QGuiApplication.setApplicationName("optcg")
@@ -119,14 +166,16 @@ def main():
         if len(args) < 2 or args[1] not in COMMANDS:
             sys.exit(f"usage: optcg.py --ipc {{{','.join(sorted(COMMANDS))}}} [ARG]")
         sys.exit(0 if send(" ".join(args[1:])) else "the overlay isn't running")
-    if send("close"):   # already open -> this was a toggle
-        return
-
     # macOS-native locations for the card cache and the collection
     if sys.platform == "darwin":
         os.environ.setdefault("XDG_CACHE_HOME", str(Path.home() / "Library" / "Caches"))
         os.environ.setdefault("XDG_DATA_HOME", str(Path.home() / "Library" / "Application Support"))
     os.environ.setdefault("OPTCG_PYTHON", sys.executable)   # runs fetch_cards.py
+    if args[:1] == ["--showcase"]:
+        sys.exit(run_showcase(app))
+
+    if send("close"):   # already open -> this was a toggle
+        return
     if "box" in args:
         os.environ["OPTCG_MODE"] = "box"
 

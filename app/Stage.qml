@@ -16,8 +16,7 @@ Item {
     readonly property string dataDir: (host.env("XDG_DATA_HOME") || home + "/.local/share") + "/optcg"
 
     // ---- sets -------------------------------------------------------------
-    readonly property string appDir: Qt.resolvedUrl(".").toString().replace("file://", "")
-    readonly property string fetchScript: Qt.resolvedUrl("../fetch_cards.py").toString().replace("file://", "")
+    readonly property string fetchScript: host.appPath("fetch_cards.py")
     readonly property string python: host.env("OPTCG_PYTHON") || "python3"   // runs fetch_cards.py
     property var sets: ({})             // sets.json, loaded once at startup
     readonly property string settingsPath: dataDir + "/settings.json"
@@ -93,7 +92,7 @@ Item {
     NumberAnimation on opacity { id: fadeIn; to: 1; duration: 250 }
 
     Component.onCompleted: {
-        sets = JSON.parse(host.readText(appDir + "sets.json") || "{}");
+        sets = JSON.parse(host.readText(host.appPath("app/sets.json")) || "{}");
         var saved = host.readText(collectionPath);
         if (saved) {
             try {
@@ -362,6 +361,39 @@ Item {
         }
     }
 
+    // ---- desktop showcase ----------------------------------------------------
+
+    // the card you're looking at: inspected in the binder / summary / box, or
+    // the one just revealed
+    function focusedCard() {
+        if (phase === "binder") return binderView.inspected || binderView.hoveredCard;
+        if (inBoxScreen) return boxView.inspected;
+        if (phase === "summary" && inspectIndex >= 0) return pack[inspectIndex];
+        if (phase === "reveal" && revealed > 0 && !charging) return pack[revealed - 1];
+        return null;
+    }
+
+    function showcase(c) {
+        if (!c) return;
+        var path = dataDir + "/showcase.json", s = {};
+        try { s = JSON.parse(host.readText(path) || "{}"); } catch (e) {}
+        s.card = { id: c.id, name: c.name, tier: c.tier, type: c.type, image: c.image };
+        host.writeText(path, JSON.stringify(s));
+        host.startShowcase();
+        toast("Showing " + Tiers.displayName(c) + " on your desktop  ·  drag to move, scroll to resize, right-click to remove");
+    }
+
+    property string toastText: ""
+    function toast(text) {
+        toastText = text;
+        toastTimer.restart();
+    }
+    Timer {
+        id: toastTimer
+        interval: 4000
+        onTriggered: stage.toastText = ""
+    }
+
     function close() {
         fadeIn.stop();
         closeAnim.start();
@@ -435,6 +467,9 @@ Item {
             break;
         case Qt.Key_S:
             toggleSets();
+            break;
+        case Qt.Key_D:
+            showcase(focusedCard());
             break;
         default:
             return;
@@ -678,8 +713,8 @@ Item {
             downloading: "",
             boxGrid: "",
             boxSummary: "",
-            reveal: "Space / click: next card   ·   Tab: reveal all   ·   Esc: close",
-            summary: stage.inspectIndex >= 0 ? "Move the mouse to tilt   ·   click or Esc to go back"
+            reveal: "Space / click: next card   ·   Tab: reveal all   ·   D: show on desktop   ·   Esc: close",
+            summary: stage.inspectIndex >= 0 ? "Move the mouse to tilt   ·   D: show on desktop   ·   click or Esc to go back"
                      : stage.mode === "box" ? "Hover to tilt   ·   click a card to inspect   ·   Space: back to the box   ·   B: binder   ·   Esc: close"
                      : "Hover to tilt   ·   click a card to inspect   ·   Space: open another pack   ·   X: open a box   ·   S: sets   ·   B: binder   ·   Esc: close"
         })[stage.phase]
@@ -741,6 +776,27 @@ Item {
         z: 250
         visible: stage.phase === "binder"
         stage: stage
+    }
+
+    Rectangle {   // toast
+        z: 290
+        visible: opacity > 0
+        opacity: stage.toastText ? 1 : 0
+        Behavior on opacity { NumberAnimation { duration: 200 } }
+        anchors.horizontalCenter: parent.horizontalCenter
+        y: stage.height * 0.12
+        width: toastLabel.width + 32
+        height: toastLabel.height + 16
+        radius: height / 2
+        color: "#1b2236"
+        border.color: "#ffd56b"
+        Text {
+            id: toastLabel
+            anchors.centerIn: parent
+            text: stage.toastText
+            color: "#fff6e0"
+            font.pixelSize: 15
+        }
     }
 
     Rectangle {
