@@ -63,37 +63,39 @@ function formatBounty(n) {
 
 // ---- the Port: ship and crew ---------------------------------------------------
 // Upgrades cost about 5× the one before; each makes passive income bigger and
-// free packs come faster or stack higher.
+// free packs come faster or stack higher. card: the ship's Stage card, for a
+// picture (the Thousand Sunny is OP09-080; art from your downloaded sets).
 
 var SHIPS = [
     { name: "Rowboat",                        price: 0,        income: 0,    freeHours: 6, freeMax: 2,
       text: "Where every pirate starts." },
     { name: "Fishing Boat",                   price: 20000,    income: 0.2,  freeHours: 6, freeMax: 2,
       text: "+20% passive income" },
-    { name: "Going Merry",                    price: 100000,   income: 0.5,  freeHours: 6, freeMax: 3,
+    { name: "Going Merry",                    price: 100000,   income: 0.5,  freeHours: 6, freeMax: 3, card: "Going Merry",
       text: "+50% passive income, hold 3 free packs" },
-    { name: "Going Merry (Flying Model)",     price: 500000,   income: 1,    freeHours: 5, freeMax: 3,
+    { name: "Going Merry (Flying Model)",     price: 500000,   income: 1,    freeHours: 5, freeMax: 3, card: "Going Merry",
       text: "+100% passive income, a free pack every 5 hours" },
-    { name: "Thousand Sunny",                 price: 2500000,  income: 2,    freeHours: 5, freeMax: 4,
+    { name: "Thousand Sunny",                 price: 2500000,  income: 2,    freeHours: 5, freeMax: 4, card: "Thousand Sunny",
       text: "+200% passive income, hold 4 free packs" },
-    { name: "Thousand Sunny (Shark Submerge)", price: 12000000, income: 3.5, freeHours: 4, freeMax: 4,
+    { name: "Thousand Sunny (Shark Submerge)", price: 12000000, income: 3.5, freeHours: 4, freeMax: 4, card: "Thousand Sunny",
       text: "+350% passive income, a free pack every 4 hours" },
-    { name: "Thousand Sunny (Coup de Burst)", price: 60000000, income: 6,    freeHours: 3, freeMax: 5,
+    { name: "Thousand Sunny (Coup de Burst)", price: 60000000, income: 6,    freeHours: 3, freeMax: 5, card: "Thousand Sunny",
       text: "+600% passive income, a free pack every 3 hours, hold 5" }
 ];
 
-// each recruited once, for good
+// each recruited once, for good. card: their name on the cards, for a
+// portrait (art from your downloaded sets)
 var CREW = [
-    { id: "zoro",    name: "Roronoa Zoro",  price: 15000,   perk: "Focus sessions pay double berries" },
-    { id: "nami",    name: "Nami",          price: 25000,   perk: "+25% passive income" },
-    { id: "usopp",   name: "Usopp",         price: 40000,   perk: "Single packs: hits 15% likelier" },
-    { id: "sanji",   name: "Sanji",         price: 60000,   perk: "Packs cost 10% less" },
-    { id: "chopper", name: "Tony Tony Chopper", price: 80000, perk: "Missing a single day doesn't break your streak" },
-    { id: "robin",   name: "Nico Robin",    price: 120000,  perk: "Reads a sealed pack: tells you how good it is" },
-    { id: "franky",  name: "Franky",        price: 200000,  perk: "Boxes and cases cost 10% less" },
-    { id: "brook",   name: "Brook",         price: 300000,  perk: "Cards sell for 10% more" },
-    { id: "jinbe",   name: "Jinbe",         price: 500000,  perk: "A fourth daily bounty" },
-    { id: "luffy",   name: "Monkey D. Luffy (Gear 5)", price: 5000000, perk: "God packs twice as likely" }
+    { id: "zoro",    name: "Roronoa Zoro",  card: "Roronoa Zoro",     price: 15000,   perk: "Focus sessions pay double berries" },
+    { id: "nami",    name: "Nami",          card: "Nami",             price: 25000,   perk: "+25% passive income" },
+    { id: "usopp",   name: "Usopp",         card: "Usopp",            price: 40000,   perk: "Single packs: hits 15% likelier" },
+    { id: "sanji",   name: "Sanji",         card: "Sanji",            price: 60000,   perk: "Packs cost 10% less" },
+    { id: "chopper", name: "Tony Tony Chopper", card: "Tony Tony.Chopper", price: 80000, perk: "Missing a single day doesn't break your streak" },
+    { id: "robin",   name: "Nico Robin",    card: "Nico Robin",       price: 120000,  perk: "Reads a sealed pack: tells you how good it is" },
+    { id: "franky",  name: "Franky",        card: "Franky",           price: 200000,  perk: "Boxes and cases cost 10% less" },
+    { id: "brook",   name: "Brook",         card: "Brook",            price: 300000,  perk: "Cards sell for 10% more" },
+    { id: "jinbe",   name: "Jinbe",         card: "Jinbe",            price: 500000,  perk: "A fourth daily bounty" },
+    { id: "luffy",   name: "Monkey D. Luffy (Gear 5)", card: "Monkey.D.Luffy", price: 5000000, perk: "God packs twice as likely" }
 ];
 
 // ---- the Port: grading ------------------------------------------------------------
@@ -120,8 +122,30 @@ var SEALED_RATE = [0.004, 0.016];   // value growth a week: the newest set .. th
 // ---- the Port: cosmetics ---------------------------------------------------------------
 // colours: base behind everything, glow in the middle (#AARRGGBB)
 
+// Playmats: real One Piece Card Game playmats (official Limited Editions and
+// tournament prize mats), their pictures downloaded by fetch_cards.py
+// --playmat from TCGplayer's product photo (tcg: product id) or the official
+// product page (page). Shown full screen behind the opener, darkened.
 var BACKDROPS = [
     { id: "default",   name: "Night Sea",      price: 0,       base: "#05070d", glow: "#18324a80" },
+    { id: "pm-vol1",   name: "Official Playmat · Limited Edition Vol.1", price: 80000, base: "#05070d", glow: "#00000000",
+      playmat: { tcg: 542494, page: "https://en.onepiece-cardgame.com/products/other/playmat003.php" } },
+    { id: "pm-vol2",   name: "Official Playmat · Limited Edition Vol.2 (the Four Emperors)", price: 120000, base: "#05070d", glow: "#00000000",
+      playmat: { page: "https://en.onepiece-cardgame.com/products/other/playmat005.php" } },
+    { id: "pm-vol3",   name: "Official Playmat · Limited Edition Vol.3", price: 200000, base: "#05070d", glow: "#00000000",
+      playmat: { page: "https://en.onepiece-cardgame.com/products/other/playmat007.php" } },
+    { id: "pm-vol4",   name: "Official Playmat · Limited Edition Vol.4 (Roronoa Zoro)", price: 300000, base: "#05070d", glow: "#00000000",
+      playmat: { tcg: 657220 } },
+    { id: "pm-vol5",   name: "Official Playmat · Limited Edition Vol.5", price: 450000, base: "#05070d", glow: "#00000000",
+      playmat: { page: "https://en.onepiece-cardgame.com/products/other/playmat010.php" } },
+    { id: "pm-flame",  name: "Flame-Flame Fruit Coliseum Edition", price: 1500000, base: "#05070d", glow: "#00000000",
+      playmat: { tcg: 717036 } },
+    { id: "pm-reg24-2", name: "2024 Regional · 2nd Place", price: 8000000, base: "#05070d", glow: "#00000000",
+      playmat: { tcg: 539211 } },
+    { id: "pm-reg25-2", name: "2025 Regional · 2nd Place", price: 12000000, base: "#05070d", glow: "#00000000",
+      playmat: { tcg: 630010 } },
+    { id: "pm-reg25-1", name: "2025 Regional · Champion", price: 40000000, base: "#05070d", glow: "#00000000",
+      playmat: { tcg: 630011 } },
     { id: "grandline", name: "Grand Line",     price: 25000,   base: "#03101c", glow: "#302a7fc0" },
     { id: "wano",      name: "Wano",           price: 60000,   base: "#13050a", glow: "#2cc03030" },
     { id: "egghead",   name: "Egghead",        price: 150000,  base: "#0a0616", glow: "#30b050ff" },
@@ -953,4 +977,20 @@ function equipCosmetic(p, kind, id) {
     }
     p.cosmetics[kind] = id;
     return true;
+}
+
+// The best art of a character (or ship) among cards: the highest rarity whose
+// name starts with `name` ("Monkey.D.Luffy" matches "Monkey.D.Luffy (Alternate Art)").
+// rank: card -> rarity rank. Returns a card or null.
+function artFor(cards, name, rank) {
+    var norm = function (t) { return t.toLowerCase().replace(/[^a-z0-9]/g, ""); };
+    var want = norm(name), best = null;
+    cards.forEach(function (c) {
+        if (norm(c.name).indexOf(want) !== 0) return;
+        // "Nami" mustn't match "Namur": the next character is the end or a variant tag
+        var rest = c.name.replace(/\s*\(.*$/, "");
+        if (norm(rest) !== want) return;
+        if (!best || rank(c) > rank(best)) best = c;
+    });
+    return best;
 }

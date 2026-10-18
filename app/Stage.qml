@@ -1068,8 +1068,19 @@ Item {
 
     // ---- backdrop -------------------------------------------------------
 
-    // the backdrop is a cosmetic (the Port)
+    // the backdrop is a cosmetic (the Port); playmats are downloaded the first time they're needed
     readonly property var backdrop: Progress.backdrop(progress)
+    property int playmatVersion: 0          // bumped when a playmat picture arrives
+    property var playmatTried: ({})
+    function playmatUrl(item) {
+        return item && item.playmat ? "file://" + cacheRoot + "/playmats/" + item.id + ".img?v=" + playmatVersion : "";
+    }
+    function fetchPlaymat(item) {
+        if (!item || !item.playmat || playmatTried[item.id]) return;
+        playmatTried[item.id] = true;
+        host.run([python, "-I", "-u", fetchScript, "--playmat", item.id, String(item.playmat.tcg || ""), item.playmat.page || ""],
+                 null, code => playmatVersion++);
+    }
     Rectangle {
         anchors.fill: parent
         color: stage.backdrop.base
@@ -1087,6 +1098,23 @@ Item {
             GradientStop { position: 1.0; color: "#00000000" }
         }
         opacity: 0.6
+    }
+    // a playmat backdrop: the picture, darkened so the cards stay readable
+    Image {
+        id: playmatBackdrop
+        anchors.fill: parent
+        visible: !!stage.backdrop.playmat && status === Image.Ready
+        source: stage.playmatUrl(stage.backdrop)
+        fillMode: Image.PreserveAspectCrop
+        asynchronous: true
+        cache: false
+        onStatusChanged: if (status === Image.Error) stage.fetchPlaymat(stage.backdrop)
+    }
+    Rectangle {
+        anchors.fill: parent
+        visible: playmatBackdrop.visible
+        color: "#05070d"
+        opacity: 0.5
     }
 
     MouseArea {

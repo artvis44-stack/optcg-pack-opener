@@ -33,8 +33,26 @@ Item {
         inspected = null;
         now = Date.now();
         loadPool();
+        if (tab === "cosmetics") fetchPlaymats();
     }
-    onTabChanged: if (tab === "shop") loadPool()
+    onTabChanged: {
+        loadPool();
+        if (tab === "cosmetics") fetchPlaymats();
+    }
+
+    // portraits and ship pictures: art from cards in your downloaded sets
+    readonly property var poolCards: pool.map(x => x.card)
+    function art(name) {
+        return name ? Progress.artFor(poolCards, name, c => Tiers.tierOf(c).rank) : null;
+    }
+    readonly property var crewArt: {
+        var m = {};
+        Progress.CREW.forEach(c => m[c.id] = art(c.card));
+        return m;
+    }
+    function fetchPlaymats() {
+        Progress.BACKDROPS.forEach(b => { if (b.playmat) stage.fetchPlaymat(b); });
+    }
 
     Timer {   // countdowns
         interval: 1000
@@ -119,6 +137,34 @@ Item {
         }
     }
 
+    // card art, cropped to fill (from the top: faces and ships sit there); a
+    // placeholder letter when there's no card for it
+    component Art: Rectangle {
+        id: artBox
+        property var card: null
+        property string fallback: ""
+        property bool dim: false
+        radius: 8
+        color: "#0e1322"
+        clip: true
+        Image {
+            anchors.fill: parent
+            source: artBox.card ? "file://" + artBox.card.image : ""
+            fillMode: Image.PreserveAspectCrop
+            verticalAlignment: Image.AlignTop
+            sourceSize.width: 400
+            asynchronous: true
+            opacity: artBox.dim ? 0.35 : 1
+        }
+        Text {
+            anchors.centerIn: parent
+            visible: !artBox.card
+            text: artBox.fallback
+            color: "#3a4258"
+            font { pixelSize: parent.height * 0.4; weight: Font.Black }
+        }
+    }
+
     component Panel: Rectangle {
         radius: 10
         color: "#151b2c"
@@ -159,11 +205,19 @@ Item {
 
                 Panel {
                     width: parent.width
-                    height: shipCol.height + 28
+                    height: Math.max(shipCol.height, shipArt.height) + 28
+                    Art {
+                        id: shipArt
+                        x: 14; y: 14
+                        width: 220
+                        height: 150
+                        card: port.art(shipCol.cur.card)
+                        fallback: "⚓"
+                    }
                     Column {
                         id: shipCol
-                        x: 16; y: 14
-                        width: parent.width - 32
+                        x: shipArt.x + shipArt.width + 18; y: 14
+                        width: parent.width - x - 16
                         spacing: 6
                         readonly property var cur: Progress.ship(port.p)
                         readonly property var next: Progress.nextShip(port.p)
@@ -211,11 +265,19 @@ Item {
                             required property var modelData
                             readonly property bool aboard: Progress.hasCrew(port.p, modelData.id)
                             width: (content.width - 24) / 3
-                            height: 118
+                            height: 124
                             border.color: aboard ? "#7fd1b9" : "#2c3550"
+                            Art {
+                                x: 10; y: 10
+                                width: 104
+                                height: 104
+                                card: port.crewArt[modelData.id]
+                                fallback: modelData.name[0]
+                                dim: !parent.aboard
+                            }
                             Column {
-                                x: 14; y: 12
-                                width: parent.width - 28
+                                x: 126; y: 12
+                                width: parent.width - 138
                                 spacing: 5
                                 Text {
                                     text: modelData.name
@@ -504,13 +566,78 @@ Item {
                 visible: port.tab === "cosmetics"
                 width: parent.width
                 spacing: 12
-                Heading { text: "Backdrops" }
+                Heading { text: "Playmats" }
+                Note {
+                    width: parent.width
+                    text: "Real One Piece Card Game playmats behind the pack opener: the official Limited Editions, "
+                          + "and the prize mats from Regionals and the Flame-Flame Fruit Coliseum. Pictures download the first time you look."
+                }
+                Flow {
+                    width: parent.width
+                    spacing: 12
+                    Repeater {
+                        model: Progress.BACKDROPS.filter(b => !!b.playmat)
+                        Panel {
+                            id: pm
+                            required property var modelData
+                            readonly property bool owned: Progress.ownsCosmetic(port.p, modelData.id)
+                            readonly property bool worn: Progress.backdrop(port.p).id === modelData.id
+                            width: (content.width - 24) / 3
+                            height: width * 0.54 + 74
+                            border.color: worn ? "#ffd56b" : "#2c3550"
+                            Rectangle {   // the mat
+                                x: 10; y: 10
+                                width: parent.width - 20
+                                height: width * 0.54
+                                radius: 6
+                                color: "#0e1322"
+                                clip: true
+                                Image {
+                                    id: mat
+                                    anchors.fill: parent
+                                    source: port.stage ? port.stage.playmatUrl(pm.modelData) : ""
+                                    fillMode: Image.PreserveAspectCrop
+                                    sourceSize.width: 600
+                                    asynchronous: true
+                                    cache: false
+                                }
+                                Text {
+                                    anchors.centerIn: parent
+                                    visible: mat.status !== Image.Ready
+                                    text: mat.status === Image.Loading ? "loading…" : "downloading the picture…"
+                                    color: "#4a5370"
+                                    font.pixelSize: 13
+                                }
+                            }
+                            Text {
+                                x: 12
+                                y: parent.height - 60
+                                width: parent.width - 24
+                                elide: Text.ElideRight
+                                text: pm.modelData.name
+                                color: "#e8e8ee"
+                                font { pixelSize: 13; weight: Font.Black }
+                            }
+                            PillButton {
+                                x: 10
+                                y: parent.height - 38
+                                fontSize: 11
+                                text: pm.worn ? "In use" : pm.owned ? "Use" : "Buy · " + Progress.format(pm.modelData.price)
+                                enabledLook: !pm.worn && (pm.owned || port.p.berries >= pm.modelData.price)
+                                onClicked: if (!pm.worn && !port.stage.prog(p => Progress.equipCosmetic(p, "backdrop", pm.modelData.id)))
+                                               port.stage.toast("Not enough berries yet.")
+                            }
+                        }
+                    }
+                }
+
+                Heading { text: "Colours" }
                 Note { text: "Behind the pack opener." }
                 Flow {
                     width: parent.width
                     spacing: 12
                     Repeater {
-                        model: Progress.BACKDROPS
+                        model: Progress.BACKDROPS.filter(b => !b.playmat)
                         Panel {
                             id: bd
                             required property var modelData

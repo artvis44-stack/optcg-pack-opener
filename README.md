@@ -105,7 +105,15 @@ there are wanted posters for them
 - **Sealed products.** Buy boxes and cases and hold them: they gain value every week (older sets
   faster, up to about 2.3× a year) and count toward your collection's value. Sell them for what
   they're worth, or open them: their boxes wait, prepaid, in that set's box mode.
-- **Cosmetics.** Backdrops for the pack opener and labels for your desktop slab.
+- **Cosmetics.** Real One Piece Card Game playmats as the pack opener's background (the official
+  Limited Edition Vol.1-5, the Flame-Flame Fruit Coliseum Edition, the 2024 / 2025 Regional prize
+  mats), plain colour backdrops, and labels for your desktop slab. Playmat pictures are downloaded
+  by `fetch_cards.py --playmat` (TCGplayer's product photo, or the official product page) into
+  `~/.cache/optcg/playmats/` the first time they're shown.
+
+The crew's portraits and the ship pictures are art from cards in your downloaded sets (each Straw
+Hat's best card; the Thousand Sunny is the OP09-080 Stage card), so download more sets for more of
+them.
 
 There are wanted posters for all of it, and for how much you've spent.
 
