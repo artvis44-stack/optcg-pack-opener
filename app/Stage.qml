@@ -54,7 +54,8 @@ Item {
                                        // | boxSealed | boxGrid | boxSummary | sets | downloading
                                        // | showcaseView (opened by double-clicking the desktop showcase)
                                        // | board (the wanted board: bounties and achievements)
-                                       // | sync (the sync account screen) | port (ship, crew, shop, grading, sealed, cosmetics)
+                                       // | sync (the sync account screen) | port (ship, crew, shop, sealed, cosmetics)
+                                       // | vault (graded slabs, grading orders, the set registry)
     property string boardReturn: "pack"
     property string mode: host.env("OPTCG_MODE") === "box" ? "box" : "pack"
     readonly property bool inBoxScreen: phase === "boxSealed" || phase === "boxGrid" || phase === "boxSummary"
@@ -197,6 +198,7 @@ Item {
         currentCelebration = celebrations[0];
         celebrations = celebrations.slice(1);
         var ck = currentCelebration;
+        if (ck.kind === "graded" && ck.slab.grade === 10) flashAnim.restart();
         sfx(ck.kind === "achievement" ? "poster" : ck.kind === "graded" && ck.slab.grade === 10 ? "legendary"
             : ck.kind === "graded" && ck.slab.grade >= 9 ? "epic" : "chime");
         celebrationTimer.restart();
@@ -312,9 +314,10 @@ Item {
     // a pack's worth of cards went into the binder
     function recordPackProgress(cards) {
         if (offTheRecord) return;
-        var owned = Object.keys(collection.cards).filter(k => k.indexOf(setId + ":") === 0).length;
+        var have = ownedKeys();
+        var owned = Object.keys(have).filter(k => k.indexOf(setId + ":") === 0).length;
         // how much of each tier group (every Leader, every SR...) you own, and which tiers the set has
-        var sp = Progress.setProgress(setId, db.cards, collection.cards);
+        var sp = Progress.setProgress(setId, db.cards, have);
         prog(p => Progress.record(p, { type: "pack", set: setId, tiers: cards.map(c => c.tier), god: Tiers.isGodPack(cards),
                                        completion: setTotal ? owned / setTotal : 0,
                                        groups: sp.groups, present: sp.present }));
@@ -640,6 +643,20 @@ Item {
     }
     property string portReturn: "pack"
 
+    function toggleVault() {
+        if (phase === "vault") {
+            phase = vaultReturn;
+            stage.forceActiveFocus();
+        } else if (phase === "error" || (phase === "pack" && !cardsIn) || phase === "summary" || inBoxScreen
+                   || phase === "board" || phase === "port" || phase === "binder") {
+            reloadProgress();
+            collectGrading();
+            vaultReturn = phase === "board" ? boardReturn : phase === "port" ? portReturn : phase;
+            phase = "vault";
+        }
+    }
+    property string vaultReturn: "pack"
+
     function toggleSync() {
         if (phase === "sync") {
             phase = syncReturn;
@@ -860,15 +877,39 @@ Item {
     // ---- the whole collection, across sets (the binder's "All sets" view) --------------
 
     // every owned printing as a card: { id, name, tier, type, image, set }, plus its count
+    // graded slabs by card key, best grade first: { "<set>:<file>": [slab, ...] }
+    readonly property var slabsByKey: {
+        var out = {}, g = collection.graded || {};
+        Object.keys(g).forEach(id => {
+            var s = Object.assign({ slabId: id }, g[id]);
+            var k = s.key || (s.set + ":" + (s.image || "").split("/").pop());
+            (out[k] = out[k] || []).push(s);
+        });
+        Object.keys(out).forEach(k => out[k].sort((a, b) => b.grade - a.grade));
+        return out;
+    }
+
+    // every card you have, raw or graded (for completion and the binder)
+    function ownedKeys() {
+        var out = Object.assign({}, collection.cards);
+        Object.keys(slabsByKey).forEach(k => { if (!out[k]) out[k] = { count: 0 }; });
+        return out;
+    }
+
+    // every owned printing as a card, with its raw count and its slabs; a card
+    // you only have graded is still yours (count 0, slabs)
     readonly property var allOwned: {
-        var out = [];
-        Object.keys(collection.cards).forEach(k => {
-            var cut = k.indexOf(":"), set = k.slice(0, cut), e = collection.cards[k];
+        var out = [], seen = {};
+        var add = (k, e) => {
+            var cut = k.indexOf(":"), set = k.slice(0, cut);
+            seen[k] = true;
             out.push({ card: { id: e.id, name: e.name, tier: e.tier, set: set,
                                type: e.tier && e.tier.indexOf("DON") === 0 ? "DON!!" : (e.tier === "L" || e.tier === "L_AA" || e.tier === "SUPER_L" ? "Leader" : ""),
                                image: cacheRoot + "/" + set + "/" + k.slice(cut + 1) },
-                       count: e.count });
-        });
+                       count: e.count || 0, slabs: slabsByKey[k] || [] });
+        };
+        Object.keys(collection.cards).forEach(k => add(k, collection.cards[k]));
+        Object.keys(slabsByKey).forEach(k => { if (!seen[k]) add(k, slabsByKey[k][0]); });
         return out;
     }
 
@@ -1017,6 +1058,7 @@ Item {
             else if (phase === "board") toggleBoard();
             else if (phase === "sync") toggleSync();
             else if (phase === "port") portView.back();
+            else if (phase === "vault") vaultView.back();
             else if (inBoxScreen && boxView.inspected) boxView.inspected = null;
             else if (mode === "box" && phase === "pack" && !cardsIn) backToBox();
             else if (inspectIndex >= 0) inspectIndex = -1;
@@ -1029,12 +1071,14 @@ Item {
             if (phase === "binder" && !binderView.allSets) binderView.ownedOnly = !binderView.ownedOnly;
             break;
         case Qt.Key_Left:
-            if (phase === "port") portView.step(-1);
+            if (phase === "vault") vaultView.step(-1);
+            else if (phase === "port") portView.step(-1);
             else if (phase === "board") boardView.step(-1);
             else return;
             break;
         case Qt.Key_Right:
-            if (phase === "port") portView.step(1);
+            if (phase === "vault") vaultView.step(1);
+            else if (phase === "port") portView.step(1);
             else if (phase === "board") boardView.step(1);
             else advance();
             break;
@@ -1067,6 +1111,9 @@ Item {
             break;
         case Qt.Key_P:
             togglePort();
+            break;
+        case Qt.Key_G:
+            toggleVault();
             break;
         case Qt.Key_C:
             buyCase();
@@ -1395,6 +1442,7 @@ Item {
             showcaseView: "Move the mouse to tilt   ·   click, Space or Esc to close",
             board: "",
             port: "",
+            vault: "",
             sync: "",
             sets: "",
             downloading: "",
@@ -1514,7 +1562,7 @@ Item {
         Text {
             visible: !stage.offTheRecord
             anchors.baseline: parent.children[1].baseline
-            text: "bounty " + Progress.formatBounty(Progress.totalBounty(stage.progress)) + "   (W)   ·   port (P)"
+            text: "bounty " + Progress.formatBounty(Progress.totalBounty(stage.progress)) + "   (W)   ·   port (P)   ·   vault (G)"
                   + (Progress.currentEvent(stage.progress) ? "   ·   this week: " + Progress.currentEvent(stage.progress).name : "")
             color: "#c8ccd6"
             font { pixelSize: 14; weight: Font.Bold }
@@ -1589,14 +1637,43 @@ Item {
         z: 295
         anchors.horizontalCenter: parent.horizontalCenter
         y: stage.height * 0.09
-        width: poster.visible ? poster.width : banner2.width
-        height: poster.visible ? poster.height : banner2.height
+        width: poster.visible ? poster.width : slabReveal.visible ? slabReveal.width : banner2.width
+        height: poster.visible ? poster.height : slabReveal.visible ? slabReveal.height : banner2.height
         readonly property var c: stage.currentCelebration
         opacity: c ? 1 : 0
         visible: opacity > 0
         Behavior on opacity { NumberAnimation { duration: 220 } }
         scale: c ? 1 : 0.85
         Behavior on scale { NumberAnimation { duration: 260; easing.type: Easing.OutBack } }
+
+        Rectangle {   // behind the slab reveal, so what's on screen doesn't show through the case
+            visible: slabReveal.visible
+            x: slabReveal.x - 18; y: slabReveal.y - 14
+            width: slabReveal.width + 36; height: slabReveal.height + 30
+            radius: 14
+            color: "#0c1020"
+            border.color: slabReveal.visible && celebration.c.slab.grade === 10 ? "#ffd700" : "#3a4258"
+        }
+        Column {   // a graded card is back: the slab, and its grade
+            id: slabReveal
+            visible: !!celebration.c && celebration.c.kind === "graded"
+            spacing: 8
+            width: 240
+            Text {
+                anchors.horizontalCenter: parent.horizontalCenter
+                text: slabReveal.visible ? "GRADED  " + celebration.c.slab.grade + "  " + Progress.GRADE_NAME[celebration.c.slab.grade] : ""
+                color: slabReveal.visible && celebration.c.slab.grade === 10 ? "#ffd700" : "#fff6e0"
+                style: Text.Outline; styleColor: "#000000"
+                font { pixelSize: 24; weight: Font.Black; italic: true }
+            }
+            Slab {
+                width: 240
+                card: slabReveal.visible ? celebration.c.slab : null
+                labelStyle: Progress.slabStyle(stage.progress)
+                time: stage.t
+                hoverTilt: false
+            }
+        }
 
         Rectangle {
             id: poster
@@ -1656,7 +1733,7 @@ Item {
 
         Rectangle {
             id: banner2
-            visible: !!celebration.c && celebration.c.kind !== "achievement"
+            visible: !!celebration.c && celebration.c.kind !== "achievement" && celebration.c.kind !== "graded"
             width: bannerText.width + 40
             height: bannerText.height + 22
             radius: height / 2
@@ -1682,6 +1759,14 @@ Item {
                 font { pixelSize: 17; weight: Font.Bold }
             }
         }
+    }
+
+    VaultView {
+        id: vaultView
+        anchors.fill: parent
+        z: 249
+        visible: stage.phase === "vault"
+        stage: stage
     }
 
     PortView {

@@ -133,9 +133,10 @@ Item {
         if (text === collectionText || !card) return;
         collectionText = text;
         try {
-            var cards = JSON.parse(text || "{}").cards || {};
+            var col = JSON.parse(text || "{}"), cards = col.cards || {}, have = Object.assign({}, cards);
+            Object.keys(col.graded || {}).forEach(id => { var g = col.graded[id]; if (g.key) have[g.key] = true; });   // graded cards count too
             owned = cards[key] || null;
-            setOwned = Object.keys(cards).filter(k => k.indexOf(setId + ":") === 0).length;
+            setOwned = Object.keys(have).filter(k => k.indexOf(setId + ":") === 0).length;
         } catch (e) {}
     }
 
