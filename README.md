@@ -73,6 +73,12 @@ of a case 15% off. You earn them by:
   completion up to the master set, owning every Leader / SR / SEC / alt art, pulling chase cards,
   what the set's cards are worth). Posters you haven't earned show how far along you are
 
+**God packs:** about 1 pack in 5,760 (1 per 20 cases, as the community estimates them; Bandai
+publishes nothing) is a god pack: every card in it is a hit. Most sets get parallels; PRB-01 a
+Manga God Pack, PRB-02 an all-parallel or an all-Gold DON!! pack, EB-03 an SP God Pack and OP-13
+the Demon Pack (the Five Elders). They're in boxes and cases too, replacing a random pack, and
+there are wanted posters for them
+
 All of it lives in `~/.local/share/optcg/progress.json` (per computer). The rules are in
 `app/progress.js`. `OPTCG_SANDBOX=1` opens everything for free without saving anything.
 
@@ -154,7 +160,7 @@ tested): `mac/optcg.py` with a venv from `mac/requirements.txt`.
 ## Tweaks
 
 - Other set: press S in the app, or `OPTCG_SET=OP-16 ./open-pack.sh`; the last set is remembered
-- Force a pull: `OPTCG_FORCE_HIT=SEC ./open-pack.sh` (the tier keys are in `tiers.js`)
+- Force a pull: `OPTCG_FORCE_HIT=SEC ./open-pack.sh` (the tier keys are in `tiers.js`); `OPTCG_FORCE_HIT=GOD` forces a god pack
 - Script it: `qs ipc -p ~/.config/quickshell/optcg call optcg advance` (also `revealAll`, `newPack`, `close`, `inspect <i>`)
 
 Card images are Bandai's "SAMPLE"-stamped previews (every public source uses

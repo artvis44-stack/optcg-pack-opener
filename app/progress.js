@@ -136,13 +136,15 @@ var ACHIEVEMENTS = [
     a("streak100","Unbreakable Will",      "Keep a 100-day streak",                1.5e9, 100000, null, function (p) { return p.streak.count; }, 100),
     a("streak365","A Year at Sea",         "Keep a 365-day streak",                4.6e9, 400000, null, function (p) { return p.streak.count; }, 365),
     a("focus100", "Conqueror's Haki",      "Finish 100 focus sessions",            1.2e9, 80000, null, function (p) { return p.stats.focus; }, 100),
-    a("focus500", "Supreme King",          "Finish 500 focus sessions",            3.5e9, 250000, null, function (p) { return p.stats.focus; }, 500)
+    a("focus500", "Supreme King",          "Finish 500 focus sessions",            3.5e9, 250000, null, function (p) { return p.stats.focus; }, 500),
+    a("god1",     "Touched by the Gods",   "Open a god pack",                      3e9,   300000, null, function (p) { return p.stats.godPacks; }, 1),
+    a("god3",     "Imu's Favorite",        "Open 3 god packs",                     5e9,   750000, null, function (p) { return p.stats.godPacks; }, 3)
 ];
 
 // one set's stats, with defaults for anything not recorded yet
 function setStats(p, set) {
     var s = (p.stats.bySet || {})[set] || {};
-    return { packs: s.packs || 0, boxes: s.boxes || 0, cases: s.cases || 0, pulled: s.pulled || {},
+    return { packs: s.packs || 0, boxes: s.boxes || 0, cases: s.cases || 0, pulled: s.pulled || {}, god: s.god || 0,
              completion: s.completion || 0, groups: s.groups || {}, present: s.present || null, value: s.value || 0 };
 }
 
@@ -171,6 +173,7 @@ var SET_POSTERS = [
     { key: "case3",    title: "Warlord of the Sea",  text: "Open 3 whole cases",                  bounty: 1e9,   reward: 60000,  count: function (s) { return s.cases; }, goal: 3 },
     { key: "chase3",   title: "Treasure Fleet",      text: "Pull 3 chase cards",                  bounty: 1.5e9, reward: 100000, needs: CHASE_TIERS, count: function (s) { return setPulled(s, CHASE_TIERS); }, goal: 3 },
     { key: "worth2m",  title: "Royal Treasury",      text: "Own cards from the set worth ฿2,500,000", bounty: 2e9, reward: 150000, count: function (s) { return s.value; }, goal: 2500000, fmt: "money" },
+    { key: "god",      title: "Divine Intervention", text: "Open a god pack",                     bounty: 2.5e9, reward: 200000, count: function (s) { return s.god; }, goal: 1 },
     { key: "c100",     title: "Master Set",          text: "Own every card in the set",           bounty: 3e9,   reward: 250000, count: function (s) { return s.completion; }, goal: 1, fmt: "pct" }
 ];
 
@@ -236,7 +239,7 @@ function fresh(now) {
         income: { day: "", earned: 0 },
         focus: { startedAt: 0, endsAt: 0, idleMinutes: 0 },
         stats: { packs: 0, boxes: 0, cases: 0, sold: 0, soldValue: 0, earned: 0, focus: 0,
-                 sets: {}, pulled: {}, bestCompletion: 0, value: 0,
+                 sets: {}, pulled: {}, bestCompletion: 0, value: 0, godPacks: 0,
                  bySet: {},                       // set -> { packs, boxes, cases, pulled, completion, groups, present, value }
                  backfilled: 1 },                 // 0: the set boards still need back-dating from the collection (see backfill)
         achievements: {},              // id -> date unlocked
@@ -375,7 +378,7 @@ function earn(p, amount) {
 }
 
 // Something happened. ev:
-//   { type: "pack", set, tiers: [...], completion: 0..1,      a pack was opened; groups: how much of
+//   { type: "pack", set, tiers: [...], completion: 0..1, god,  a pack was opened (god: a god pack); groups: how much of
 //     groups: { leaders: 0..1, ... }, present: [tiers] }       each SET_GROUPS you own, present: the set's tiers
 //   { type: "box", set } / { type: "case", set }               a box / a whole case finished
 //   { type: "value", total, bySet: { set: ฿ } }                what the collection is worth now
@@ -386,7 +389,7 @@ function earn(p, amount) {
 function bySet(p, set) {
     if (!p.stats.bySet[set]) p.stats.bySet[set] = {};
     var b = p.stats.bySet[set];
-    ["packs", "boxes", "cases", "completion", "value"].forEach(function (k) { if (b[k] === undefined) b[k] = 0; });
+    ["packs", "boxes", "cases", "completion", "value", "god"].forEach(function (k) { if (b[k] === undefined) b[k] = 0; });
     if (!b.pulled) b.pulled = {};
     if (!b.groups) b.groups = {};
     return b;
@@ -407,6 +410,10 @@ function record(p, ev) {
         if (ev.completion > b.completion) b.completion = ev.completion;
         Object.keys(ev.groups || {}).forEach(function (g) { if (ev.groups[g] > (b.groups[g] || 0)) b.groups[g] = ev.groups[g]; });
         if (ev.present) b.present = ev.present;
+        if (ev.god) {
+            s.godPacks++;
+            b.god++;
+        }
     } else if (ev.type === "box") {
         s.boxes++;
         if (ev.set) bySet(p, ev.set).boxes++;

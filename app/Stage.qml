@@ -57,6 +57,7 @@ Item {
     property string mode: host.env("OPTCG_MODE") === "box" ? "box" : "pack"
     readonly property bool inBoxScreen: phase === "boxSealed" || phase === "boxGrid" || phase === "boxSummary"
     property var pack: []
+    readonly property string godPack: pack.length && Tiers.isGodPack(pack) ? Tiers.godPackName(pack, setInfo) : ""
     property int revealed: 0
     property bool cardsIn: false
     property bool charging: false
@@ -234,7 +235,7 @@ Item {
         var owned = Object.keys(collection.cards).filter(k => k.indexOf(setId + ":") === 0).length;
         // how much of each tier group (every Leader, every SR...) you own, and which tiers the set has
         var sp = Progress.setProgress(setId, db.cards, collection.cards);
-        prog(p => Progress.record(p, { type: "pack", set: setId, tiers: cards.map(c => c.tier),
+        prog(p => Progress.record(p, { type: "pack", set: setId, tiers: cards.map(c => c.tier), god: Tiers.isGodPack(cards),
                                        completion: setTotal ? owned / setTotal : 0,
                                        groups: sp.groups, present: sp.present }));
     }
@@ -839,11 +840,51 @@ Item {
             onTorn: {
                 stage.recordPack();
                 stage.phase = "reveal";
+                if (stage.godPack) {
+                    flashAnim.restart();
+                    godAnim.restart();
+                }
             }
         }
     }
 
     // ---- hit effects -----------------------------------------------------
+
+    // a god pack: announced as soon as it's torn open, and stays up
+    Column {
+        id: godBanner
+        z: 285
+        visible: stage.godPack !== "" && (stage.phase === "reveal" || stage.phase === "summary")
+        anchors.horizontalCenter: parent.horizontalCenter
+        y: stage.height * 0.06
+        spacing: 2
+        Text {
+            id: godTitle
+            anchors.horizontalCenter: parent.horizontalCenter
+            text: "✦  " + stage.godPack.toUpperCase() + "  ✦"
+            color: "#ffd700"
+            style: Text.Outline; styleColor: "#5a3a00"
+            font { pixelSize: 44; weight: Font.Black; italic: true; letterSpacing: 3 }
+            SequentialAnimation on opacity {
+                running: godBanner.visible
+                loops: Animation.Infinite
+                NumberAnimation { to: 0.7; duration: 700; easing.type: Easing.InOutSine }
+                NumberAnimation { to: 1; duration: 700; easing.type: Easing.InOutSine }
+            }
+        }
+        Text {
+            anchors.horizontalCenter: parent.horizontalCenter
+            text: "every card is a hit  ·  about 1 pack in " + Math.round(stage.cfg.packsPerCase / Tiers.godPacksPerCase(stage.setInfo)).toLocaleString(Qt.locale("en_US"), "f", 0)
+            color: "#fff6e0"
+            style: Text.Outline; styleColor: "#000000"
+            font { pixelSize: 16; weight: Font.Bold }
+        }
+    }
+    SequentialAnimation {
+        id: godAnim
+        NumberAnimation { target: godTitle; property: "scale"; from: 0.2; to: 1.3; duration: 380; easing.type: Easing.OutBack }
+        NumberAnimation { target: godTitle; property: "scale"; to: 1; duration: 260 }
+    }
 
     ShaderEffect {
         id: rays
