@@ -25,6 +25,7 @@ Boosters EB-01 to EB-03 and the Premium Boosters PRB-01 / PRB-02.
 | M | sound on / off (remembered) |
 | P | the Port: ship and crew, card shop, sealed products, cosmetics (← → switch tabs) |
 | G | the Vault: your graded slabs (filter by set and grade), cards out for grading, the set registry |
+| F | in the binder: filters (rarity, card type, colour, owned / missing / duplicates / graded); there's also a search box and sorting by rarity, number, value or copies |
 | C | box mode: buy the rest of the case (15% off) |
 | Esc / right-click | close |
 

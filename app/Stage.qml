@@ -1083,7 +1083,7 @@ Item {
             toggleBinder();
             break;
         case Qt.Key_O:
-            if (phase === "binder" && !binderView.allSets) binderView.ownedOnly = !binderView.ownedOnly;
+            if (phase === "binder") binderView.toggleOwned();
             break;
         case Qt.Key_Left:
             if (phase === "vault") vaultView.step(-1);
@@ -1129,6 +1129,10 @@ Item {
             break;
         case Qt.Key_G:
             toggleVault();
+            break;
+        case Qt.Key_F:
+            if (phase === "binder") binderView.filtersOpen = !binderView.filtersOpen;
+            else return;
             break;
         case Qt.Key_C:
             buyCase();
