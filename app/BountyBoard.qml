@@ -160,6 +160,81 @@ Item {
             color: "#7a8090"
             font.pixelSize: 12
         }
+
+        // ---- berries: where they came from and went (the ledger) ----
+        Text {
+            topPadding: 8
+            text: "Berries"
+            color: "#ffd56b"
+            font { pixelSize: 18; weight: Font.Black }
+        }
+        Grid {
+            id: ledger
+            readonly property real now: Date.now()
+            readonly property var periods: [Progress.ledger(board.p, 1, now), Progress.ledger(board.p, 7, now), Progress.ledger(board.p, 0, now)]
+            // rows: [label, side, key] -- a key of "" is that side's total; only rows with something in them
+            readonly property var rows: {
+                var out = [["Earned", "earn", ""]];
+                Progress.EARNINGS.forEach(e => { if (periods[2].earn[e[0]]) out.push([e[1], "earn", e[0]]); });
+                out.push(["Spent", "spend", ""]);
+                Progress.SPENDING.forEach(e => { if (periods[2].spend[e[0]]) out.push([e[1], "spend", e[0]]); });
+                out.push(["Net", "net", ""]);
+                return out;
+            }
+            function amount(period, row) {
+                var t = periods[period];
+                if (row[1] === "net") return Progress.ledgerSum(t.earn) - Progress.ledgerSum(t.spend);
+                return row[2] ? t[row[1]][row[2]] || 0 : Progress.ledgerSum(t[row[1]]);
+            }
+            function short(n) {
+                var a = Math.abs(n), sign = n < 0 ? "-" : "";
+                return a >= 1e6 ? sign + "฿" + (a / 1e6).toFixed(a >= 1e8 ? 0 : 1) + "M"
+                     : a >= 1e4 ? sign + "฿" + Math.round(a / 1e3) + "k" : sign + Progress.format(a);
+            }
+            columns: 4
+            columnSpacing: 10
+            rowSpacing: 3
+            width: daily.width
+
+            Repeater {
+                model: ["", "Today", "7 days", "All time"]
+                Text {
+                    required property string modelData
+                    required property int index
+                    width: index === 0 ? daily.width - 3 * 70 - 30 : 70
+                    horizontalAlignment: index === 0 ? Text.AlignLeft : Text.AlignRight
+                    text: modelData
+                    color: "#7a8090"
+                    font { pixelSize: 12; weight: Font.Bold }
+                }
+            }
+            Repeater {
+                model: ledger.rows.length * 4
+                Text {
+                    required property int index
+                    readonly property var row: ledger.rows[Math.floor(index / 4)]
+                    readonly property int col: index % 4
+                    readonly property bool total: row[2] === ""
+                    readonly property real value: col ? ledger.amount(col - 1, row) : 0
+                    width: col === 0 ? daily.width - 3 * 70 - 30 : 70
+                    horizontalAlignment: col === 0 ? Text.AlignLeft : Text.AlignRight
+                    elide: Text.ElideRight
+                    text: col === 0 ? (total ? row[0] : "   " + row[0]) : ledger.short(value)
+                    color: !total ? "#c8ccd6"
+                           : row[1] === "earn" ? "#7fd1b9" : row[1] === "spend" ? "#ff9a7a" : value >= 0 ? "#ffd56b" : "#ff8a7a"
+                    font { pixelSize: 12; weight: total ? Font.Black : Font.Normal }
+                }
+            }
+        }
+        Text {
+            width: daily.width
+            wrapMode: Text.WordWrap
+            readonly property var free: Progress.ledger(board.p, 0, Date.now()).free
+            text: "Counted since " + ((board.p.ledger || {}).since || "today")
+                  + (Progress.ledgerSum(free) ? "  ·  free packs opened: " + Progress.ledgerSum(free) : "")
+            color: "#7a8090"
+            font.pixelSize: 11
+        }
     }
 
     // ---- wanted posters ----------------------------------------------------------------

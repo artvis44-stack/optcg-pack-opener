@@ -271,7 +271,7 @@ Item {
 
     function payForPack() {
         if (offTheRecord || packPaid) return true;
-        var how = prog(p => Progress.pay(p, packCost, true));
+        var how = prog(p => Progress.pay(p, packCost, true, "packs"));
         if (!how) {
             toast("Not enough berries: a pack is " + Progress.format(packCost) + ". Focus, keep your streak, sell duplicates or wait for a free pack.");
             return false;
@@ -285,7 +285,7 @@ Item {
         if (offTheRecord || caseState.boxPaid) return true;
         if ((caseState.prepaid || 0) > 0) {
             caseState.prepaid--;
-        } else if (!prog(p => Progress.pay(p, boxCost, false))) {
+        } else if (!prog(p => Progress.pay(p, boxCost, false, "boxes"))) {
             toast("Not enough berries: a box is " + Progress.format(boxCost) + " (you have " + Progress.format(progress.berries) + ").");
             return false;
         }
@@ -298,7 +298,7 @@ Item {
     function buyCase() {
         if (offTheRecord || !inBoxScreen || boxesLeftToBuy <= 0) return;
         var n = boxesLeftToBuy, cost = caseCost;
-        if (!prog(p => Progress.pay(p, cost, false))) {
+        if (!prog(p => Progress.pay(p, cost, false, "cases"))) {
             toast("Not enough berries: the rest of this case (" + n + " boxes) is " + Progress.format(cost) + ".");
             return;
         }
@@ -350,7 +350,7 @@ Item {
         var key = cardKey(c);
         var ok = prog(p => {
             if (deal && Progress.shopToday(p, Date.now()).bought[key]) return "sold";
-            if (!Progress.spend(p, price)) return "short";
+            if (!Progress.spend(p, price, "shop")) return "short";
             if (deal) p.shop.bought[key] = true;
             return "ok";
         });
@@ -423,7 +423,7 @@ Item {
         delete col.graded[id];
         writeCollection(col);
         prog(p => {
-            Progress.earn(p, v);
+            Progress.earn(p, v, "sell");
             return Progress.record(p, { type: "sell", count: 1, value: v });
         });
         refreshValue();
@@ -533,7 +533,7 @@ Item {
         if (!n) return 0;
         writeCollection(col);
         prog(p => {
-            Progress.earn(p, total);
+            Progress.earn(p, total, "sell");
             return Progress.record(p, { type: "sell", count: n, value: total });
         });
         refreshValue();

@@ -377,7 +377,8 @@ function fresh(now) {
         sealed: {},                    // id -> { set, setName, kind, boxes, paid, rate, at }
         prepaidBoxes: {},              // set -> boxes opened from sealed products, waiting in box mode
         shop: { day: "", bought: {} }, // today's deals bought (card key -> true)
-        cosmetics: { owned: {}, backdrop: "default", slab: "classic" }
+        cosmetics: { owned: {}, backdrop: "default", slab: "classic" },
+        ledger: { since: dayOf(now), total: {}, days: {} }   // see ledgerAdd
     };
 }
 
@@ -479,8 +480,7 @@ function accrue(p, now, sets) {
         p.streak.day = today;
         var reward = STREAK_REWARD[Math.min(p.streak.count, STREAK_REWARD.length) - 1];
         var bonusPack = p.streak.count % 7 === 0;
-        p.berries += reward;
-        p.stats.earned += reward;
+        earn(p, reward, "streak");
         if (bonusPack) p.freePacks++;
         events.push({ kind: "streak", count: p.streak.count, reward: reward, freePack: bonusPack });
     }
@@ -497,28 +497,76 @@ function nextFreePackIn(p, now) {
 }
 
 // Spend on a pack/box: a free pack first (packs only), then berries.
-// Returns "free", "paid" or "" (can't afford).
-function pay(p, price, freePackOk) {
+// what: for the ledger ("packs", "boxes", "cases"). Returns "free", "paid" or "" (can't afford).
+function pay(p, price, freePackOk, what) {
     if (freePackOk && p.freePacks > 0) {
         p.freePacks--;
         if (p.freePacks === freePackMax(p) - 1) p.freePackClock = Date.now();   // start counting again
+        ledgerAdd(p, "free", what || "packs", 1);
         return "free";
     }
-    return spend(p, price) ? "paid" : "";
+    return spend(p, price, what || "packs") ? "paid" : "";
 }
 
-// pay berries for anything; false if you can't afford it
-function spend(p, amount) {
+// pay berries for anything (what: a SPENDING key, for the ledger); false if you can't afford it
+function spend(p, amount, what) {
     amount = Math.round(amount);
     if (p.berries < amount) return false;
     p.berries -= amount;
     p.stats.spent += amount;
+    ledgerAdd(p, "spend", what || "other", amount);
     return true;
 }
 
-function earn(p, amount) {
+// get berries (source: an EARNINGS key, for the ledger)
+function earn(p, amount, source) {
+    amount = Math.round(amount);
     p.berries += amount;
     p.stats.earned += amount;
+    ledgerAdd(p, "earn", source || "other", amount);
+}
+
+// ---- the ledger: where berries come from and go, per day and in total -------------
+// (the wanted board shows it; it's how the economy gets balanced)
+
+var EARNINGS = [["income", "Passive income"], ["sell", "Selling cards"], ["posters", "Wanted posters"],
+                ["setPosters", "Set wanted posters"], ["bounties", "Daily bounties"], ["streak", "Daily streak"],
+                ["focus", "Focus sessions"], ["sealed", "Selling sealed"], ["other", "Other"]];
+var SPENDING = [["packs", "Packs"], ["boxes", "Boxes"], ["cases", "Cases"], ["shop", "Card shop"], ["grading", "Grading"],
+                ["sealed", "Sealed products"], ["ship", "Ship"], ["crew", "Crew"], ["cosmetics", "Cosmetics"], ["other", "Other"]];
+var LEDGER_DAYS = 14;   // days kept day by day
+
+function ledgerAdd(p, side, key, amount) {
+    if (!amount) return;
+    if (!p.ledger) p.ledger = { since: dayOf(Date.now()), total: {}, days: {} };
+    var day = dayOf(Date.now()), l = p.ledger;
+    [l.total, l.days[day] || (l.days[day] = {})].forEach(function (t) {
+        if (!t[side]) t[side] = {};
+        t[side][key] = (t[side][key] || 0) + amount;
+    });
+    var days = Object.keys(l.days).sort();
+    while (days.length > LEDGER_DAYS) delete l.days[days.shift()];
+}
+
+// { earn: { key: ฿ }, spend: { key: ฿ }, free: { key: count } } over the last `days` days
+// (today = 1), or all of it (days 0)
+function ledger(p, days, now) {
+    var l = p.ledger || { total: {}, days: {} }, out = { earn: {}, spend: {}, free: {} };
+    var parts = [l.total];
+    if (days) {
+        parts = [];
+        for (var i = 0; i < days; i++) parts.push(l.days[dayOf(now - i * 86400 * 1000)] || {});
+    }
+    parts.forEach(function (t) {
+        ["earn", "spend", "free"].forEach(function (side) {
+            Object.keys(t[side] || {}).forEach(function (k) { out[side][k] = (out[side][k] || 0) + t[side][k]; });
+        });
+    });
+    return out;
+}
+
+function ledgerSum(m) {
+    return Object.keys(m).reduce(function (n, k) { return n + m[k]; }, 0);
 }
 
 // Something happened. ev:
@@ -600,7 +648,7 @@ function record(p, ev) {
         if (b.progress >= b.goal) {
             b.done = true;
             if (b.freePack) p.freePacks++;
-            else earn(p, b.reward);
+            else earn(p, b.reward, "bounties");
             done.push({ kind: "bounty", b: b });
         }
     });
@@ -609,7 +657,7 @@ function record(p, ev) {
     var check = function (x) {
         if (p.achievements[x.id] || !x.test(p)) return;
         p.achievements[x.id] = dayOf(Date.now());
-        if (x.reward) earn(p, x.reward);
+        if (x.reward) earn(p, x.reward, x.set ? "setPosters" : "posters");
         done.push({ kind: "achievement", a: x });
     };
     Object.keys(s.bySet).forEach(function (set) { setAchievements(set).forEach(check); });
@@ -647,7 +695,7 @@ function addIncome(p, minutes, now, device) {
     var amount = Math.min(incomePerMinute(p) * minutes, incomeDailyCap(p) - p.income.earned);
     if (amount <= 0) return [];
     p.income.earned += amount;
-    earn(p, amount);
+    earn(p, amount, "income");
     return record(p, { type: "income", amount: amount });
 }
 
@@ -673,7 +721,7 @@ function focusBerries(p) {
 function finishFocus(p) {
     stopFocus(p);
     p.freePacks++;
-    earn(p, focusBerries(p));
+    earn(p, focusBerries(p), "focus");
     return record(p, { type: "focus" });
 }
 
@@ -804,7 +852,7 @@ function freePackMax(p) {
 
 function upgradeShip(p) {
     var next = nextShip(p);
-    if (!next || !spend(p, next.price)) return false;
+    if (!next || !spend(p, next.price, "ship")) return false;
     p.ship.level++;
     return true;
 }
@@ -819,7 +867,7 @@ function crewCount(p) {
 
 function recruit(p, id) {
     var c = CREW.filter(function (x) { return x.id === id; })[0];
-    if (!c || hasCrew(p, id) || !spend(p, c.price)) return false;
+    if (!c || hasCrew(p, id) || !spend(p, c.price, "crew")) return false;
     p.crew[id] = dayOf(Date.now());
     return true;
 }
@@ -859,7 +907,7 @@ function slabValue(slab, market) {
 function sendToGrading(p, card, serviceId, value, now) {
     var g = GRADING.filter(function (x) { return x.id === serviceId; })[0];
     var fee = gradingFee(serviceId, value);
-    if (!g || !spend(p, fee)) return null;
+    if (!g || !spend(p, fee, "grading")) return null;
     var id = now.toString(36) + Math.floor(Math.random() * 1e6).toString(36);
     p.grading[id] = { card: card, service: g.id, fee: fee, grade: rollGrade(),
                       sentAt: now, readyAt: now + g.hours * 3600 * 1000 };
@@ -923,7 +971,7 @@ function bestSealedGain(p, now) {
 
 // age: 0 (the newest set) .. 1 (the oldest): older sets gain value faster
 function buySealed(p, set, setName, kind, boxes, price, age) {
-    if (!spend(p, price)) return null;
+    if (!spend(p, price, "sealed")) return null;
     var now = Date.now(), id = now.toString(36) + Math.floor(Math.random() * 1e6).toString(36);
     p.sealed[id] = { set: set, setName: setName, kind: kind, boxes: boxes, paid: price, at: now,
                      rate: SEALED_RATE[0] + (SEALED_RATE[1] - SEALED_RATE[0]) * Math.max(0, Math.min(1, age)) };
@@ -935,7 +983,7 @@ function sellSealed(p, id) {
     if (!it) return 0;
     var v = sealedValue(it, Date.now());
     delete p.sealed[id];
-    earn(p, v);
+    earn(p, v, "sealed");
     return v;
 }
 
@@ -972,7 +1020,7 @@ function equipCosmetic(p, kind, id) {
     var item = cosmetic(kind === "slab" ? SLABS : BACKDROPS, id);
     if (item.id !== id) return false;
     if (!ownsCosmetic(p, id)) {
-        if (!spend(p, item.price)) return false;
+        if (!spend(p, item.price, "cosmetics")) return false;
         p.cosmetics.owned[id] = dayOf(Date.now());
     }
     p.cosmetics[kind] = id;
