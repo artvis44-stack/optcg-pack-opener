@@ -100,6 +100,10 @@ function mergeCollection(b, l, r) {
     });
     out.cards = cards;
     out.packs = Math.max(0, (r.packs || 0) + (l.packs || 0) - (b.packs || 0));
+    // graded slabs: by id; one sold or added on either side stays that way
+    var graded = mergeTree(b.graded || {}, l.graded || {}, r.graded || {}, "graded");
+    if (graded && Object.keys(graded).length) out.graded = graded;
+    else delete out.graded;
     return out;
 }
 
@@ -143,6 +147,14 @@ function mergeIncome(b, l, r) {
     return Object.assign({}, later, { earned: Math.max(0, (l.earned || 0) + (r.earned || 0) - base) });
 }
 
+// today's card shop purchases: the later day; the same day, both sides' purchases
+function mergeShop(b, l, r) {
+    if (!isObject(l)) return r;
+    if (!isObject(r)) return l;
+    if (l.day !== r.day) return l.day > r.day ? l : r;
+    return { day: l.day, bought: Object.assign({}, r.bought || {}, l.bought || {}) };
+}
+
 function mergeBounties(b, l, r) {
     if (!isObject(l)) return r;
     if (!isObject(r)) return l;
@@ -159,11 +171,20 @@ function mergeBounties(b, l, r) {
 var PROGRESS_RULES = [
     ["version", max], ["freePackClock", max],
     ["streak", mergeStreak], ["income", mergeIncome], ["focus", pickLater("startedAt")], ["bounties", mergeBounties],
-    ["achievements.*", earliest],
+    ["achievements.*", earliest], ["graded.*", slab], ["grading.*", slab], ["sealed.*", slab],
     ["stats.bestCompletion", max], ["stats.backfilled", max], ["stats.value", preferLocal],
     ["stats.bySet.*.completion", max], ["stats.bySet.*.groups.*", max],
-    ["stats.bySet.*.present", preferLocal], ["stats.bySet.*.value", preferLocal]
+    ["stats.bySet.*.present", preferLocal], ["stats.bySet.*.value", preferLocal],
+    // the Port
+    ["ship.level", max], ["crew.*", earliest], ["shop", mergeShop],
+    ["cosmetics.owned.*", earliest], ["cosmetics.backdrop", preferLocal], ["cosmetics.slab", preferLocal]
 ];
+
+// a graded slab is one thing: either side's copy, not a sum of its numbers
+function slab(b, l, r) {
+    if (l === undefined || r === undefined) return same(l, b) ? r : same(r, b) ? l : (l || r);
+    return l;
+}
 
 function ruleFor(path) {
     for (var i = 0; i < PROGRESS_RULES.length; i++) {

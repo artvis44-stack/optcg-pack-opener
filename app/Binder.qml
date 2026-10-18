@@ -300,12 +300,53 @@ Item {
             visible: !!parent.entry && !binder.stage.offTheRecord
             text: !binder.inspected ? ""
                   : (parent.entry && parent.entry.count === 1 ? "Sell your only copy" : "Sell one")
-                    + " (+" + Progress.format(binder.stage.cardValue(binder.inspected)) + ")"
+                    + " (+" + Progress.format(binder.stage.sellPrice(binder.inspected)) + ")"
             accent: parent.entry && parent.entry.count === 1 ? "#ff8a7a" : "#7fd1b9"
             onClicked: {
                 var c = binder.inspected;
                 binder.stage.sell([{ card: c, count: 1 }]);
                 if (!binder.stage.collection.cards[binder.stage.cardKey(c)]) binder.inspected = null;
+            }
+        }
+        PillButton {   // the card shop: order any card, at a markup
+            visible: !!binder.inspected && !binder.stage.offTheRecord
+            readonly property int price: binder.inspected ? Math.round(binder.stage.cardValue(binder.inspected) * Progress.ORDER_MARKUP) : 0
+            text: "Buy one (" + Progress.format(price) + ")"
+            accent: "#ffd56b"
+            enabledLook: binder.stage.progress.berries >= price
+            onClicked: binder.stage.buyCard(binder.inspected, price, false)
+        }
+    }
+
+    Row {   // send a copy for grading (it comes back in a slab: see the Port, P)
+        visible: !!binder.inspected && !binder.stage.offTheRecord
+                 && !!binder.stage.collection.cards[binder.stage.cardKey(binder.inspected)]
+        z: 1
+        anchors.horizontalCenter: parent.horizontalCenter
+        anchors.bottom: parent.bottom
+        anchors.bottomMargin: 92
+        spacing: 10
+        Text {
+            anchors.verticalCenter: parent.verticalCenter
+            text: "Grade a copy:"
+            color: "#c8ccd6"
+            font { pixelSize: 14; weight: Font.Bold }
+        }
+        Repeater {
+            model: Progress.GRADING
+            PillButton {
+                required property var modelData
+                readonly property int fee: binder.inspected ? Progress.gradingFee(modelData.id, binder.stage.cardValue(binder.inspected)) : 0
+                text: modelData.name + " · " + (modelData.hours < 1 ? modelData.hours * 60 + "m" : modelData.hours + "h")
+                      + " · " + Progress.format(fee)
+                fontSize: 12
+                accent: "#c8a0ff"
+                enabledLook: binder.stage.progress.berries >= fee
+                onClicked: {
+                    var c = binder.inspected;
+                    binder.stage.gradeCard(c, modelData.id);
+                    if (!binder.stage.collection.cards[binder.stage.cardKey(c)]) binder.inspected = null;
+                }
             }
         }
     }

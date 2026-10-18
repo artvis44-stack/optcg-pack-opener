@@ -250,7 +250,7 @@ Item {
             else if (e.kind === "bounty")
                 host.notify("Bounty complete", Progress.bountyText(e.b) + "  ·  +" + Progress.bountyRewardText(e.b));
             else if (e.kind === "focusDone")
-                host.notify("Focus session complete", "+1 free pack and +" + Progress.format(Progress.FOCUS_BERRIES));
+                host.notify("Focus session complete", "+1 free pack and +" + Progress.format(Progress.focusBerries(show.progress)));
             else if (e.kind === "focusLost")
                 host.notify("Focus session lost", "You were away for " + Progress.FOCUS_IDLE_LIMIT + " minutes.");
         });
@@ -384,9 +384,10 @@ Item {
                 width: show.cardWidth
                 height: show.labelH
                 radius: 2 * show.u
+                readonly property var style: Progress.slabStyle(show.progress)   // a cosmetic (the Port)
                 gradient: Gradient {
-                    GradientStop { position: 0.0; color: "#fbf8f1" }
-                    GradientStop { position: 1.0; color: "#e9e3d6" }
+                    GradientStop { position: 0.0; color: label.style.top }
+                    GradientStop { position: 1.0; color: label.style.bottom }
                 }
                 Rectangle {   // rarity stripe
                     width: 1.6 * show.u
@@ -403,23 +404,24 @@ Item {
                         width: parent.width
                         elide: Text.ElideRight
                         text: show.card ? Tiers.displayName(show.card) : ""
-                        color: "#14171f"
+                        color: label.style.text
                         font { pixelSize: 7.4 * show.u; weight: Font.Black }
                     }
                     Text {
                         width: parent.width
                         elide: Text.ElideRight
                         text: show.setId + ((show.sets[show.setId] || {}).name ? "  ·  " + show.sets[show.setId].name : "")
-                        color: "#4c5260"
+                        color: label.style.sub
                         font { pixelSize: 4.4 * show.u; weight: Font.Bold }
                     }
                     Text {
                         text: show.card ? show.card.id : ""
-                        color: "#4c5260"
+                        color: label.style.sub
                         font.pixelSize: 4.2 * show.u
                     }
                     Text {
-                        text: show.owned && show.owned.first
+                        text: show.card && show.card.grade ? Progress.GRADE_NAME[show.card.grade] + "  ·  " + (show.shortTier[show.card.tier] || show.card.tier)
+                              : show.owned && show.owned.first
                               ? "PULLED  " + new Date(show.owned.first).toLocaleDateString(Qt.locale("en_GB"), "d MMM yyyy").toUpperCase()
                               : "SHOWCASE"
                         color: "#8a8f9b"
@@ -442,13 +444,13 @@ Item {
                         spacing: 0
                         Text {
                             anchors.horizontalCenter: parent.horizontalCenter
-                            text: show.card ? show.shortTier[show.card.tier] || show.card.tier : ""
-                            color: show.tier.color
+                            text: !show.card ? "" : show.card.grade ? String(show.card.grade) : show.shortTier[show.card.tier] || show.card.tier
+                            color: show.card && show.card.grade === 10 ? "#ffd700" : show.tier.color
                             font { pixelSize: (text.length > 4 ? 6.2 : 9.5) * show.u; weight: Font.Black }
                         }
                         Text {
                             anchors.horizontalCenter: parent.horizontalCenter
-                            text: "RARITY"
+                            text: show.card && show.card.grade ? "GRADE" : "RARITY"
                             color: "#9aa0ad"
                             font { pixelSize: 3 * show.u; letterSpacing: 0.4 * show.u; weight: Font.Bold }
                         }

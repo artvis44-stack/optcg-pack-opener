@@ -20,6 +20,7 @@ import shutil
 import subprocess
 import sys
 import tempfile
+import urllib.parse
 import urllib.request
 from concurrent.futures import ThreadPoolExecutor
 
@@ -274,8 +275,58 @@ def fetch_set(set_id):
     print("done")
 
 
+def official_image(page):
+    """The product picture on an official product page: an <img> or og:image
+    whose name mentions the page's product (e.g. playmat005), else og:image."""
+    html = fetch(page).decode("utf-8", "replace")
+    product = os.path.splitext(os.path.basename(page))[0]
+    urls = re.findall(r'<img[^>]+src="([^"]+)"', html) + \
+        re.findall(r'<meta[^>]+property="og:image"[^>]+content="([^"]+)"', html)
+    urls = [urllib.parse.urljoin(page, u) for u in urls]
+    named = [u for u in urls if product in u and re.search(r"\.(jpe?g|png|webp)(\?|$)", u)]
+    og = re.findall(r'<meta[^>]+property="og:image"[^>]+content="([^"]+)"', html)
+    if named:
+        return named[0]
+    if og:
+        return urllib.parse.urljoin(page, og[0])
+    raise ValueError("no product image on " + page)
+
+
+def fetch_playmat(mat_id, tcg, page):
+    """A playmat's picture (a cosmetic backdrop) -> playmats/<id>.img; tcg: TCGplayer
+    product id ("" if none), page: official product page ("" if none)"""
+    if not re.fullmatch(r"[a-z0-9-]{1,40}", mat_id):
+        sys.exit("bad playmat id")
+    folder = os.path.join(ROOT, "playmats")
+    os.makedirs(folder, exist_ok=True)
+    dest = os.path.join(folder, mat_id + ".img")   # jpg or webp: Qt tells by the content
+    if os.path.exists(dest) and os.path.getsize(dest) > 0:
+        print("have", dest)
+        return
+    sources = []
+    if tcg:
+        sources.append(TCGPLAYER_IMG.format(int(tcg)))
+    if page.startswith("https://en.onepiece-cardgame.com/"):
+        sources.append(page)
+    for src in sources:
+        try:
+            data = fetch(official_image(src) if src == page else src)
+        except Exception as e:
+            print(f"{mat_id}: {src} failed ({e})", flush=True)
+            continue
+        with open(dest + ".part", "wb") as f:
+            f.write(data)
+        os.replace(dest + ".part", dest)
+        print("playmat ->", dest)
+        return
+    print(f"{mat_id}: no picture found")
+
+
 def main():
     arg = sys.argv[1] if len(sys.argv) > 1 else "OP-17"
+    if arg == "--playmat":   # --playmat <id> <tcgplayer id or ""> <official page or "">
+        fetch_playmat(sys.argv[2], sys.argv[3] if len(sys.argv) > 3 else "", sys.argv[4] if len(sys.argv) > 4 else "")
+        return
     if arg == "list":
         for set_id, info in SETS.items():
             have = os.path.exists(os.path.join(ROOT, set_id, "cards.json"))

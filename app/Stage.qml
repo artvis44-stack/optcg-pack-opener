@@ -54,7 +54,7 @@ Item {
                                        // | boxSealed | boxGrid | boxSummary | sets | downloading
                                        // | showcaseView (opened by double-clicking the desktop showcase)
                                        // | board (the wanted board: bounties and achievements)
-                                       // | sync (the sync account screen)
+                                       // | sync (the sync account screen) | port (ship, crew, shop, grading, sealed, cosmetics)
     property string boardReturn: "pack"
     property string mode: host.env("OPTCG_MODE") === "box" ? "box" : "pack"
     readonly property bool inBoxScreen: phase === "boxSealed" || phase === "boxGrid" || phase === "boxSummary"
@@ -171,7 +171,7 @@ Item {
 
     // what the collection is worth feeds the passive income and the value posters
     function refreshValue() {
-        prog(p => Progress.setValue(p, Progress.collectionValue(host, dataDir, collection.cards)));
+        prog(p => Progress.setValue(p, Progress.collectionValue(host, dataDir, collection.cards, collection.graded || {})));
     }
 
     function reloadProgress() {
@@ -195,7 +195,9 @@ Item {
         }
         currentCelebration = celebrations[0];
         celebrations = celebrations.slice(1);
-        sfx(currentCelebration.kind === "achievement" ? "poster" : "chime");
+        var ck = currentCelebration;
+        sfx(ck.kind === "achievement" ? "poster" : ck.kind === "graded" && ck.slab.grade === 10 ? "legendary"
+            : ck.kind === "graded" && ck.slab.grade >= 9 ? "epic" : "chime");
         celebrationTimer.restart();
     }
     Timer {
@@ -210,6 +212,7 @@ Item {
         onTriggered: {
             stage.reloadProgress();
             stage.reloadCollection();
+            stage.collectGrading();
         }
     }
 
@@ -260,11 +263,11 @@ Item {
         host.writeText(collectionPath, collectionText);
     }
 
-    readonly property int packCost: Progress.packPrice(cfg.family)
-    readonly property int boxCost: Progress.boxPrice(cfg.family, cfg.packsPerBox)
+    readonly property int packCost: Progress.packPrice(cfg.family, progress)
+    readonly property int boxCost: Progress.boxPrice(cfg.family, cfg.packsPerBox, progress)
     readonly property int boxesLeftToBuy: !caseState ? 0
         : cfg.boxes - boxIndex - (caseState.boxPaid ? 1 : 0) - (caseState.prepaid || 0)
-    readonly property int caseCost: Progress.casePrice(cfg.family, cfg.packsPerBox, Math.max(0, boxesLeftToBuy))
+    readonly property int caseCost: Progress.casePrice(cfg.family, cfg.packsPerBox, Math.max(0, boxesLeftToBuy), progress)
 
     function payForPack() {
         if (offTheRecord || packPaid) return true;
@@ -334,6 +337,155 @@ Item {
         return Progress.cardValue(c, markets[c.set || setId]);
     }
 
+    // what selling it gets you (Brook adds 10%)
+    function sellPrice(c) {
+        return Math.round(cardValue(c) * Progress.sellBonus(progress));
+    }
+
+    // ---- the Port (PortView.qml): buying, grading, sealed products, ship, crew, cosmetics ----
+
+    // buy a card: price in ฿; deal: one of today's deals (bought once a day)
+    function buyCard(c, price, deal) {
+        if (offTheRecord) return false;
+        var key = cardKey(c);
+        var ok = prog(p => {
+            if (deal && Progress.shopToday(p, Date.now()).bought[key]) return "sold";
+            if (!Progress.spend(p, price)) return "short";
+            if (deal) p.shop.bought[key] = true;
+            return "ok";
+        });
+        if (ok !== "ok") {
+            toast(ok === "sold" ? "You already bought that deal today." : "Not enough berries: that's " + Progress.format(price) + ".");
+            return false;
+        }
+        var col = readCollection(), e = col.cards[key];
+        if (e) e.count++;
+        else col.cards[key] = { id: c.id, name: c.name, tier: c.tier, count: 1, first: new Date().toISOString() };
+        writeCollection(col);
+        prog(p => Progress.record(p, { type: "bought", count: 1, value: price }));
+        refreshValue();
+        sfx("coin");
+        toast("Bought " + Tiers.displayName(c) + " for " + Progress.format(price));
+        return true;
+    }
+
+    // send one copy off for grading
+    function gradeCard(c, service) {
+        if (offTheRecord) return false;
+        var key = cardKey(c), col = readCollection(), e = col.cards[key];
+        if (!e) return false;
+        var card = { id: c.id, name: c.name, tier: c.tier, set: c.set || setId, image: c.image, key: key };
+        var id = prog(p => Progress.sendToGrading(p, card, service, cardValue(c), Date.now()));
+        if (!id) {
+            toast("Not enough berries: grading it costs " + Progress.format(Progress.gradingFee(service, cardValue(c))) + ".");
+            return false;
+        }
+        e.count--;
+        if (e.count <= 0) delete col.cards[key];
+        writeCollection(col);
+        refreshValue();
+        sfx("coin");
+        var g = Progress.GRADING.filter(x => x.id === service)[0];
+        toast("Sent " + Tiers.displayName(c) + " for grading: back in " + (g.hours < 1 ? g.hours * 60 + " minutes" : g.hours + " hours"));
+        return true;
+    }
+
+    // graded cards that are back go into the collection, each celebrated
+    function collectGrading() {
+        if (offTheRecord || !Progress.readyOrders(progress, Date.now()).length) return;
+        var slabs = [];
+        prog(p => {
+            Progress.readyOrders(p, Date.now()).forEach(id => {
+                var slab = Progress.collectOrder(p, id);
+                slab.slabId = id;
+                slabs.push(slab);
+            });
+            return [];
+        });
+        if (!slabs.length) return;
+        var col = readCollection();
+        col.graded = col.graded || {};
+        slabs.forEach(s => col.graded[s.slabId] = s);
+        writeCollection(col);
+        slabs.forEach(s => prog(p => Progress.record(p, { type: "graded", grade: s.grade })));
+        celebrate(slabs.map(s => ({ kind: "graded", slab: s })));
+        refreshValue();
+    }
+
+    function slabValue(s) {
+        return Math.round(Progress.slabValue(s, markets[s.set]) * Progress.sellBonus(progress));
+    }
+
+    function sellSlab(id) {
+        var col = readCollection(), s = (col.graded || {})[id];
+        if (!s || offTheRecord) return;
+        var v = slabValue(s);
+        delete col.graded[id];
+        writeCollection(col);
+        prog(p => {
+            Progress.earn(p, v);
+            return Progress.record(p, { type: "sell", count: 1, value: v });
+        });
+        refreshValue();
+        sfx("coin");
+        toast("Sold the " + s.grade + " " + Tiers.displayName(s) + " for " + Progress.format(v));
+    }
+
+    // sealed products: kind "box" | "case"; older sets gain value faster
+    function buySealed(set, kind) {
+        if (offTheRecord) return;
+        var info = sets[set] || {}, c = Tiers.setConfig(info), ids = Object.keys(sets);
+        var boxes = kind === "case" ? c.boxes : 1;
+        var price = kind === "case" ? Progress.casePrice(c.family, c.packsPerBox, c.boxes, progress)
+                                    : Progress.boxPrice(c.family, c.packsPerBox, progress);
+        var age = ids.length > 1 ? (ids.length - 1 - ids.indexOf(set)) / (ids.length - 1) : 0;
+        if (!prog(p => Progress.buySealed(p, set, info.name || set, kind, boxes, price, age))) {
+            toast("Not enough berries: that's " + Progress.format(price) + ".");
+            return;
+        }
+        refreshValue();
+        sfx("coin");
+        toast("Bought a sealed " + set + " " + kind + " for " + Progress.format(price));
+    }
+
+    function sellSealed(id) {
+        var v = prog(p => Progress.sellSealed(p, id));
+        if (!v) return;
+        refreshValue();
+        sfx("coin");
+        toast("Sold it for " + Progress.format(v));
+    }
+
+    // open it: its boxes wait in that set's box mode
+    function openSealed(id) {
+        var it = prog(p => Progress.openSealed(p, id));
+        if (!it) return;
+        refreshValue();
+        sfx("box");
+        mode = "box";
+        if (it.set === setId && db) {
+            caseState = null;
+            startBox();
+        } else {
+            db = null;
+            loadSet(it.set);
+        }
+    }
+
+    // boxes from opened sealed products go to this set's case as prepaid
+    function claimPrepaid() {
+        if (offTheRecord || !caseState || !(progress.prepaidBoxes || {})[setId]) return;
+        var n = 0;
+        prog(p => {
+            n = p.prepaidBoxes[setId] || 0;
+            p.prepaidBoxes[setId] = 0;
+            return [];
+        });
+        if (!n) return;
+        caseState.prepaid = (caseState.prepaid || 0) + n;
+        saveCase();
+    }
+
     // market prices for the current set, cached per day in market/<set>.json
     function setMarket(id, prices) {
         var m = Object.assign({}, markets);
@@ -373,7 +525,7 @@ Item {
             var e = col.cards[cardKey(it.card)];
             if (!e) return;
             var k = Math.min(it.count, e.count);
-            total += k * cardValue(it.card);
+            total += k * sellPrice(it.card);
             n += k;
             e.count -= k;
             if (e.count <= 0) delete col.cards[cardKey(it.card)];
@@ -458,6 +610,19 @@ Item {
         }
     }
 
+    function togglePort() {
+        if (phase === "port") {
+            phase = portReturn;
+            stage.forceActiveFocus();
+        } else if (phase === "error" || (phase === "pack" && !cardsIn) || phase === "summary" || inBoxScreen || phase === "board") {
+            reloadProgress();
+            collectGrading();
+            portReturn = phase === "board" ? boardReturn : phase;
+            phase = "port";
+        }
+    }
+    property string portReturn: "pack"
+
     function toggleSync() {
         if (phase === "sync") {
             phase = syncReturn;
@@ -517,12 +682,12 @@ Item {
             opened: [],
             boxPaid: false,
             boxRecorded: false,
-            prepaid: 0,
+            prepaid: caseState ? caseState.prepaid || 0 : 0,   // boxes from a sealed case carry over
             topperTaken: false,
             toppers: [],
             boxes: []
         };
-        var dealt = Tiers.makeCase(db.cards, setInfo);
+        var dealt = Tiers.makeCase(db.cards, setInfo, Progress.packOptions(progress));
         caseState.boxes = dealt.boxes.map(box => box.map(p => p.map(c => cardKey(c))));
         caseState.toppers = dealt.toppers.map(c => c ? cardKey(c) : null);
     }
@@ -547,6 +712,7 @@ Item {
             caseState.boxRecorded = false;
             if (caseState.box >= cfg.boxes) newCase();
         }
+        claimPrepaid();
         boxIndex = caseState.box;
         var packs = caseState.boxes[boxIndex].map(p => p.map(k => cardByKey[k]));
         if (packs.some(p => p.some(c => !c))) {   // card data changed under the case
@@ -608,7 +774,7 @@ Item {
     function newPack() {
         var leaders = db.cards.filter(c => c.tier === "L");
         packArt = leaders.length ? "file://" + leaders[Math.floor(Math.random() * leaders.length)].image : "";
-        pack = Tiers.makePack(db.cards, setInfo, forceHit);
+        pack = Tiers.makePack(db.cards, setInfo, forceHit, Progress.packOptions(progress));
         packPaid = false;
         revealed = 0;
         cardsIn = false;
@@ -751,6 +917,7 @@ Item {
         var path = dataDir + "/showcase.json", s = {};
         try { s = JSON.parse(host.readText(path) || "{}"); } catch (e) {}
         s.card = { id: c.id, name: c.name, tier: c.tier, type: c.type, image: c.image, set: c.set || setId };
+        if (c.grade) s.card.grade = c.grade;   // a graded slab: its grade goes on the label
         host.writeText(path, JSON.stringify(s));
         host.startShowcase();
         toast("Showing " + Tiers.displayName(c) + " on your desktop  ·  drag to move, scroll to resize, right-click to remove");
@@ -832,6 +999,7 @@ Item {
             else if (phase === "sets") toggleSets();
             else if (phase === "board") toggleBoard();
             else if (phase === "sync") toggleSync();
+            else if (phase === "port") portView.back();
             else if (inBoxScreen && boxView.inspected) boxView.inspected = null;
             else if (mode === "box" && phase === "pack" && !cardsIn) backToBox();
             else if (inspectIndex >= 0) inspectIndex = -1;
@@ -844,11 +1012,13 @@ Item {
             if (phase === "binder" && !binderView.allSets) binderView.ownedOnly = !binderView.ownedOnly;
             break;
         case Qt.Key_Left:
-            if (phase === "board") boardView.step(-1);
+            if (phase === "port") portView.step(-1);
+            else if (phase === "board") boardView.step(-1);
             else return;
             break;
         case Qt.Key_Right:
-            if (phase === "board") boardView.step(1);
+            if (phase === "port") portView.step(1);
+            else if (phase === "board") boardView.step(1);
             else advance();
             break;
         case Qt.Key_Space:
@@ -878,6 +1048,9 @@ Item {
         case Qt.Key_M:
             toggleMute();
             break;
+        case Qt.Key_P:
+            togglePort();
+            break;
         case Qt.Key_C:
             buyCase();
             break;
@@ -895,10 +1068,24 @@ Item {
 
     // ---- backdrop -------------------------------------------------------
 
+    // the backdrop is a cosmetic (the Port); playmats are downloaded the first time they're needed
+    readonly property var backdrop: Progress.backdrop(progress)
+    property int playmatVersion: 0          // bumped when a playmat picture arrives
+    property var playmatTried: ({})
+    function playmatUrl(item) {
+        return item && item.playmat ? "file://" + cacheRoot + "/playmats/" + item.id + ".img?v=" + playmatVersion : "";
+    }
+    function fetchPlaymat(item) {
+        if (!item || !item.playmat || playmatTried[item.id]) return;
+        playmatTried[item.id] = true;
+        host.run([python, "-I", "-u", fetchScript, "--playmat", item.id, String(item.playmat.tcg || ""), item.playmat.page || ""],
+                 null, code => playmatVersion++);
+    }
     Rectangle {
         anchors.fill: parent
-        color: "#05070d"
+        color: stage.backdrop.base
         opacity: 0.78
+        Behavior on color { ColorAnimation { duration: 400 } }
     }
     Rectangle {
         anchors.centerIn: parent
@@ -907,10 +1094,27 @@ Item {
         radius: width / 2
         gradient: Gradient {
             GradientStop { position: 0.0; color: "#00000000" }
-            GradientStop { position: 0.5; color: "#18324a80" }
+            GradientStop { position: 0.5; color: stage.backdrop.glow }
             GradientStop { position: 1.0; color: "#00000000" }
         }
         opacity: 0.6
+    }
+    // a playmat backdrop: the picture, darkened so the cards stay readable
+    Image {
+        id: playmatBackdrop
+        anchors.fill: parent
+        visible: !!stage.backdrop.playmat && status === Image.Ready
+        source: stage.playmatUrl(stage.backdrop)
+        fillMode: Image.PreserveAspectCrop
+        asynchronous: true
+        cache: false
+        onStatusChanged: if (status === Image.Error) stage.fetchPlaymat(stage.backdrop)
+    }
+    Rectangle {
+        anchors.fill: parent
+        visible: playmatBackdrop.visible
+        color: "#05070d"
+        opacity: 0.5
     }
 
     MouseArea {
@@ -1168,11 +1372,13 @@ Item {
             loading: "Loading cards…",
             error: "S: choose another set   ·   Esc to close",
             pack: stage.mode === "box" ? "Click or Space to tear it open   ·   Esc: back to the box"
-                  : "Click or Space to tear it open   ·   X: open a box   ·   S: sets   ·   B: binder   ·   W: wanted board   ·   Esc to close",
+                  : "Click or Space to tear it open   ·   X: open a box   ·   S: sets   ·   B: binder   ·   W: wanted board   ·   P: port   ·   Esc to close",
             binder: "",
             boxSealed: "",
             showcaseView: "Move the mouse to tilt   ·   click, Space or Esc to close",
             board: "",
+            port: "",
+            sync: "",
             sets: "",
             downloading: "",
             boxGrid: "",
@@ -1291,7 +1497,7 @@ Item {
         Text {
             visible: !stage.offTheRecord
             anchors.baseline: parent.children[1].baseline
-            text: "bounty " + Progress.formatBounty(Progress.totalBounty(stage.progress)) + "   (W)"
+            text: "bounty " + Progress.formatBounty(Progress.totalBounty(stage.progress)) + "   (W)   ·   port (P)"
             color: "#c8ccd6"
             font { pixelSize: 14; weight: Font.Bold }
         }
@@ -1314,6 +1520,34 @@ Item {
                 onClicked: stage.toggleSync()
             }
         }
+        Text {
+            visible: !stage.offTheRecord
+            anchors.baseline: parent.children[1].baseline
+            text: stage.muted ? "sound off  (M)" : "sound on  (M)"
+            color: stage.muted ? "#7a8090" : "#c8ccd6"
+            font { pixelSize: 14; weight: Font.Bold }
+            MouseArea {
+                anchors.fill: parent
+                cursorShape: Qt.PointingHandCursor
+                onClicked: stage.toggleMute()
+            }
+        }
+    }
+
+    // Robin reads the sealed pack (a crew perk)
+    Text {
+        z: 150
+        visible: stage.phase === "pack" && !stage.cardsIn && !stage.offTheRecord && Progress.hasCrew(stage.progress, "robin") && stage.pack.length > 0
+        anchors.horizontalCenter: parent.horizontalCenter
+        y: stage.height * 0.875 + 30
+        readonly property int best: stage.pack.reduce((a, c) => Math.max(a, Tiers.tierOf(c).rank), 0)
+        text: "Robin: " + (stage.godPack ? "\"...every page of this one glows. I've never seen anything like it.\""
+                           : best >= 10 ? "\"This one holds a treasure. A real one.\""
+                           : best >= 6 ? "\"Something special is in here.\""
+                           : best >= 4 ? "\"There's a Super Rare or better in here.\""
+                           : "\"Nothing remarkable, I'm afraid.\"")
+        color: "#c8a0ff"
+        font { pixelSize: 15; italic: true; weight: Font.Bold }
     }
 
     // what the sealed pack costs
@@ -1419,12 +1653,22 @@ Item {
                       : c.kind === "bounty" ? "Bounty complete: " + Progress.bountyText(c.b) + "   +" + Progress.bountyRewardText(c.b)
                       : c.kind === "streak" ? "Day " + c.count + " streak   +" + Progress.format(c.reward) + (c.freePack ? "  and a free pack" : "")
                       : c.kind === "freePack" ? "A free pack is ready"
+                      : c.kind === "graded" ? "Grading is back: " + Tiers.displayName(c.slab) + "  ·  "
+                                              + c.slab.grade + " " + Progress.GRADE_NAME[c.slab.grade]
                       : c.kind === "backfill" ? "Back-dated " + c.count + " wanted posters for what you'd already done   +" + Progress.format(c.reward)
                       : ""
                 color: "#fff6e0"
                 font { pixelSize: 17; weight: Font.Bold }
             }
         }
+    }
+
+    PortView {
+        id: portView
+        anchors.fill: parent
+        z: 249
+        visible: stage.phase === "port"
+        stage: stage
     }
 
     SyncPanel {

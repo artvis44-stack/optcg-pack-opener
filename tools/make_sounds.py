@@ -117,15 +117,17 @@ def hz(name):
 
 # ---- the sounds ----------------------------------------------------------------------
 
-def tear():   # foil ripping open
-    s = noise(0.55, decay=5, cutoff_from=9000, cutoff_to=2500, crackle=0.03)
-    rip = noise(0.35, decay=9, cutoff_from=5000, crackle=0.08)
-    mix(s, rip, 0.05, 0.6)
+def tear():   # foil ripping open: a soft, papery rip, not a hiss
+    s = noise(0.5, decay=6, attack=0.01, cutoff_from=2500, cutoff_to=900, crackle=0.01)
+    mix(s, noise(0.3, decay=10, cutoff_from=1600, crackle=0.02), 0.06, 0.5)
+    mix(s, thump(110, 0.2, 18), 0, 0.35)
     return s
 
 
-def flip():   # a card sliding off the stack
-    return noise(0.16, decay=22, attack=0.02, cutoff_from=1500, cutoff_to=6000)
+def flip():   # a card sliding off the stack: short, low and quiet (it plays on every card)
+    s = noise(0.12, decay=30, attack=0.008, cutoff_from=1800, cutoff_to=700)
+    mix(s, tone(220, 0.08, 45, 0.002, (1.0, 0.25), glide_to=150), 0, 0.6)
+    return s
 
 
 def charge():   # suspense before a big card (as long as the charge, 1.1 s)
@@ -215,5 +217,6 @@ def box():   # opening a booster box: cardboard and a thud
 
 if __name__ == "__main__":
     for fn in (tear, flip, charge, rare, epic, legendary, god, coin, poster, chime, box):
+        rnd.seed(fn.__name__)   # each sound its own noise, so changing one leaves the others alone
         save(fn.__name__, fn())
         print("app/sounds/" + fn.__name__ + ".wav")
