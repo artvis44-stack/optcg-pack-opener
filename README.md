@@ -21,6 +21,7 @@ Boosters EB-01 to EB-03 and the Premium Boosters PRB-01 / PRB-02.
 | Tab | binder: this set / all sets (everything you own, with set filters and its value) |
 | D | show the card you're looking at on your desktop (inspected, just revealed, or hovered in the binder) |
 | W | the wanted board: today's bounties, achievements, your total bounty (← → switch between the overall board and each set's) |
+| Y | sync: sign in to your sync server (or create an account) to share your saves between computers |
 | C | box mode: buy the rest of the case (15% off) |
 | Esc / right-click | close |
 
@@ -79,8 +80,16 @@ Manga God Pack, PRB-02 an all-parallel or an all-Gold DON!! pack, EB-03 an SP Go
 the Demon Pack (the Five Elders). They're in boxes and cases too, replacing a random pack, and
 there are wanted posters for them
 
-All of it lives in `~/.local/share/optcg/progress.json` (per computer). The rules are in
+All of it lives in `~/.local/share/optcg/progress.json` (per computer, unless you sync them: see below). The rules are in
 `app/progress.js`. `OPTCG_SANDBOX=1` opens everything for free without saving anything.
+
+## Sync between computers
+
+Run the sync server on a VPS (`server/`, see [server/README.md](server/README.md)), then press Y in
+the pack opener to create an account or sign in. Your collection, berries, streak, wanted posters
+and box-mode cases stay the same on every computer signed in to it: the desktop companion syncs
+every few seconds, and changes made on two computers at once are merged (cards and berries add up)
+instead of overwriting each other. With two computers on at once, only one earns passive income.
 
 ## Desktop showcase
 

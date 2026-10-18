@@ -1,0 +1,36 @@
+# systemd unit for the sync server (see server/README.md)
+[Unit]
+Description=OPTCG pack opener sync server
+After=network.target
+
+[Service]
+User=optcg-sync
+Group=optcg-sync
+WorkingDirectory=/opt/optcg-sync
+Environment=OPTCG_SYNC_DB=/var/lib/optcg-sync/optcg-sync.db
+# Environment=OPTCG_SYNC_INVITE=change-me      # require an invite code for new accounts
+# Environment=OPTCG_SYNC_REGISTRATION=closed   # or no new accounts at all
+ExecStart=/opt/optcg-sync/venv/bin/uvicorn optcg_sync:app --host 127.0.0.1 --port 8787 --proxy-headers --forwarded-allow-ips 127.0.0.1 --no-server-header
+Restart=on-failure
+StateDirectory=optcg-sync
+StateDirectoryMode=0700
+UMask=0077
+
+# hardening
+NoNewPrivileges=yes
+PrivateTmp=yes
+PrivateDevices=yes
+ProtectSystem=strict
+ProtectHome=yes
+ReadWritePaths=/var/lib/optcg-sync
+ProtectKernelTunables=yes
+ProtectKernelModules=yes
+ProtectControlGroups=yes
+RestrictAddressFamilies=AF_INET AF_INET6 AF_UNIX
+RestrictNamespaces=yes
+LockPersonality=yes
+SystemCallArchitectures=native
+CapabilityBoundingSet=
+
+[Install]
+WantedBy=multi-user.target

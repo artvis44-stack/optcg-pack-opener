@@ -1,0 +1,9 @@
+# Caddy gets and renews the HTTPS certificate by itself. Point a DNS name at
+# the VPS, put it here, and Caddy forwards to the sync server on localhost.
+sync.example.com {
+	reverse_proxy 127.0.0.1:8787
+	header Strict-Transport-Security "max-age=31536000"
+	request_body {
+		max_size 6MB
+	}
+}

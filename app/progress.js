@@ -476,10 +476,18 @@ function incomeDailyCap(p) {
     return incomePerMinute(p) * INCOME_CAP_MINUTES;
 }
 
-// passive income for `minutes` active minutes (capped per day)
-function addIncome(p, minutes, now) {
+// passive income for `minutes` active minutes (capped per day). device: this
+// computer when syncing; with two computers on at once only one of them earns.
+var INCOME_LOCK_MS = 150 * 1000;
+
+function addIncome(p, minutes, now, device) {
     var today = dayOf(now);
     if (p.income.day !== today) p.income = { day: today, earned: 0 };
+    if (device && p.income.device && p.income.device !== device && now - (p.income.at || 0) < INCOME_LOCK_MS) return [];
+    if (device) {
+        p.income.device = device;
+        p.income.at = now;
+    }
     var amount = Math.min(incomePerMinute(p) * minutes, incomeDailyCap(p) - p.income.earned);
     if (amount <= 0) return [];
     p.income.earned += amount;
