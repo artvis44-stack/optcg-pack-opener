@@ -133,9 +133,10 @@ Item {
         if (text === collectionText || !card) return;
         collectionText = text;
         try {
-            var cards = JSON.parse(text || "{}").cards || {};
+            var col = JSON.parse(text || "{}"), cards = col.cards || {}, have = Object.assign({}, cards);
+            Object.keys(col.graded || {}).forEach(id => { var g = col.graded[id]; if (g.key) have[g.key] = true; });   // graded cards count too
             owned = cards[key] || null;
-            setOwned = Object.keys(cards).filter(k => k.indexOf(setId + ":") === 0).length;
+            setOwned = Object.keys(have).filter(k => k.indexOf(setId + ":") === 0).length;
         } catch (e) {}
     }
 
@@ -249,6 +250,12 @@ Item {
                             + (e.a.reward ? "  ·  +" + Progress.format(e.a.reward) : ""));
             else if (e.kind === "bounty")
                 host.notify("Bounty complete", Progress.bountyText(e.b) + "  ·  +" + Progress.bountyRewardText(e.b));
+            else if (e.kind === "weekly")
+                host.notify("Weekly bounty complete", Progress.weeklyText(e.b) + "  ·  +" + Progress.weeklyRewardText(e.b));
+            else if (e.kind === "season" && e.goal)
+                host.notify("Season goal reached", e.goal.text + "  ·  +" + e.goal.pts + " points");
+            else if (e.kind === "season")
+                host.notify("Season reward", e.text);
             else if (e.kind === "focusDone")
                 host.notify("Focus session complete", "+1 free pack and +" + Progress.format(Progress.focusBerries(show.progress)));
             else if (e.kind === "focusLost")

@@ -23,7 +23,8 @@ Boosters EB-01 to EB-03 and the Premium Boosters PRB-01 / PRB-02.
 | W | the wanted board: today's bounties, achievements, your total bounty (← → switch between the overall board and each set's) |
 | Y | sync: sign in to your sync server (or create an account) to share your saves between computers |
 | M | sound on / off (remembered) |
-| P | the Port: ship and crew, card shop, grading, sealed products, cosmetics (← → switch tabs) |
+| P | the Port: ship and crew, card shop, sealed products, cosmetics (← → switch tabs) |
+| G | the Vault: your graded slabs (filter by set and grade), cards out for grading, the set registry |
 | C | box mode: buy the rest of the case (15% off) |
 | Esc / right-click | close |
 
@@ -88,6 +89,21 @@ Manga God Pack, PRB-02 an all-parallel or an all-Gold DON!! pack, EB-03 an SP Go
 the Demon Pack (the Five Elders). They're in boxes and cases too, replacing a random pack, and
 there are wanted posters for them
 
+## Weeks and seasons (the Season tab on the wanted board, W)
+
+- **A weekly event**, a different one each week (Monday to Sunday): Featured Set (one set's hits 25%
+  likelier and its packs, boxes and cases 10% cheaper), Manga Madness (Manga / Super Alt Art /
+  Treasure Rare odds doubled), Merchant Week (deals at market price, 12 a day), Grading Rush (every
+  service at the Value price, back in half the time), Treasure Hunt (god packs ×3), Golden Week
+  (selling +15%), Crew Training (focus sessions give two free packs), Bounty Bonanza (bounty
+  rewards doubled).
+- **Three weekly bounties**: bigger goals than the daily ones, paid mostly in free packs.
+- **A season every month**, named after a story arc (October: Whole Cake, November: Wano...): twelve
+  goals worth points, and a reward track: free packs, berries, and at the top the arc's backdrop and
+  the title "Hero of ..." that can only be earned that month.
+- **The set registry** (the Port's Grading tab): your best grade of each card, weighted by rarity,
+  per set. Every card of a set graded 10 is a Gem Mint Master Set, the hardest wanted poster there is.
+
 ## The Port (P): where berries go
 
 - **Ship and crew.** Upgrade from a rowboat to the Going Merry and the Thousand Sunny (each about 5×
@@ -98,10 +114,12 @@ there are wanted posters for them
   daily bounty, Luffy (Gear 5) god packs twice as likely.
 - **Card shop.** Eight deals a day from your downloaded sets at market price + 10% (once each), and
   any card can be ordered from the binder (click it) at + 50%.
-- **Grading.** In the binder, click a card you own and pick a service (Value 24 h, Standard 6 h,
-  Express 30 min; the fee grows with the card's value). It comes back in a slab with a grade from
-  1 to 10 (8% get a 10): a 10 is worth 4× the card, a 9 1.6×, an 8 1.1×, lower less. Slabs show up
-  in the Port; sell them or put them on your desktop, where the slab label shows the grade.
+- **Grading.** In the binder, click a card you own, "Grade a copy…": pick a service (Value 24 h,
+  Standard 6 h, Express 30 min; the fee grows with the card's value), the odds are shown. It comes
+  back in a slab with a grade from 1 to 10 (8% get a 10): a 10 is worth 4× the card, a 9 1.6×, an
+  8 1.1×, lower less. Slabs live in the Vault (G): real-looking slabs with your label style, filters
+  by set and grade, sell them or put them on your desktop. Graded cards still count as owned in the
+  binder, with a grade badge.
 - **Sealed products.** Buy boxes and cases and hold them: they gain value every week (older sets
   faster, up to about 2.3× a year) and count toward your collection's value. Sell them for what
   they're worth, or open them: their boxes wait, prepaid, in that set's box mode.

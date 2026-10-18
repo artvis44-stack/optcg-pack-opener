@@ -4,15 +4,14 @@ import "progress.js" as Progress
 
 // The Port (P): where berries go. Tabs (← →): your ship and crew (perks), the
 // card shop (today's deals; any card can also be ordered from the binder),
-// grading (cards out for grading, your slabs), sealed products (buy, hold
-// while they gain value, sell or open) and cosmetics (backdrops, slab labels).
+// sealed products (buy, hold while they gain value, sell or open) and
+// cosmetics (backdrops, slab labels). Grading has its own screen, the Vault (G).
 Item {
     id: port
 
     property Item stage
     readonly property var p: stage ? stage.progress : Progress.fresh(Date.now())
-    readonly property var tabs: [["ship", "Ship & crew"], ["shop", "Card shop"], ["grading", "Grading"],
-                                 ["sealed", "Sealed"], ["cosmetics", "Cosmetics"]]
+    readonly property var tabs: [["ship", "Ship & crew"], ["shop", "Card shop"], ["sealed", "Sealed"], ["cosmetics", "Cosmetics"]]
     property string tab: "ship"
     property real now: Date.now()
     property var inspected: null     // a card or slab shown big
@@ -68,7 +67,7 @@ Item {
 
     // ---- the card shop's stock: every card of your downloaded sets ----
     property var pool: []
-    readonly property var deals: pool.length ? Progress.dailyDeals(Progress.dayOf(now), pool, c => Tiers.tierOf(c).rank) : []
+    readonly property var deals: pool.length ? Progress.dailyDeals(Progress.dayOf(now), pool, c => Tiers.tierOf(c).rank, Progress.dealsPer(p)) : []
     function loadPool() {
         if (!stage || pool.length) return;
         var out = [];
@@ -84,7 +83,7 @@ Item {
             } catch (e) {}
         });
         pool = out;
-        Progress.dailyDeals(Progress.dayOf(now), out, c => Tiers.tierOf(c).rank).forEach(d => {
+        Progress.dailyDeals(Progress.dayOf(now), out, c => Tiers.tierOf(c).rank, 3).forEach(d => {
             if (!stage.markets[d.card.set]) stage.loadMarket(d.card.set);
         });
     }
@@ -322,7 +321,7 @@ Item {
                 Note {
                     width: parent.width
                     text: "New stock every day from the sets you've downloaded, at market price + "
-                          + Math.round((Progress.DEAL_MARKUP - 1) * 100) + "%. Looking for one card? Find it in the binder (B), "
+                          + Math.round((Progress.dealMarkup(port.p) - 1) * 100) + "%. Looking for one card? Find it in the binder (B), "
                           + "click it and order it (+" + Math.round((Progress.ORDER_MARKUP - 1) * 100) + "%)."
                 }
                 Note {
@@ -337,7 +336,7 @@ Item {
                         Column {
                             id: deal
                             required property var modelData
-                            readonly property int price: Math.round(port.stage.cardValue(modelData.card) * Progress.DEAL_MARKUP)
+                            readonly property int price: Math.round(port.stage.cardValue(modelData.card) * Progress.dealMarkup(port.p))
                             readonly property bool sold: port.p.shop.day === Progress.dayOf(port.now) && !!port.p.shop.bought[modelData.key]
                             width: 130
                             spacing: 4
@@ -362,123 +361,6 @@ Item {
                                 fontSize: 12
                                 enabledLook: !deal.sold && port.p.berries >= deal.price
                                 onClicked: if (!deal.sold) port.stage.buyCard(deal.modelData.card, deal.price, true)
-                            }
-                        }
-                    }
-                }
-            }
-
-            // ==== grading =================================================
-            Column {
-                visible: port.tab === "grading"
-                width: parent.width
-                spacing: 12
-                readonly property var orders: Object.keys(port.p.grading || {}).map(id => Object.assign({ id: id }, port.p.grading[id]))
-                                                    .sort((a, b) => a.readyAt - b.readyAt)
-                readonly property var slabs: {
-                    var g = (port.stage && port.stage.collection.graded) || {};
-                    return Object.keys(g).map(id => Object.assign({ slabId: id }, g[id]))
-                                 .sort((a, b) => b.grade - a.grade || Tiers.tierOf(b).rank - Tiers.tierOf(a).rank);
-                }
-                Heading { text: "Out for grading" }
-                Note {
-                    width: parent.width
-                    text: parent.orders.length ? "" : "Nothing out. To grade a card, find it in the binder (B), click it and pick a service. "
-                          + "It comes back in a slab with a grade from 1 to 10: a 10 is worth 4× the card, a 9 1.6×."
-                    visible: text !== ""
-                }
-                Repeater {
-                    model: parent.orders
-                    Panel {
-                        required property var modelData
-                        width: content.width
-                        height: 44
-                        Text {
-                            x: 14
-                            anchors.verticalCenter: parent.verticalCenter
-                            text: Tiers.displayName(modelData.card) + "  ·  " + modelData.card.set + "  ·  "
-                                  + (Progress.GRADING.filter(g => g.id === modelData.service)[0] || {}).name + " service"
-                            color: "#e8e8ee"
-                            font { pixelSize: 14; weight: Font.Bold }
-                        }
-                        Text {
-                            anchors { right: parent.right; rightMargin: 14; verticalCenter: parent.verticalCenter }
-                            text: modelData.readyAt <= port.now ? "back!" : "back in " + port.timeLeft(modelData.readyAt - port.now)
-                            color: modelData.readyAt <= port.now ? "#7fd1b9" : "#ffd56b"
-                            font { pixelSize: 14; weight: Font.Bold }
-                        }
-                    }
-                }
-
-                Heading { text: "Your slabs" + (parent.slabs.length ? "  (" + parent.slabs.length + ")" : "") }
-                Note { visible: !parent.slabs.length; text: "No graded cards yet." }
-                Flow {
-                    width: parent.width
-                    spacing: 16
-                    Repeater {
-                        model: parent.parent.slabs
-                        Column {
-                            id: slab
-                            required property var modelData
-                            width: 130
-                            spacing: 4
-                            Rectangle {   // the slab: card in an acrylic case with the grade on top
-                                width: 130
-                                height: 130 / 0.716 + 30
-                                radius: 6
-                                color: "#22d8e4ff"
-                                border.color: slab.modelData.grade === 10 ? "#ffd700" : "#55ffffff"
-                                border.width: slab.modelData.grade === 10 ? 2 : 1
-                                Rectangle {
-                                    x: 5; y: 4
-                                    width: parent.width - 10
-                                    height: 20
-                                    radius: 3
-                                    color: Progress.slabStyle(port.p).top
-                                    Text {
-                                        anchors { left: parent.left; leftMargin: 6; verticalCenter: parent.verticalCenter }
-                                        text: Progress.GRADE_NAME[slab.modelData.grade]
-                                        color: Progress.slabStyle(port.p).sub
-                                        font { pixelSize: 9; weight: Font.Black }
-                                    }
-                                    Text {
-                                        anchors { right: parent.right; rightMargin: 6; verticalCenter: parent.verticalCenter }
-                                        text: slab.modelData.grade
-                                        color: slab.modelData.grade === 10 ? "#b8860b" : Progress.slabStyle(port.p).text
-                                        font { pixelSize: 15; weight: Font.Black }
-                                    }
-                                }
-                                Card {
-                                    x: 6; y: 28
-                                    width: parent.width - 12
-                                    card: slab.modelData
-                                    faceUp: true
-                                    time: port.stage.t
-                                    hoverTilt: true
-                                    dropShadow: false
-                                    onClicked: port.inspected = slab.modelData
-                                }
-                            }
-                            Text {
-                                width: parent.width
-                                elide: Text.ElideRight
-                                text: Tiers.displayName(slab.modelData)
-                                color: Tiers.tierOf(slab.modelData).color
-                                font { pixelSize: 11; weight: Font.Bold }
-                            }
-                            Column {
-                                spacing: 4
-                                PillButton {
-                                    text: "Sell " + Progress.format(port.stage.slabValue(slab.modelData))
-                                    fontSize: 11
-                                    accent: "#7fd1b9"
-                                    onClicked: port.stage.sellSlab(slab.modelData.slabId)
-                                }
-                                PillButton {
-                                    text: "Show on desktop"
-                                    fontSize: 11
-                                    onClicked: port.stage.showcase(slab.modelData)
-                                }
                             }
                         }
                     }
@@ -531,8 +413,8 @@ Item {
                         required property string modelData
                         readonly property var info: port.stage.sets[modelData] || {}
                         readonly property var c: Tiers.setConfig(info)
-                        readonly property int box: Progress.boxPrice(c.family, c.packsPerBox, port.p)
-                        readonly property int wholeCase: Progress.casePrice(c.family, c.packsPerBox, c.boxes, port.p)
+                        readonly property int box: Progress.boxPrice(c.family, c.packsPerBox, port.p, modelData)
+                        readonly property int wholeCase: Progress.casePrice(c.family, c.packsPerBox, c.boxes, port.p, modelData)
                         width: content.width
                         height: 46
                         Text {
@@ -686,6 +568,65 @@ Item {
                         }
                     }
                 }
+                Heading {
+                    visible: seasonDrops.count > 0
+                    text: "Season backdrops"
+                }
+                Note {
+                    visible: seasonDrops.count > 0
+                    text: "Earned on a season's reward track; there's no other way to get them."
+                }
+                Flow {
+                    width: parent.width
+                    spacing: 12
+                    Repeater {
+                        id: seasonDrops
+                        model: Object.keys(port.p.cosmetics.owned).filter(k => k.indexOf("season-") === 0).sort().map(k => Progress.seasonBackdrop(k))
+                        Panel {
+                            id: sd
+                            required property var modelData
+                            readonly property bool worn: Progress.backdrop(port.p).id === modelData.id
+                            width: 180
+                            height: 150
+                            border.color: worn ? "#ffd56b" : "#2c3550"
+                            Rectangle {
+                                x: 10; y: 10
+                                width: parent.width - 20
+                                height: 70
+                                radius: 6
+                                color: sd.modelData.base
+                                clip: true
+                                Rectangle {
+                                    anchors.centerIn: parent
+                                    width: parent.width * 1.2
+                                    height: width
+                                    radius: width / 2
+                                    gradient: Gradient {
+                                        GradientStop { position: 0.0; color: "#00000000" }
+                                        GradientStop { position: 0.5; color: sd.modelData.glow }
+                                        GradientStop { position: 1.0; color: "#00000000" }
+                                    }
+                                }
+                            }
+                            Text {
+                                x: 12; y: 88
+                                width: parent.width - 24
+                                elide: Text.ElideRight
+                                text: sd.modelData.name
+                                color: "#e8e8ee"
+                                font { pixelSize: 14; weight: Font.Black }
+                            }
+                            PillButton {
+                                x: 10; y: 112
+                                fontSize: 11
+                                text: sd.worn ? "In use" : "Use"
+                                enabledLook: !sd.worn
+                                onClicked: if (!sd.worn) port.stage.prog(p => Progress.equipCosmetic(p, "backdrop", sd.modelData.id))
+                            }
+                        }
+                    }
+                }
+
                 Heading { text: "Slab labels" }
                 Note { text: "The label on your desktop showcase and on your graded slabs." }
                 Flow {
@@ -768,7 +709,7 @@ Item {
 
     Text {
         anchors { bottom: parent.bottom; bottomMargin: 14; horizontalCenter: parent.horizontalCenter }
-        text: "← →: switch tabs   ·   P or Esc: back"
+        text: "← →: switch tabs   ·   graded cards: the vault (G)   ·   P or Esc: back"
         color: "#9aa0ad"
         font.pixelSize: 14
     }

@@ -155,6 +155,22 @@ function mergeShop(b, l, r) {
     return { day: l.day, bought: Object.assign({}, r.bought || {}, l.bought || {}) };
 }
 
+// this week's event and bounties: the later week; the same week, each bounty's best progress
+function mergeWeekly(b, l, r) {
+    if (!isObject(l)) return r;
+    if (!isObject(r)) return l;
+    if (l.week !== r.week) return l.week > r.week ? l : r;
+    return Object.assign({}, l, { list: mergeBounties({}, { day: 0, list: l.list }, { day: 0, list: r.list }).list });
+}
+
+// this month's season: the later month; the same month, counters add up, goals and rewards combine
+function mergeSeason(b, l, r) {
+    if (!isObject(l)) return r;
+    if (!isObject(r)) return l;
+    if (l.id !== r.id) return l.id > r.id ? l : r;
+    return mergeTree(isObject(b) && b.id === l.id ? b : {}, l, r, "seasonOf");
+}
+
 function mergeBounties(b, l, r) {
     if (!isObject(l)) return r;
     if (!isObject(r)) return l;
@@ -177,6 +193,8 @@ var PROGRESS_RULES = [
     ["stats.bySet.*.present", preferLocal], ["stats.bySet.*.value", preferLocal],
     // the Port
     ["ship.level", max], ["crew.*", earliest], ["shop", mergeShop],
+    ["weekly", mergeWeekly], ["season", mergeSeason], ["seasonOf.done.*", earliest], ["seasonOf.tiers.*", earliest],
+    ["titles.*", preferLocal], ["seasons.*", preferLocal],
     ["cosmetics.owned.*", earliest], ["cosmetics.backdrop", preferLocal], ["cosmetics.slab", preferLocal]
 ];
 

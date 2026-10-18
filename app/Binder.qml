@@ -28,10 +28,12 @@ Item {
         return Object.keys(stage.sets).filter(id => seen[id]);
     }
     property var inspected: null
+    property var grading: null          // the card in the grading dialog
     property var hoveredCard: null   // an owned card under the mouse (D shows it on the desktop)
 
     function back() {
-        if (inspected) inspected = null;
+        if (grading) grading = null;
+        else if (inspected) inspected = null;
         else stage.toggleBinder();
     }
 
@@ -50,12 +52,13 @@ Item {
             var k = stage.cardKey(c);
             if (seen[k]) return;
             seen[k] = true;
-            var e = stage.collection.cards[k];
-            if (ownedOnly && !e) return;
-            list.push({ card: c, count: e ? e.count : 0 });
+            var e = stage.collection.cards[k], slabs = stage.slabsByKey[k] || [];
+            if (ownedOnly && !e && !slabs.length) return;
+            list.push({ card: c, count: e ? e.count : 0, slabs: slabs });
         });
-        // owned first, then missing; best cards first within each
-        return list.sort((a, b) => (b.count > 0) - (a.count > 0)
+        // owned (raw or graded) first, then missing; best cards first within each
+        var has = it => it.count > 0 || it.slabs.length > 0;
+        return list.sort((a, b) => has(b) - has(a)
                                    || Tiers.tierOf(b.card).rank - Tiers.tierOf(a.card).rank
                                    || a.card.id.localeCompare(b.card.id));
     }
@@ -67,8 +70,8 @@ Item {
         if (allSets) {
             entries.forEach(it => {
                 res.owned++;
-                res.pulled += it.count;
-                res.value += it.count * stage.cardValue(it.card);
+                res.pulled += it.count + it.slabs.length;
+                res.value += it.count * stage.cardValue(it.card) + it.slabs.reduce((n, s) => n + stage.slabValue(s), 0);
             });
             return res;
         }
@@ -76,10 +79,10 @@ Item {
         var inSet = {};
         stage.db.cards.forEach(c => inSet[stage.cardKey(c)] = true);
         res.total = Object.keys(inSet).length;
-        var cards = stage.collection.cards;
+        var cards = stage.ownedKeys();   // graded cards are still yours
         Object.keys(cards).forEach(k => {
             if (!inSet[k]) return;
-            res.pulled += cards[k].count;
+            res.pulled += cards[k].count + (stage.slabsByKey[k] || []).length;
             res.owned++;
         });
         return res;
@@ -202,7 +205,7 @@ Item {
         delegate: Item {
             id: cell
             required property var modelData
-            readonly property bool owned: modelData.count > 0
+            readonly property bool owned: modelData.count > 0 || modelData.slabs.length > 0
             width: grid.cellWidth
             height: grid.cellHeight
 
@@ -220,6 +223,24 @@ Item {
                 onHoveredChanged: {
                     if (hovered && cell.owned) binder.hoveredCard = cell.modelData.card;
                     else if (binder.hoveredCard === cell.modelData.card) binder.hoveredCard = null;
+                }
+            }
+
+            Rectangle {   // graded: the best grade, like a slab label
+                visible: cell.modelData.slabs.length > 0
+                anchors { left: cardView.left; top: cardView.top; margins: -6 }
+                width: gradeText.width + 12
+                height: gradeText.height + 4
+                radius: 3
+                color: cell.modelData.slabs.length && cell.modelData.slabs[0].grade === 10 ? "#ffd700" : "#f4f1ea"
+                border.color: "#14171f"
+                Text {
+                    id: gradeText
+                    anchors.centerIn: parent
+                    text: cell.modelData.slabs.length ? "GRADED " + cell.modelData.slabs[0].grade
+                                                        + (cell.modelData.slabs.length > 1 ? " ×" + cell.modelData.slabs.length : "") : ""
+                    color: "#14171f"
+                    font { pixelSize: 11; weight: Font.Black }
                 }
             }
 
@@ -318,35 +339,28 @@ Item {
         }
     }
 
-    Row {   // send a copy for grading (it comes back in a slab: see the Port, P)
+    Row {   // grading: send a copy (the dialog below), or see the slabs in the vault
         visible: !!binder.inspected && !binder.stage.offTheRecord
-                 && !!binder.stage.collection.cards[binder.stage.cardKey(binder.inspected)]
         z: 1
         anchors.horizontalCenter: parent.horizontalCenter
         anchors.bottom: parent.bottom
         anchors.bottomMargin: 92
-        spacing: 10
-        Text {
-            anchors.verticalCenter: parent.verticalCenter
-            text: "Grade a copy:"
-            color: "#c8ccd6"
-            font { pixelSize: 14; weight: Font.Bold }
+        spacing: 12
+        readonly property string key: binder.inspected ? binder.stage.cardKey(binder.inspected) : ""
+        readonly property var slabs: binder.stage.slabsByKey[key] || []
+        PillButton {
+            visible: !!binder.stage.collection.cards[parent.key]
+            text: "Grade a copy…"
+            accent: "#c8a0ff"
+            onClicked: binder.grading = binder.inspected
         }
-        Repeater {
-            model: Progress.GRADING
-            PillButton {
-                required property var modelData
-                readonly property int fee: binder.inspected ? Progress.gradingFee(modelData.id, binder.stage.cardValue(binder.inspected)) : 0
-                text: modelData.name + " · " + (modelData.hours < 1 ? modelData.hours * 60 + "m" : modelData.hours + "h")
-                      + " · " + Progress.format(fee)
-                fontSize: 12
-                accent: "#c8a0ff"
-                enabledLook: binder.stage.progress.berries >= fee
-                onClicked: {
-                    var c = binder.inspected;
-                    binder.stage.gradeCard(c, modelData.id);
-                    if (!binder.stage.collection.cards[binder.stage.cardKey(c)]) binder.inspected = null;
-                }
+        PillButton {
+            visible: parent.slabs.length > 0
+            text: "Graded: " + parent.slabs.map(s => s.grade).join(", ") + "  ·  open the vault (G)"
+            accent: "#ffd56b"
+            onClicked: {
+                binder.inspected = null;
+                binder.stage.toggleVault();
             }
         }
     }
@@ -368,10 +382,147 @@ Item {
         y: 16
         readonly property var c: binder.inspected
         readonly property var owned: c ? binder.stage.collection.cards[binder.stage.cardKey(c)] : null
+        readonly property var slabs: c ? binder.stage.slabsByKey[binder.stage.cardKey(c)] || [] : []
         text: c ? Tiers.displayName(c) + "  ·  " + c.id + "  ·  " + Tiers.tierOf(c).label
-                  + (owned ? "  ·  ×" + owned.count + "  ·  first pulled " + owned.first.slice(0, 10) : "") : ""
+                  + (owned ? "  ·  ×" + owned.count + "  ·  first pulled " + (owned.first || "").slice(0, 10) : "")
+                  + (slabs.length ? "  ·  " + slabs.length + " graded" : "") : ""
         color: c ? Tiers.tierOf(c).color : "white"
         style: Text.Outline; styleColor: "#000000"
         font { pixelSize: 20; weight: Font.Bold }
+    }
+
+    // ---- the grading dialog: the three services, and the odds ---------------------------
+    Rectangle {
+        anchors.fill: parent
+        z: 5
+        visible: !!binder.grading
+        color: "#cc000000"
+        MouseArea {
+            anchors.fill: parent
+            onClicked: binder.grading = null
+        }
+        Rectangle {
+            id: dialog
+            anchors.centerIn: parent
+            width: Math.min(820, parent.width - 60)
+            height: dialogCol.height + 44
+            radius: 14
+            color: "#121828"
+            border.color: "#c8a0ff"
+            MouseArea { anchors.fill: parent }   // clicks inside don't close it
+            readonly property var c: binder.grading
+            readonly property int value: c ? binder.stage.cardValue(c) : 0
+            readonly property bool rush: Progress.eventIs(binder.stage.progress, "grading")
+
+            Card {
+                x: 22; y: 22
+                width: 150
+                card: dialog.c
+                faceUp: true
+                time: binder.stage.t
+                hoverTilt: true
+            }
+            Column {
+                id: dialogCol
+                x: 194; y: 22
+                width: dialog.width - 216
+                spacing: 12
+                Text {
+                    width: parent.width
+                    elide: Text.ElideRight
+                    text: dialog.c ? "Grade " + Tiers.displayName(dialog.c) : ""
+                    color: "#fff6e0"
+                    font { pixelSize: 22; weight: Font.Black }
+                }
+                Text {
+                    width: parent.width
+                    wrapMode: Text.WordWrap
+                    text: "Worth " + Progress.format(dialog.value) + " raw. One copy goes off and comes back in a slab, graded 1 to 10: "
+                          + "a 10 is worth ×" + Progress.GRADE_MULT[10] + ", a 9 ×" + Progress.GRADE_MULT[9] + ", an 8 ×" + Progress.GRADE_MULT[8]
+                          + ", lower grades less." + (dialog.rush ? "  Grading Rush this week: every service at the Value price, back in half the time." : "")
+                    color: "#c8ccd6"
+                    font.pixelSize: 13
+                }
+                Row {   // the odds, as a bar
+                    width: parent.width
+                    height: 34
+                    Repeater {
+                        model: Progress.GRADE_ODDS.filter(g => g[0] >= 6).concat([[5, Progress.GRADE_ODDS.filter(g => g[0] <= 5).reduce((n, g) => n + g[1], 0)]])
+                        Rectangle {
+                            required property var modelData
+                            width: dialogCol.width * modelData[1]
+                            height: 34
+                            color: modelData[0] === 10 ? "#ffd700" : modelData[0] === 9 ? "#c8a0ff" : modelData[0] === 8 ? "#7fa8ff"
+                                 : modelData[0] === 7 ? "#5a7090" : modelData[0] === 6 ? "#46506a" : "#353b4e"
+                            border.color: "#121828"
+                            Text {
+                                anchors.centerIn: parent
+                                visible: parent.width > 34
+                                text: (modelData[0] === 5 ? "≤5" : modelData[0]) + "\n" + Math.round(modelData[1] * 100) + "%"
+                                horizontalAlignment: Text.AlignHCenter
+                                color: modelData[0] >= 9 ? "#14171f" : "#e8e8ee"
+                                font { pixelSize: 10; weight: Font.Black }
+                                lineHeight: 0.9
+                            }
+                        }
+                    }
+                }
+                Row {   // the services
+                    spacing: 10
+                    Repeater {
+                        model: Progress.GRADING
+                        Rectangle {
+                            required property var modelData
+                            readonly property int fee: dialog.c ? Progress.gradingFee(modelData.id, dialog.value, binder.stage.progress) : 0
+                            readonly property real hours: modelData.hours * (dialog.rush ? 0.5 : 1)
+                            readonly property bool afford: binder.stage.progress.berries >= fee
+                            width: (dialogCol.width - 20) / 3
+                            height: 118
+                            radius: 10
+                            color: "#1a2136"
+                            border.color: modelData.id === "express" ? "#ffd56b" : "#2c3550"
+                            Column {
+                                x: 12; y: 10
+                                width: parent.width - 24
+                                spacing: 4
+                                Text {
+                                    text: modelData.name
+                                    color: "#e8e8ee"
+                                    font { pixelSize: 16; weight: Font.Black }
+                                }
+                                Text {
+                                    text: "back in " + (parent.parent.hours < 1 ? Math.round(parent.parent.hours * 60) + " minutes" : parent.parent.hours + " hours")
+                                    color: "#9aa0ad"
+                                    font.pixelSize: 12
+                                }
+                                Text {
+                                    text: Progress.format(parent.parent.fee)
+                                    color: parent.parent.afford ? "#ffd56b" : "#ff8a7a"
+                                    font { pixelSize: 18; weight: Font.Black }
+                                }
+                                PillButton {
+                                    text: "Send"
+                                    fontSize: 12
+                                    accent: "#c8a0ff"
+                                    enabledLook: parent.parent.afford
+                                    onClicked: {
+                                        var c = binder.grading;
+                                        if (!binder.stage.gradeCard(c, modelData.id)) return;
+                                        binder.grading = null;
+                                        if (!binder.stage.collection.cards[binder.stage.cardKey(c)] && !(binder.stage.slabsByKey[binder.stage.cardKey(c)] || []).length)
+                                            binder.inspected = null;
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+                Text {
+                    text: "It shows up in the vault (G) when it's back."
+                    color: "#7a8090"
+                    font.pixelSize: 12
+                }
+            }
+        }
     }
 }
