@@ -120,17 +120,15 @@ def current_tag():
 
 
 def restart_showcase():
-    """Restart a running showcase so it picks up the new code."""
+    """(Re)start the desktop companion on the new code -- it's always meant to be running."""
     out = subprocess.run(["pgrep", "-f", f"{HERE}/optcg.py --showcase"], capture_output=True, text=True)
-    pids = [p for p in out.stdout.split() if p.strip() and int(p) != os.getpid()]
-    if not pids:
-        return
-    for pid in pids:
-        subprocess.run(["kill", pid], check=False)
+    for pid in out.stdout.split():
+        if pid.strip() and int(pid) != os.getpid():
+            subprocess.run(["kill", pid], check=False)
     time.sleep(1)
     subprocess.Popen([str(VENV_PY), str(HERE / "optcg.py"), "--showcase"],
                      stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, start_new_session=True)
-    log("restarted the desktop showcase")
+    log("started the desktop companion")
 
 
 def main():
