@@ -197,10 +197,13 @@ function rollHit(byTier, cfg, srScale, premiumScale) {
 
 // A single pack with the case budget as odds.
 // forceHit (testing / cheating): "L" forces a regular Leader, "PANDA" the
-// Pandaman rare slot, "DON" / "DON_GOLD" / "DON_SP" the DON!! card,
-// anything else the hit slot.
+// Pandaman rare slot, "DON" / "DON_GOLD" / "DON_SP" the DON!! card, "GOD" a
+// god pack, anything else the hit slot. Without one, about 1 pack in 5,760 is
+// a god pack.
 function makePack(cards, setInfo, forceHit) {
     var cfg = setConfig(setInfo);
+    if (forceHit === "GOD" || (!forceHit && Math.random() < godPacksPerCase(setInfo) / cfg.packsPerCase))
+        return makeGodPack(cards, setInfo);
     var byTier = group(cards);
     forceHit = forceHit && byTier[forceHit] ? forceHit : "";
     var special = ["L", "PANDA", "DON", "DON_GOLD", "DON_SP"];
@@ -228,6 +231,78 @@ function makePack(cards, setInfo, forceHit) {
         rare: forceHit === "PANDA" || panda ? "PANDA" : "R",
         hit: hit
     });
+}
+
+// ---- god packs --------------------------------------------------------------------
+//
+// A god pack is a normal-looking pack in a normal box where every card is a
+// hit. Bandai doesn't acknowledge them or publish odds; the community puts
+// them at about 1 per 10-20 cases (PRB-01, PRB-02, EB-03, OP-13), so here
+// they're a lottery of GOD_PACKS_PER_CASE per case: about 1 in 5,760 packs
+// for a 24-pack box. What's inside depends on the set (sets.json "god"):
+//   parallel  every card a parallel (alt arts, SEC, SP...), the default
+//   manga     PRB-01: every card a Manga Rare (comic parallel)
+//   golddon   PRB-02: every card a Gold DON!!
+//   sp        EB-03: every card an SP
+//   demon     OP-13 "Demon Pack": the Five Elders parallels
+// Card counts that a set can't fill (only 9 SPs in a 12-card pack) are
+// topped up with parallels.
+
+var GOD_PACKS_PER_CASE = 1 / 20;
+var PARALLEL_TIERS = ["AA", "L_AA", "TEX", "SEC", "SEC_AA", "SP", "SP_GOLD", "TR", "MANGA", "SUPER", "SUPER_L"];
+var GOD_KINDS = {
+    parallel: { name: "God Pack",            tiers: PARALLEL_TIERS },
+    manga:    { name: "Manga God Pack",      tiers: ["MANGA"] },
+    golddon:  { name: "Gold DON!! God Pack", tiers: ["DON_GOLD"] },
+    sp:       { name: "SP God Pack",         tiers: ["SP", "SP_GOLD"] },
+    demon:    { name: "Demon Pack",          tiers: PARALLEL_TIERS,
+                names: ["Saturn", "Mars", "Warcury", "Nusjuro", "Ju Peter"] }
+};
+
+function godKinds(setInfo) {
+    var kinds = (setInfo && setInfo.god) || ["parallel"];
+    return kinds.filter(function (k) { return GOD_KINDS[k]; });
+}
+
+function godPacksPerCase(setInfo) {
+    return setInfo && setInfo.godPerCase !== undefined ? setInfo.godPerCase : GOD_PACKS_PER_CASE;
+}
+
+// A god pack of the given kind (default: one of the set's), as many cards as
+// a normal pack, weakest first so the best comes last.
+function makeGodPack(cards, setInfo, kind) {
+    var cfg = setConfig(setInfo);
+    var kinds = godKinds(setInfo);
+    var g = GOD_KINDS[kind && GOD_KINDS[kind] ? kind : pick(kinds.length ? kinds : ["parallel"])];
+    var size = cfg.slots.length;
+    var main = cards.filter(function (c) {
+        return g.tiers.indexOf(c.tier) >= 0
+            && (!g.names || g.names.some(function (n) { return c.name.indexOf(n) >= 0; }));
+    });
+    var fill = cards.filter(function (c) { return PARALLEL_TIERS.indexOf(c.tier) >= 0 && main.indexOf(c) < 0; });
+    if (!fill.length) fill = cards.filter(function (c) { return info[c.tier] && info[c.tier].rank >= 4; });
+    var out = [], used = {};
+    [shuffle(main.slice()), shuffle(fill.slice())].forEach(function (pool) {
+        pool.forEach(function (c) {
+            if (out.length < size && !used[c.image]) { used[c.image] = true; out.push(c); }
+        });
+    });
+    while (out.length < size && (main.length || fill.length)) out.push(pick(main.length ? main : fill));   // tiny sets: repeats
+    return out.sort(function (x, y) { return info[x.tier].rank - info[y.tier].rank; });
+}
+
+// every card a hit: no commons, uncommons, rares or Leaders
+function isGodPack(pack) {
+    return pack.length > 3 && pack.every(function (c) {
+        return c.tier === "DON_GOLD" || PARALLEL_TIERS.indexOf(c.tier) >= 0;
+    });
+}
+
+// which of the set's kinds it is (only the Gold DON!! one needs telling apart)
+function godPackName(pack, setInfo) {
+    if (pack.every(function (c) { return c.tier === "DON_GOLD"; })) return GOD_KINDS.golddon.name;
+    var kinds = godKinds(setInfo).filter(function (k) { return k !== "golddon"; });
+    return GOD_KINDS[kinds.length ? kinds[0] : "parallel"].name;
 }
 
 // ---- cases ------------------------------------------------------------------------
@@ -330,6 +405,10 @@ function makeCase(cards, setInfo) {
         shuffle(slots.slice()).slice(0, box.pandas).forEach(function (s) { specs[s].rare = "PANDA"; });
         return specs.map(function (spec) { return buildPack(byTier, cfg, spec); });
     });
+
+    // god packs: a rare lottery per case, each replacing a random pack
+    for (i = poisson(godPacksPerCase(setInfo)); i > 0; i--)
+        dealt[Math.floor(Math.random() * B)][Math.floor(Math.random() * P)] = makeGodPack(cards, setInfo);
 
     // box toppers (OP-01/02): one per box, outside the packs
     var toppers = boxes.map(function () { return byTier.TOPPER ? pick(byTier.TOPPER) : null; });
