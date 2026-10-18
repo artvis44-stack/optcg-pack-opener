@@ -237,7 +237,8 @@ function fresh(now) {
         focus: { startedAt: 0, endsAt: 0, idleMinutes: 0 },
         stats: { packs: 0, boxes: 0, cases: 0, sold: 0, soldValue: 0, earned: 0, focus: 0,
                  sets: {}, pulled: {}, bestCompletion: 0, value: 0,
-                 bySet: {} },                     // set -> { packs, boxes, cases, pulled, completion, groups, present, value }
+                 bySet: {},                       // set -> { packs, boxes, cases, pulled, completion, groups, present, value }
+                 backfilled: 1 },                 // 0: the set boards still need back-dating from the collection (see backfill)
         achievements: {},              // id -> date unlocked
         bounties: { day: "", list: [] }
     };
@@ -249,6 +250,7 @@ function parse(text, now) {
         var saved = text ? JSON.parse(text) : null;
         if (saved) {
             Object.keys(saved).forEach(function (k) { p[k] = saved[k]; });
+            if (p.stats.backfilled === undefined) p.stats.backfilled = 0;   // saved before the set boards
             Object.keys(fresh(now).stats).forEach(function (k) { if (p.stats[k] === undefined) p.stats[k] = fresh(now).stats[k]; });
             // from before per-set stats: carry over the pack counts
             Object.keys(p.stats.sets).forEach(function (k) { if (!p.stats.bySet[k]) p.stats.bySet[k] = { packs: p.stats.sets[k] }; });
@@ -533,4 +535,62 @@ function collectionValue(host, dataDir, cards) {
 // record a fresh collectionValue(); returns the completions
 function setValue(p, v) {
     return record(p, { type: "value", total: v.total, bySet: v.bySet });
+}
+
+// How much of a set you own: { completion, groups: { leaders: 0..1, ... }, present: [tiers] }.
+// cards: the set's cards (cards.json), owned: the collection's cards.
+function setProgress(set, cards, owned) {
+    var seen = {}, present = {}, have = {}, total = {}, n = 0, got = 0, groups = {};
+    cards.forEach(function (c) {
+        var k = set + ":" + c.image.split("/").pop();
+        present[c.tier] = true;
+        if (seen[k]) return;
+        seen[k] = true;
+        n++;
+        if (owned[k]) got++;
+        Object.keys(SET_GROUPS).forEach(function (g) {
+            if (SET_GROUPS[g].indexOf(c.tier) < 0) return;
+            total[g] = (total[g] || 0) + 1;
+            if (owned[k]) have[g] = (have[g] || 0) + 1;
+        });
+    });
+    Object.keys(total).forEach(function (g) { groups[g] = (have[g] || 0) / total[g]; });
+    return { completion: n ? got / n : 0, groups: groups, present: Object.keys(present) };
+}
+
+// Once, for progress saved before the set boards existed: rebuild each set's
+// stats from the collection (what you own, by tier; how complete the set is;
+// boxes in the current case) and award every poster that's already earned.
+// Returns [{ kind: "backfill", count, reward, bounty }], or [] if nothing new.
+function backfill(p, host, dataDir, cacheRoot) {
+    if (p.stats.backfilled) return [];
+    p.stats.backfilled = 1;
+    var cards = {};
+    try { cards = JSON.parse(host.readText(dataDir + "/collection.json") || "{}").cards || {}; } catch (e) {}
+    var bySetOwned = {};
+    Object.keys(cards).forEach(function (k) {
+        var set = k.slice(0, k.indexOf(":")), e = cards[k];
+        if (!bySetOwned[set]) bySetOwned[set] = {};
+        bySetOwned[set][e.tier] = (bySetOwned[set][e.tier] || 0) + (e.count || 1);
+    });
+    Object.keys(bySetOwned).forEach(function (set) {
+        var b = bySet(p, set);
+        Object.keys(bySetOwned[set]).forEach(function (t) { b.pulled[t] = Math.max(b.pulled[t] || 0, bySetOwned[set][t]); });
+        var db = null, cs = null;
+        try { db = JSON.parse(host.readText(cacheRoot + "/" + set + "/cards.json") || "null"); } catch (e) {}
+        if (db && db.cards) {
+            var sp = setProgress(set, db.cards, cards);
+            b.completion = Math.max(b.completion, sp.completion);
+            Object.keys(sp.groups).forEach(function (g) { b.groups[g] = Math.max(b.groups[g] || 0, sp.groups[g]); });
+            b.present = sp.present;
+            if (b.completion > p.stats.bestCompletion) p.stats.bestCompletion = b.completion;
+        }
+        try { cs = JSON.parse(host.readText(dataDir + "/case-" + set + ".json") || "null"); } catch (e) {}
+        if (cs) b.boxes = Math.min(p.stats.boxes, Math.max(b.boxes, (cs.box || 0) + (cs.boxRecorded ? 1 : 0)));
+    });
+    var done = setValue(p, collectionValue(host, dataDir, cards)).filter(function (d) { return d.kind === "achievement"; });
+    if (!done.length) return [];
+    return [{ kind: "backfill", count: done.length,
+              reward: done.reduce(function (n, d) { return n + d.a.reward; }, 0),
+              bounty: done.reduce(function (n, d) { return n + d.a.bounty; }, 0) }];
 }
