@@ -1,6 +1,7 @@
 import QtQuick
 import "tiers.js" as Tiers
 import "progress.js" as Progress
+import "sync.js" as Sync
 
 // Full-screen overlay: sealed pack -> tear -> reveal one by one -> summary.
 // Box mode wraps that: sealed box -> grid of 24 packs -> box summary, with the
@@ -53,9 +54,37 @@ Item {
                                        // | boxSealed | boxGrid | boxSummary | sets | downloading
                                        // | showcaseView (opened by double-clicking the desktop showcase)
                                        // | board (the wanted board: bounties and achievements)
+                                       // | sync (the sync account screen)
     property string boardReturn: "pack"
     property string mode: host.env("OPTCG_MODE") === "box" ? "box" : "pack"
     readonly property bool inBoxScreen: phase === "boxSealed" || phase === "boxGrid" || phase === "boxSummary"
+    // ---- sound (Sounds.qml; M mutes, remembered in settings.json) ----------------
+    property bool muted: host.env("OPTCG_MUTE") === "1" || !!readSettings().muted
+    Loader {
+        id: soundLoader
+        source: "Sounds.qml"
+        onLoaded: item.dir = "file://" + stage.host.appPath("app/sounds")
+    }
+    function sfx(name) {
+        if (!muted && soundLoader.item) soundLoader.item.play(name);
+    }
+    // the sound for revealing a card of this tier (nothing below Super Rare)
+    function revealSound(tier) {
+        return tier.rank >= 10 ? "legendary" : tier.rank >= 6 ? "epic" : tier.rank >= 4 ? "rare" : "";
+    }
+    function toggleMute() {
+        muted = !muted;
+        saveSettings({ muted: muted });
+        toast(muted ? "Sound off (M)" : "Sound on (M)");
+        if (muted && soundLoader.item) soundLoader.item.stop("charge");
+    }
+    function readSettings() {
+        try { return JSON.parse(host.readText(settingsPath) || "{}"); } catch (e) { return {}; }
+    }
+    function saveSettings(changes) {
+        host.writeText(settingsPath, JSON.stringify(Object.assign(readSettings(), changes)));
+    }
+
     property var pack: []
     readonly property string godPack: pack.length && Tiers.isGodPack(pack) ? Tiers.godPackName(pack, setInfo) : ""
     property int revealed: 0
@@ -114,14 +143,7 @@ Item {
 
     Component.onCompleted: {
         sets = JSON.parse(host.readText(host.appPath("app/sets.json")) || "{}");
-        var saved = host.readText(collectionPath);
-        if (saved) {
-            try {
-                collection = JSON.parse(saved);
-            } catch (e) {
-                console.warn("collection file unreadable, starting a new one:", e);
-            }
-        }
+        reloadCollection();
         if (!offTheRecord) {
             prog(p => Progress.backfill(p, host, dataDir, cacheRoot).concat(Progress.accrue(p, Date.now(), () => downloadedSets())));
             refreshValue();
@@ -129,7 +151,7 @@ Item {
         if (host.env("OPTCG_INSPECT") === "1" && openShowcaseView()) return;
         if (!host.env("OPTCG_SET")) {
             try {
-                var last = JSON.parse(host.readText(settingsPath) || "{}").set;
+                var last = readSettings().set;
                 if (last && sets[last]) setId = last;
             } catch (e) {}
         }
@@ -173,6 +195,7 @@ Item {
         }
         currentCelebration = celebrations[0];
         celebrations = celebrations.slice(1);
+        sfx(currentCelebration.kind === "achievement" ? "poster" : "chime");
         celebrationTimer.restart();
     }
     Timer {
@@ -180,11 +203,61 @@ Item {
         interval: 3800
         onTriggered: stage.nextCelebration()
     }
-    Timer {   // the companion changes progress too (income, focus, free packs)
+    Timer {   // the companion changes progress too (income, focus, free packs), and sync both files
         interval: 3000
         running: !stage.offTheRecord
         repeat: true
-        onTriggered: stage.reloadProgress()
+        onTriggered: {
+            stage.reloadProgress();
+            stage.reloadCollection();
+        }
+    }
+
+    // ---- sync (see sync.js): the companion does it; this only while it isn't running ----
+    property string syncStatus: ""
+    property bool syncOn: false
+    function syncRound() {
+        syncOn = Sync.signedIn(Sync.account(host, dataDir));
+        if (syncOn && !offTheRecord && !Sync.companionSyncing(host, dataDir))
+            Sync.syncOnce(host, dataDir, sets, "opener", changed => {
+                if (changed.indexOf("collection") >= 0) reloadCollection();
+                if (changed.indexOf("progress") >= 0) reloadProgress();
+            });
+        syncStatus = Sync.statusText(host, dataDir);
+    }
+    Timer {
+        interval: Sync.INTERVAL
+        running: true
+        triggeredOnStart: true
+        repeat: true
+        onTriggered: stage.syncRound()
+    }
+
+    // the collection as it is on disk (another device's pulls arrive there via sync)
+    property string collectionText: ""
+    function readCollection() {
+        var text = host.readText(collectionPath);
+        try {
+            return text ? JSON.parse(text) : { packs: 0, cards: {} };
+        } catch (e) {
+            console.warn("collection file unreadable:", e);
+            return JSON.parse(JSON.stringify(collection));
+        }
+    }
+    function reloadCollection() {
+        var text = host.readText(collectionPath);
+        if (text === collectionText) return;
+        collectionText = text;
+        try {
+            if (text) collection = JSON.parse(text);
+        } catch (e) {
+            console.warn("collection file unreadable:", e);
+        }
+    }
+    function writeCollection(col) {
+        collection = col;
+        collectionText = JSON.stringify(col, null, 1);
+        host.writeText(collectionPath, collectionText);
     }
 
     readonly property int packCost: Progress.packPrice(cfg.family)
@@ -201,6 +274,7 @@ Item {
             return false;
         }
         packPaid = true;
+        if (how === "paid") sfx("coin");
         return true;
     }
 
@@ -214,6 +288,7 @@ Item {
         }
         caseState.boxPaid = true;
         saveCase();
+        sfx("coin");
         return true;
     }
 
@@ -226,6 +301,7 @@ Item {
         }
         caseState.prepaid = (caseState.prepaid || 0) + n;
         saveCase();
+        sfx("coin");
         toast("Bought the rest of the case: " + n + " boxes for " + Progress.format(cost));
     }
 
@@ -292,7 +368,7 @@ Item {
     // sell `count` copies of these cards: [{ card, count }]; returns ฿ earned
     function sell(items) {
         if (offTheRecord || !items.length) return 0;
-        var col = JSON.parse(JSON.stringify(collection)), total = 0, n = 0;
+        var col = readCollection(), total = 0, n = 0;
         items.forEach(it => {
             var e = col.cards[cardKey(it.card)];
             if (!e) return;
@@ -303,13 +379,13 @@ Item {
             if (e.count <= 0) delete col.cards[cardKey(it.card)];
         });
         if (!n) return 0;
-        collection = col;
-        host.writeText(collectionPath, JSON.stringify(col, null, 1));
+        writeCollection(col);
         prog(p => {
             Progress.earn(p, total);
             return Progress.record(p, { type: "sell", count: n, value: total });
         });
         refreshValue();
+        sfx("coin");
         toast("Sold " + n + " card" + (n > 1 ? "s" : "") + " for " + Progress.format(total));
         return total;
     }
@@ -352,7 +428,7 @@ Item {
             phase = "error";
             return;
         }
-        host.writeText(settingsPath, JSON.stringify({ set: id }));
+        saveSettings({ set: id });
         loadMarket();
         if (mode === "box") startBox();
         else newPack();
@@ -381,6 +457,17 @@ Item {
             phase = "board";
         }
     }
+
+    function toggleSync() {
+        if (phase === "sync") {
+            phase = syncReturn;
+            stage.forceActiveFocus();
+        } else if (phase === "error" || (phase === "pack" && !cardsIn) || phase === "summary" || inBoxScreen || phase === "board") {
+            syncReturn = phase === "board" ? boardReturn : phase;
+            phase = "sync";
+        }
+    }
+    property string syncReturn: "pack"
 
     function toggleSets() {
         if (phase === "sets") {
@@ -539,6 +626,7 @@ Item {
         if (phase === "boxSealed") {
             if (!payForBox()) return;
             phase = "boxGrid";
+            sfx("box");
             if (boxTopper && !topperTaken) {   // the box topper comes off first
                 recordCards([boxTopper]);
                 topperTaken = true;
@@ -559,9 +647,11 @@ Item {
                 phase = "summary";
             } else if (nextTier.rank >= 4) {
                 charging = true;   // build suspense before a big card
+                sfx("charge");
                 chargeTimer.start();
             } else {
                 revealed++;
+                sfx("flip");
             }
         } else if (phase === "summary") {
             if (inspectIndex >= 0) inspectIndex = -1;
@@ -572,8 +662,10 @@ Item {
 
     function revealAll() {
         if (phase === "reveal" && !charging) {
+            var best = pack.slice(revealed).reduce((a, c) => Math.max(a, Tiers.tierOf(c).rank), -1);
             revealed = pack.length;
             phase = "summary";
+            sfx(revealSound({ rank: best }) || "flip");
         }
     }
 
@@ -623,15 +715,14 @@ Item {
 
     function recordCards(cards) {
         if (offTheRecord) return;   // forced pulls / sandbox don't go in the binder
-        var col = JSON.parse(JSON.stringify(collection));
+        var col = readCollection();
         cards.forEach(c => {
             var e = col.cards[cardKey(c)];
             if (e) e.count++;
             else col.cards[cardKey(c)] = { id: c.id, name: c.name, tier: c.tier, count: 1, first: new Date().toISOString() };
         });
         col.packs = (col.packs || 0) + 1;
-        collection = col;
-        host.writeText(collectionPath, JSON.stringify(col, null, 1));
+        writeCollection(col);
     }
 
     function toggleBinder() {
@@ -734,11 +825,13 @@ Item {
     }
 
     Keys.onPressed: event => {
+        if (phase === "sync" && event.key !== Qt.Key_Escape && event.key !== Qt.Key_Y) return;   // typing in the account screen
         switch (event.key) {
         case Qt.Key_Escape:
             if (phase === "binder") binderView.back();
             else if (phase === "sets") toggleSets();
             else if (phase === "board") toggleBoard();
+            else if (phase === "sync") toggleSync();
             else if (inBoxScreen && boxView.inspected) boxView.inspected = null;
             else if (mode === "box" && phase === "pack" && !cardsIn) backToBox();
             else if (inspectIndex >= 0) inspectIndex = -1;
@@ -778,6 +871,12 @@ Item {
             break;
         case Qt.Key_W:
             toggleBoard();
+            break;
+        case Qt.Key_Y:
+            toggleSync();
+            break;
+        case Qt.Key_M:
+            toggleMute();
             break;
         case Qt.Key_C:
             buyCase();
@@ -835,7 +934,10 @@ Item {
             artSource: stage.packArt
             setCode: stage.db.set
             setName: stage.db.set_name
-            onTearStarted: stage.cardsIn = true
+            onTearStarted: {
+                stage.cardsIn = true;
+                stage.sfx("tear");
+            }
             onTapped: stage.advance()
             onTorn: {
                 stage.recordPack();
@@ -843,6 +945,7 @@ Item {
                 if (stage.godPack) {
                     flashAnim.restart();
                     godAnim.restart();
+                    stage.sfx("god");
                 }
             }
         }
@@ -919,6 +1022,7 @@ Item {
         onTriggered: {
             stage.charging = false;
             stage.revealed++;
+            stage.sfx(stage.revealSound(stage.centerTier));
             if (stage.centerTier.rank >= 6) flashAnim.restart();
             popAnim.restart();
         }
@@ -1198,6 +1302,18 @@ Item {
             color: "#c8ccd6"
             font { pixelSize: 14; weight: Font.Bold }
         }
+        Text {
+            visible: !stage.offTheRecord
+            anchors.baseline: parent.children[1].baseline
+            text: (stage.syncOn ? "sync: " + stage.syncStatus : "sync: off") + "   (Y)"
+            color: stage.syncOn ? (stage.syncStatus.indexOf("synced") === 0 ? "#7fd1b9" : "#ff9a7a") : "#7a8090"
+            font { pixelSize: 14; weight: Font.Bold }
+            MouseArea {
+                anchors.fill: parent
+                cursorShape: Qt.PointingHandCursor
+                onClicked: stage.toggleSync()
+            }
+        }
     }
 
     // what the sealed pack costs
@@ -1309,6 +1425,13 @@ Item {
                 font { pixelSize: 17; weight: Font.Bold }
             }
         }
+    }
+
+    SyncPanel {
+        anchors.fill: parent
+        z: 249
+        visible: stage.phase === "sync"
+        stage: stage
     }
 
     BountyBoard {

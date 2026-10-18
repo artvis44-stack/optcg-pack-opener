@@ -1,6 +1,7 @@
 import QtQuick
 import "tiers.js" as Tiers
 import "progress.js" as Progress
+import "sync.js" as Sync
 
 // The desktop companion: a status bar (berries, free packs, streak, focus
 // sessions) that's always on the desktop, and -- once you pick one with D -- a
@@ -212,7 +213,7 @@ Item {
         change(p => {
             var done = Progress.backfill(p, host, dataDir, cacheRoot).concat(Progress.accrue(p, t, () => show.downloadedSets()));
             done = done.concat(Progress.setValue(p, value));
-            if (!idle) done = done.concat(Progress.addIncome(p, 1, t));
+            if (!idle) done = done.concat(Progress.addIncome(p, 1, t, Sync.deviceId(host, dataDir)));
             if (Progress.focusRunning(p, t)) {
                 // isIdle means 5+ minutes away; count the minutes past that
                 p.focus.idleMinutes = idle ? p.focus.idleMinutes + 1 : 0;
@@ -255,6 +256,14 @@ Item {
         });
     }
 
+    Timer {   // sync with your other computers (when signed in; see sync.js)
+        interval: Sync.INTERVAL
+        running: true
+        repeat: true
+        onTriggered: Sync.syncOnce(show.host, show.dataDir, show.sets, "companion", changed => {
+            if (changed.indexOf("progress") >= 0) show.progress = Progress.parse(show.host.readText(show.progressPath), Date.now());
+        })
+    }
     Timer {   // the progression clock
         interval: 60 * 1000
         running: true
