@@ -183,13 +183,14 @@ function buildPack(byTier, cfg, spec) {
 
 // srScale / premiumScale: how much likelier a hit is in a pack that may hold
 // one (dead Leader packs push the box's hits into the other packs)
-function rollHit(byTier, cfg, srScale, premiumScale) {
+// boost: { tier: factor } for single tiers (a weekly event)
+function rollHit(byTier, cfg, srScale, premiumScale, boost) {
     var r = Math.random();
     var acc = byTier.SR ? srScale * cfg.srPerBox / cfg.packsPerBox : 0;
     if (r < acc) return "SR";
     for (var i = 0; i < HIT_TIERS.length; i++) {
         if (!byTier[HIT_TIERS[i]]) continue;
-        acc += premiumScale * caseAmount(cfg, HIT_TIERS[i]) / cfg.packsPerCase;
+        acc += premiumScale * ((boost && boost[HIT_TIERS[i]]) || 1) * caseAmount(cfg, HIT_TIERS[i]) / cfg.packsPerCase;
         if (r < acc) return HIT_TIERS[i];
     }
     return "R";
@@ -200,8 +201,8 @@ function rollHit(byTier, cfg, srScale, premiumScale) {
 // Pandaman rare slot, "DON" / "DON_GOLD" / "DON_SP" the DON!! card, "GOD" a
 // god pack, anything else the hit slot. Without one, about 1 pack in 5,760 is
 // a god pack.
-// opts (from your crew, Progress.packOptions): luck -- hits that much likelier;
-// godBoost -- god packs that much likelier.
+// opts (from your crew and the week's event, Progress.packOptions): luck -- hits
+// that much likelier; godBoost -- god packs that much likelier; boost -- { tier: factor }.
 function makePack(cards, setInfo, forceHit, opts) {
     var cfg = setConfig(setInfo);
     var luck = (opts && opts.luck) || 1, godBoost = (opts && opts.godBoost) || 1;
@@ -226,7 +227,8 @@ function makePack(cards, setInfo, forceHit, opts) {
     var hit = forceHit && special.indexOf(forceHit) < 0 ? forceHit
             : leader && cfg.era === "mapped" ? "R"
             : leader && cfg.era === "transition" ? rollHit(byTier, cfg, luck, 0)
-            : rollHit(byTier, cfg, luck * (cfg.era === "mapped" ? live : 1), luck * (cfg.era === "random" ? 1 : live));
+            : rollHit(byTier, cfg, luck * (cfg.era === "mapped" ? live : 1), luck * (cfg.era === "random" ? 1 : live),
+                      opts && opts.boost);
     var panda = byTier.PANDA && Math.random() < caseAmount(cfg, "PANDA") / cfg.packsPerCase;
     return buildPack(byTier, cfg, {
         leader: leader ? "L" : "",

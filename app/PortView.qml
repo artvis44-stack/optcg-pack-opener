@@ -68,7 +68,7 @@ Item {
 
     // ---- the card shop's stock: every card of your downloaded sets ----
     property var pool: []
-    readonly property var deals: pool.length ? Progress.dailyDeals(Progress.dayOf(now), pool, c => Tiers.tierOf(c).rank) : []
+    readonly property var deals: pool.length ? Progress.dailyDeals(Progress.dayOf(now), pool, c => Tiers.tierOf(c).rank, Progress.dealsPer(p)) : []
     function loadPool() {
         if (!stage || pool.length) return;
         var out = [];
@@ -84,7 +84,7 @@ Item {
             } catch (e) {}
         });
         pool = out;
-        Progress.dailyDeals(Progress.dayOf(now), out, c => Tiers.tierOf(c).rank).forEach(d => {
+        Progress.dailyDeals(Progress.dayOf(now), out, c => Tiers.tierOf(c).rank, 3).forEach(d => {
             if (!stage.markets[d.card.set]) stage.loadMarket(d.card.set);
         });
     }
@@ -322,7 +322,7 @@ Item {
                 Note {
                     width: parent.width
                     text: "New stock every day from the sets you've downloaded, at market price + "
-                          + Math.round((Progress.DEAL_MARKUP - 1) * 100) + "%. Looking for one card? Find it in the binder (B), "
+                          + Math.round((Progress.dealMarkup(port.p) - 1) * 100) + "%. Looking for one card? Find it in the binder (B), "
                           + "click it and order it (+" + Math.round((Progress.ORDER_MARKUP - 1) * 100) + "%)."
                 }
                 Note {
@@ -337,7 +337,7 @@ Item {
                         Column {
                             id: deal
                             required property var modelData
-                            readonly property int price: Math.round(port.stage.cardValue(modelData.card) * Progress.DEAL_MARKUP)
+                            readonly property int price: Math.round(port.stage.cardValue(modelData.card) * Progress.dealMarkup(port.p))
                             readonly property bool sold: port.p.shop.day === Progress.dayOf(port.now) && !!port.p.shop.bought[modelData.key]
                             width: 130
                             spacing: 4
@@ -406,6 +406,59 @@ Item {
                             text: modelData.readyAt <= port.now ? "back!" : "back in " + port.timeLeft(modelData.readyAt - port.now)
                             color: modelData.readyAt <= port.now ? "#7fd1b9" : "#ffd56b"
                             font { pixelSize: 14; weight: Font.Bold }
+                        }
+                    }
+                }
+
+                Heading { text: "Set registry" }
+                Note {
+                    width: parent.width
+                    text: "Your best grade of each card, per set, weighted by rarity (a 10 of a Manga Rare counts far more than a 10 of a common). "
+                          + "Total: " + Progress.registryTotal(port.p).toLocaleString(Qt.locale("en_US"), "f", 0)
+                          + ". Every card of a set graded 10 is a Gem Mint Master Set."
+                }
+                Repeater {
+                    model: {
+                        var b = port.p.stats.bySet || {};
+                        return Object.keys(b).filter(k => b[k].registry > 0).sort((x, y) => b[y].registry - b[x].registry)
+                                     .map(k => Object.assign({ set: k }, b[k]));
+                    }
+                    Panel {
+                        required property var modelData
+                        width: content.width
+                        height: 52
+                        Text {
+                            x: 14; y: 9
+                            text: modelData.set + "  ·  " + ((port.stage.sets[modelData.set] || {}).name || "")
+                            color: "#e8e8ee"
+                            font { pixelSize: 14; weight: Font.Bold }
+                        }
+                        Text {
+                            anchors { right: parent.right; rightMargin: 14 }
+                            y: 9
+                            text: "score " + modelData.registry.toLocaleString(Qt.locale("en_US"), "f", 0)
+                            color: "#ffd56b"
+                            font { pixelSize: 14; weight: Font.Black }
+                        }
+                        Rectangle {   // Gem Mint progress
+                            x: 14; y: 32
+                            width: parent.width - 260
+                            height: 6
+                            radius: 3
+                            color: "#22283a"
+                            Rectangle {
+                                width: parent.width * (modelData.total ? modelData.gem / modelData.total : 0)
+                                height: parent.height
+                                radius: 3
+                                color: "#ffd700"
+                            }
+                        }
+                        Text {
+                            anchors { right: parent.right; rightMargin: 14 }
+                            y: 28
+                            text: modelData.gem + " / " + modelData.total + " Gem Mint  ·  " + modelData.graded + " graded"
+                            color: "#9aa0ad"
+                            font.pixelSize: 12
                         }
                     }
                 }
@@ -531,8 +584,8 @@ Item {
                         required property string modelData
                         readonly property var info: port.stage.sets[modelData] || {}
                         readonly property var c: Tiers.setConfig(info)
-                        readonly property int box: Progress.boxPrice(c.family, c.packsPerBox, port.p)
-                        readonly property int wholeCase: Progress.casePrice(c.family, c.packsPerBox, c.boxes, port.p)
+                        readonly property int box: Progress.boxPrice(c.family, c.packsPerBox, port.p, modelData)
+                        readonly property int wholeCase: Progress.casePrice(c.family, c.packsPerBox, c.boxes, port.p, modelData)
                         width: content.width
                         height: 46
                         Text {
@@ -686,6 +739,65 @@ Item {
                         }
                     }
                 }
+                Heading {
+                    visible: seasonDrops.count > 0
+                    text: "Season backdrops"
+                }
+                Note {
+                    visible: seasonDrops.count > 0
+                    text: "Earned on a season's reward track; there's no other way to get them."
+                }
+                Flow {
+                    width: parent.width
+                    spacing: 12
+                    Repeater {
+                        id: seasonDrops
+                        model: Object.keys(port.p.cosmetics.owned).filter(k => k.indexOf("season-") === 0).sort().map(k => Progress.seasonBackdrop(k))
+                        Panel {
+                            id: sd
+                            required property var modelData
+                            readonly property bool worn: Progress.backdrop(port.p).id === modelData.id
+                            width: 180
+                            height: 150
+                            border.color: worn ? "#ffd56b" : "#2c3550"
+                            Rectangle {
+                                x: 10; y: 10
+                                width: parent.width - 20
+                                height: 70
+                                radius: 6
+                                color: sd.modelData.base
+                                clip: true
+                                Rectangle {
+                                    anchors.centerIn: parent
+                                    width: parent.width * 1.2
+                                    height: width
+                                    radius: width / 2
+                                    gradient: Gradient {
+                                        GradientStop { position: 0.0; color: "#00000000" }
+                                        GradientStop { position: 0.5; color: sd.modelData.glow }
+                                        GradientStop { position: 1.0; color: "#00000000" }
+                                    }
+                                }
+                            }
+                            Text {
+                                x: 12; y: 88
+                                width: parent.width - 24
+                                elide: Text.ElideRight
+                                text: sd.modelData.name
+                                color: "#e8e8ee"
+                                font { pixelSize: 14; weight: Font.Black }
+                            }
+                            PillButton {
+                                x: 10; y: 112
+                                fontSize: 11
+                                text: sd.worn ? "In use" : "Use"
+                                enabledLook: !sd.worn
+                                onClicked: if (!sd.worn) port.stage.prog(p => Progress.equipCosmetic(p, "backdrop", sd.modelData.id))
+                            }
+                        }
+                    }
+                }
+
                 Heading { text: "Slab labels" }
                 Note { text: "The label on your desktop showcase and on your graded slabs." }
                 Flow {

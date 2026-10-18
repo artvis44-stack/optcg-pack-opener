@@ -147,6 +147,7 @@ Item {
         if (!offTheRecord) {
             prog(p => Progress.backfill(p, host, dataDir, cacheRoot).concat(Progress.accrue(p, Date.now(), () => downloadedSets())));
             refreshValue();
+            refreshRegistry();
         }
         if (host.env("OPTCG_INSPECT") === "1" && openShowcaseView()) return;
         if (!host.env("OPTCG_SET")) {
@@ -263,11 +264,11 @@ Item {
         host.writeText(collectionPath, collectionText);
     }
 
-    readonly property int packCost: Progress.packPrice(cfg.family, progress)
-    readonly property int boxCost: Progress.boxPrice(cfg.family, cfg.packsPerBox, progress)
+    readonly property int packCost: Progress.packPrice(cfg.family, progress, setId)
+    readonly property int boxCost: Progress.boxPrice(cfg.family, cfg.packsPerBox, progress, setId)
     readonly property int boxesLeftToBuy: !caseState ? 0
         : cfg.boxes - boxIndex - (caseState.boxPaid ? 1 : 0) - (caseState.prepaid || 0)
-    readonly property int caseCost: Progress.casePrice(cfg.family, cfg.packsPerBox, Math.max(0, boxesLeftToBuy), progress)
+    readonly property int caseCost: Progress.casePrice(cfg.family, cfg.packsPerBox, Math.max(0, boxesLeftToBuy), progress, setId)
 
     function payForPack() {
         if (offTheRecord || packPaid) return true;
@@ -377,7 +378,7 @@ Item {
         var card = { id: c.id, name: c.name, tier: c.tier, set: c.set || setId, image: c.image, key: key };
         var id = prog(p => Progress.sendToGrading(p, card, service, cardValue(c), Date.now()));
         if (!id) {
-            toast("Not enough berries: grading it costs " + Progress.format(Progress.gradingFee(service, cardValue(c))) + ".");
+            toast("Not enough berries: grading it costs " + Progress.format(Progress.gradingFee(service, cardValue(c), progress)) + ".");
             return false;
         }
         e.count--;
@@ -408,8 +409,23 @@ Item {
         slabs.forEach(s => col.graded[s.slabId] = s);
         writeCollection(col);
         slabs.forEach(s => prog(p => Progress.record(p, { type: "graded", grade: s.grade })));
+        refreshRegistry();
         celebrate(slabs.map(s => ({ kind: "graded", slab: s })));
         refreshValue();
+    }
+
+    // the set registry: your best grade of each card, per set (Progress.registry)
+    function refreshRegistry() {
+        if (offTheRecord) return;
+        var graded = collection.graded || {}, cardsBySet = {};
+        Object.keys(graded).forEach(id => {
+            var set = graded[id].set;
+            if (cardsBySet[set]) return;
+            try { cardsBySet[set] = JSON.parse(host.readText(cacheRoot + "/" + set + "/cards.json") || "{}").cards || []; }
+            catch (e) { cardsBySet[set] = []; }
+        });
+        var reg = Progress.registry(graded, cardsBySet, c => Tiers.tierOf(c).rank);
+        prog(p => Progress.record(p, { type: "registry", bySet: reg }));
     }
 
     function slabValue(s) {
@@ -427,6 +443,7 @@ Item {
             return Progress.record(p, { type: "sell", count: 1, value: v });
         });
         refreshValue();
+        refreshRegistry();
         sfx("coin");
         toast("Sold the " + s.grade + " " + Tiers.displayName(s) + " for " + Progress.format(v));
     }
@@ -436,8 +453,8 @@ Item {
         if (offTheRecord) return;
         var info = sets[set] || {}, c = Tiers.setConfig(info), ids = Object.keys(sets);
         var boxes = kind === "case" ? c.boxes : 1;
-        var price = kind === "case" ? Progress.casePrice(c.family, c.packsPerBox, c.boxes, progress)
-                                    : Progress.boxPrice(c.family, c.packsPerBox, progress);
+        var price = kind === "case" ? Progress.casePrice(c.family, c.packsPerBox, c.boxes, progress, set)
+                                    : Progress.boxPrice(c.family, c.packsPerBox, progress, set);
         var age = ids.length > 1 ? (ids.length - 1 - ids.indexOf(set)) / (ids.length - 1) : 0;
         if (!prog(p => Progress.buySealed(p, set, info.name || set, kind, boxes, price, age))) {
             toast("Not enough berries: that's " + Progress.format(price) + ".");
@@ -687,7 +704,7 @@ Item {
             toppers: [],
             boxes: []
         };
-        var dealt = Tiers.makeCase(db.cards, setInfo, Progress.packOptions(progress));
+        var dealt = Tiers.makeCase(db.cards, setInfo, Progress.packOptions(progress, setId));
         caseState.boxes = dealt.boxes.map(box => box.map(p => p.map(c => cardKey(c))));
         caseState.toppers = dealt.toppers.map(c => c ? cardKey(c) : null);
     }
@@ -774,7 +791,7 @@ Item {
     function newPack() {
         var leaders = db.cards.filter(c => c.tier === "L");
         packArt = leaders.length ? "file://" + leaders[Math.floor(Math.random() * leaders.length)].image : "";
-        pack = Tiers.makePack(db.cards, setInfo, forceHit, Progress.packOptions(progress));
+        pack = Tiers.makePack(db.cards, setInfo, forceHit, Progress.packOptions(progress, setId));
         packPaid = false;
         revealed = 0;
         cardsIn = false;
@@ -1498,6 +1515,7 @@ Item {
             visible: !stage.offTheRecord
             anchors.baseline: parent.children[1].baseline
             text: "bounty " + Progress.formatBounty(Progress.totalBounty(stage.progress)) + "   (W)   ·   port (P)"
+                  + (Progress.currentEvent(stage.progress) ? "   ·   this week: " + Progress.currentEvent(stage.progress).name : "")
             color: "#c8ccd6"
             font { pixelSize: 14; weight: Font.Bold }
         }
@@ -1651,6 +1669,9 @@ Item {
                 readonly property var c: celebration.c
                 text: !c ? ""
                       : c.kind === "bounty" ? "Bounty complete: " + Progress.bountyText(c.b) + "   +" + Progress.bountyRewardText(c.b)
+                      : c.kind === "weekly" ? "Weekly bounty complete: " + Progress.weeklyText(c.b) + "   +" + Progress.weeklyRewardText(c.b)
+                      : c.kind === "season" && c.goal ? "Season goal: " + c.goal.text + "   +" + c.goal.pts + " points"
+                      : c.kind === "season" ? "Season reward: " + c.text
                       : c.kind === "streak" ? "Day " + c.count + " streak   +" + Progress.format(c.reward) + (c.freePack ? "  and a free pack" : "")
                       : c.kind === "freePack" ? "A free pack is ready"
                       : c.kind === "graded" ? "Grading is back: " + Tiers.displayName(c.slab) + "  ·  "

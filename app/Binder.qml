@@ -336,7 +336,7 @@ Item {
             model: Progress.GRADING
             PillButton {
                 required property var modelData
-                readonly property int fee: binder.inspected ? Progress.gradingFee(modelData.id, binder.stage.cardValue(binder.inspected)) : 0
+                readonly property int fee: binder.inspected ? Progress.gradingFee(modelData.id, binder.stage.cardValue(binder.inspected), binder.stage.progress) : 0
                 text: modelData.name + " · " + (modelData.hours < 1 ? modelData.hours * 60 + "m" : modelData.hours + "h")
                       + " · " + Progress.format(fee)
                 fontSize: 12

@@ -249,6 +249,12 @@ Item {
                             + (e.a.reward ? "  ·  +" + Progress.format(e.a.reward) : ""));
             else if (e.kind === "bounty")
                 host.notify("Bounty complete", Progress.bountyText(e.b) + "  ·  +" + Progress.bountyRewardText(e.b));
+            else if (e.kind === "weekly")
+                host.notify("Weekly bounty complete", Progress.weeklyText(e.b) + "  ·  +" + Progress.weeklyRewardText(e.b));
+            else if (e.kind === "season" && e.goal)
+                host.notify("Season goal reached", e.goal.text + "  ·  +" + e.goal.pts + " points");
+            else if (e.kind === "season")
+                host.notify("Season reward", e.text);
             else if (e.kind === "focusDone")
                 host.notify("Focus session complete", "+1 free pack and +" + Progress.format(Progress.focusBerries(show.progress)));
             else if (e.kind === "focusLost")

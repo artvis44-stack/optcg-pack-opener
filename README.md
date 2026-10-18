@@ -88,6 +88,21 @@ Manga God Pack, PRB-02 an all-parallel or an all-Gold DON!! pack, EB-03 an SP Go
 the Demon Pack (the Five Elders). They're in boxes and cases too, replacing a random pack, and
 there are wanted posters for them
 
+## Weeks and seasons (the Season tab on the wanted board, W)
+
+- **A weekly event**, a different one each week (Monday to Sunday): Featured Set (one set's hits 25%
+  likelier and its packs, boxes and cases 10% cheaper), Manga Madness (Manga / Super Alt Art /
+  Treasure Rare odds doubled), Merchant Week (deals at market price, 12 a day), Grading Rush (every
+  service at the Value price, back in half the time), Treasure Hunt (god packs ×3), Golden Week
+  (selling +15%), Crew Training (focus sessions give two free packs), Bounty Bonanza (bounty
+  rewards doubled).
+- **Three weekly bounties**: bigger goals than the daily ones, paid mostly in free packs.
+- **A season every month**, named after a story arc (October: Whole Cake, November: Wano...): twelve
+  goals worth points, and a reward track: free packs, berries, and at the top the arc's backdrop and
+  the title "Hero of ..." that can only be earned that month.
+- **The set registry** (the Port's Grading tab): your best grade of each card, weighted by rarity,
+  per set. Every card of a set graded 10 is a Gem Mint Master Set, the hardest wanted poster there is.
+
 ## The Port (P): where berries go
 
 - **Ship and crew.** Upgrade from a rowboat to the Going Merry and the Thousand Sunny (each about 5×
