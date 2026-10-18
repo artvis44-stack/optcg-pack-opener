@@ -1,7 +1,10 @@
 import QtQuick
 import "tiers.js" as Tiers
+import "progress.js" as Progress
 
-// The desktop showcase: one card from your collection on the desktop, in a
+// The desktop companion: a status bar (berries, free packs, streak, focus
+// sessions) that's always on the desktop, and -- once you pick one with D -- a
+// card from your collection above it, in a
 // graded-style acrylic slab (label with name, set, rarity, pull date) above
 // an info plate (copies owned, set completion, TCGplayer market price).
 // Hover to tilt the slab (the foil only animates then, so it costs nothing
@@ -12,6 +15,9 @@ import "tiers.js" as Tiers
 // opener (D on a card) and by this item; it's re-read every couple of seconds,
 // so picking another card swaps it live. Prices come from optcgapi.com about
 // once a day and are kept in prices.json, so the plate can show the change.
+// The companion also runs the progression clock (progress.js): every minute
+// it counts free packs, the daily streak and -- while you're at the computer --
+// passive income, and it times focus sessions, with desktop notifications.
 // Shared by the Linux and macOS hosts:
 //   moveInside: true   the host gives this the whole screen (clicks only land
 //                      on `frame`, see frameRect) and dragging moves the widget
@@ -45,8 +51,10 @@ Item {
     readonly property real plateGap: 5 * u
     readonly property real plateHeight: 33 * u
     readonly property real pad: 8 * u                  // room for the shadow and the tilt
+    readonly property real barGap: 4 * u
+    readonly property real barHeight: Math.max(30, 13 * u)
     readonly property real frameWidth: slabWidth + 2 * pad
-    readonly property real frameHeight: slabHeight + plateGap + plateHeight + 2 * pad
+    readonly property real frameHeight: 2 * pad + barHeight + (card ? slabHeight + plateGap + plateHeight + barGap : 0)
     readonly property rect frameRect: Qt.rect(frame.x, frame.y, frame.width, frame.height)
 
     signal emptied()                // nothing to show: the host can quit
@@ -177,6 +185,86 @@ Item {
     Component.onCompleted: {
         try { sets = JSON.parse(host.readText(host.appPath("app/sets.json")) || "{}"); } catch (e) {}
         load();
+        tick();
+    }
+
+    // ---- progression clock -------------------------------------------------------------
+    readonly property string progressPath: dataDir + "/progress.json"
+    property var progress: Progress.fresh(Date.now())
+    property real now: Date.now()
+    readonly property bool focusing: progress.focus.endsAt > now
+
+    function downloadedSets() {
+        return Object.keys(sets).filter(id => host.readText(cacheRoot + "/" + id + "/cards.json") !== "")
+                                .map(id => ({ id: id, name: sets[id].name }));
+    }
+
+    function change(fn) {
+        var r = Progress.update(host, progressPath, fn);
+        progress = r.p;
+        now = Date.now();
+        announce(r.result || []);
+    }
+
+    function tick() {
+        var t = Date.now(), idle = host.isIdle();
+        change(p => {
+            var done = Progress.accrue(p, t, () => show.downloadedSets());
+            if (!idle) done = done.concat(Progress.addIncome(p, 1, t));
+            if (Progress.focusRunning(p, t)) {
+                // isIdle means 5+ minutes away; count the minutes past that
+                p.focus.idleMinutes = idle ? p.focus.idleMinutes + 1 : 0;
+                if (p.focus.idleMinutes + 5 >= Progress.FOCUS_IDLE_LIMIT) {
+                    Progress.stopFocus(p);
+                    done.push({ kind: "focusLost" });
+                }
+            }
+            return done;
+        });
+    }
+
+    function startFocus() {
+        change(p => { Progress.startFocus(p, Date.now()); return []; });
+        host.notify("Focus started", Progress.FOCUS_MINUTES + " minutes. Stay at your computer to earn a free pack.");
+    }
+
+    function stopFocus() {
+        change(p => { Progress.stopFocus(p); return []; });
+    }
+
+    function announce(events) {
+        events.forEach(e => {
+            if (e.kind === "streak")
+                host.notify("Day " + e.count + " streak", "+" + Progress.format(e.reward) + (e.freePack ? " and a free pack" : ""));
+            else if (e.kind === "freePack")
+                host.notify("A free pack is ready", "Open it from the desktop widget.");
+            else if (e.kind === "achievement")
+                host.notify("WANTED: " + e.a.title, e.a.text + "  ·  bounty " + Progress.formatBounty(e.a.bounty)
+                            + (e.a.reward ? "  ·  +" + Progress.format(e.a.reward) : ""));
+            else if (e.kind === "bounty")
+                host.notify("Bounty complete", Progress.bountyText(e.b) + "  ·  +" + Progress.bountyRewardText(e.b));
+            else if (e.kind === "focusDone")
+                host.notify("Focus session complete", "+1 free pack and +" + Progress.format(Progress.FOCUS_BERRIES));
+            else if (e.kind === "focusLost")
+                host.notify("Focus session lost", "You were away for " + Progress.FOCUS_IDLE_LIMIT + " minutes.");
+        });
+    }
+
+    Timer {   // the progression clock
+        interval: 60 * 1000
+        running: true
+        repeat: true
+        onTriggered: show.tick()
+    }
+    Timer {   // the focus countdown
+        interval: 1000
+        running: show.focusing
+        repeat: true
+        onTriggered: {
+            show.now = Date.now();
+            if (show.progress.focus.endsAt > 0 && show.now >= show.progress.focus.endsAt)
+                show.change(p => [{ kind: "focusDone" }].concat(Progress.finishFocus(p)));
+        }
     }
     Timer {   // a new card picked in the pack opener, or the collection grew
         interval: 1500
@@ -214,11 +302,11 @@ Item {
         height: show.frameHeight
         x: show.moveInside ? show.width - show.fromRight - width : 0
         y: show.moveInside ? show.height - show.fromBottom - height : 0
-        visible: !!show.card
 
         // ---- the slab -----------------------------------------------------------------
         Item {
             id: slab
+            visible: !!show.card
             x: show.pad
             y: show.pad
             width: show.slabWidth
@@ -403,6 +491,7 @@ Item {
         // ---- the info plate --------------------------------------------------------
         Rectangle {
             id: plate
+            visible: !!show.card
             x: show.pad
             y: slab.y + slab.height + show.plateGap
             width: show.slabWidth
@@ -557,6 +646,58 @@ Item {
                 var f = w.angleDelta.y > 0 ? 1.08 : 1 / 1.08;
                 show.cardWidth = Math.max(140, Math.min(600, show.cardWidth * f));
                 show.save();
+            }
+        }
+
+        // ---- the status bar: berries, free packs, streak, focus ------------------------
+        Rectangle {
+            id: bar
+            z: 2
+            x: show.pad
+            y: show.card ? plate.y + plate.height + show.barGap : show.pad
+            width: show.slabWidth
+            height: show.barHeight
+            radius: height / 2
+            color: "#e60f1424"
+            border.color: show.focusing ? "#7fd1b9" : "#3a4258"
+            border.width: show.focusing ? 2 : 1
+            readonly property real fs: Math.max(11, 4.4 * show.u)
+
+            Row {
+                anchors.verticalCenter: parent.verticalCenter
+                x: parent.height * 0.35
+                spacing: parent.height * 0.3
+                Text {
+                    anchors.verticalCenter: parent.verticalCenter
+                    text: Progress.format(show.progress.berries)
+                    color: "#ffd56b"
+                    font { pixelSize: bar.fs * 1.15; weight: Font.Black }
+                }
+                PillButton {   // open a pack (free if you have one)
+                    anchors.verticalCenter: parent.verticalCenter
+                    fontSize: bar.fs * 0.85
+                    accent: show.progress.freePacks > 0 ? "#7fd1b9" : "#9aa0ad"
+                    text: show.progress.freePacks > 0 ? show.progress.freePacks + " free" : "pack"
+                    onClicked: show.host.openOverlay([])
+                }
+                Text {
+                    anchors.verticalCenter: parent.verticalCenter
+                    visible: show.progress.streak.count > 0
+                    text: "day " + show.progress.streak.count
+                    color: "#ffb347"
+                    font { pixelSize: bar.fs * 0.85; weight: Font.Bold }
+                }
+            }
+            PillButton {   // focus session: start / countdown + stop
+                anchors.verticalCenter: parent.verticalCenter
+                anchors.right: parent.right
+                anchors.rightMargin: parent.height * 0.18
+                fontSize: bar.fs * 0.85
+                accent: show.focusing ? "#7fd1b9" : "#ffd56b"
+                readonly property int secondsLeft: Math.max(0, Math.ceil((show.progress.focus.endsAt - show.now) / 1000))
+                text: show.focusing ? Math.floor(secondsLeft / 60) + ":" + ("0" + secondsLeft % 60).slice(-2) + "  stop"
+                                    : "focus " + Progress.FOCUS_MINUTES + "m"
+                onClicked: show.focusing ? show.stopFocus() : show.startFocus()
             }
         }
     }

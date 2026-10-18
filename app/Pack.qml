@@ -14,6 +14,7 @@ Item {
 
     signal tearStarted()   // strip is off: cards can start rising
     signal torn()          // body is gone
+    signal tapped()        // clicked: the stage decides (it may cost something first)
 
     width: 400
     height: 640
@@ -108,7 +109,7 @@ Item {
         anchors.fill: parent
         hoverEnabled: true
         cursorShape: Qt.PointingHandCursor
-        onClicked: pack.tear()
+        onClicked: pack.tapped()
     }
 
     SequentialAnimation {

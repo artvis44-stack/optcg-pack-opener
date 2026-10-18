@@ -1,9 +1,9 @@
-// Desktop showcase (Linux / Quickshell host): a card from your collection on
-// the desktop, above the wallpaper and below your windows.
+// Desktop companion (Linux / Quickshell host): the status bar and a card from
+// your collection on the desktop, above the wallpaper and below your windows.
 // run with: qs -n -p ~/.config/quickshell/optcg/showcase.qml
-// Exits by itself when no card is picked, so it's safe to start at login.
+// Always running (started at login): the status bar is there even with no card picked.
 //
-// The layer covers the whole screen but only takes input on the card (the
+// The layer covers the whole screen but only takes input on the widget (the
 // mask), so dragging moves the card inside it instead of moving a window --
 // moving a layer surface takes a compositor round trip per step and lags.
 import Quickshell
@@ -22,8 +22,8 @@ ShellRoot {
         mask: Region {
             x: show.frameRect.x
             y: show.frameRect.y
-            width: show.card ? show.frameRect.width : 0
-            height: show.card ? show.frameRect.height : 0
+            width: show.frameRect.width
+            height: show.frameRect.height
         }
 
         ShowcaseCard {
@@ -31,7 +31,6 @@ ShellRoot {
             anchors.fill: parent
             host: QuickshellHost {}
             moveInside: true
-            onEmptied: Qt.quit()
         }
     }
 }

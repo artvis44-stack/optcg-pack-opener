@@ -19,6 +19,8 @@ Boosters EB-01 to EB-03 and the Premium Boosters PRB-01 / PRB-02.
 | B | binder: your collection (from the sealed pack or the summary) |
 | O | binder: show owned only / the whole set |
 | D | show the card you're looking at on your desktop (inspected, just revealed, or hovered in the binder) |
+| W | the wanted board: today's bounties, achievements, your total bounty |
+| C | box mode: buy the rest of the case (15% off) |
 | Esc / right-click | close |
 
 ## Files
@@ -49,9 +51,30 @@ The app is split into a platform-independent part (`app/`) and a thin host.
   unreachable, the cached card list is reused.
 - `open-pack.sh [box]`: the toggle launcher (fetches data on the first run)
 
+## Progression: berries, bounties and focus
+
+Packs and boxes cost berries (฿): 500 a pack (800 for premium boosters), a box 5% off, the rest
+of a case 15% off. You earn them by:
+
+- **being at your computer**: 4 ฿ a minute while you're active (idle time doesn't count; Hyprland's
+  idle detection on Linux, the system idle timer on macOS), up to 2,000 ฿ a day
+- **a free pack every 6 hours** (holds up to 2)
+- **your daily streak**: 100 ฿ on day 1 up to 700 ฿, and a free pack every 7th day
+- **focus sessions**: 25 minutes from the desktop widget = a free pack + 200 ฿ (10 minutes away
+  loses it)
+- **selling duplicates** in the binder at their TCGplayer market price ($1 = 100 ฿); bulk selling only
+  touches spare copies worth under 1,000 ฿, valuable ones are sold one at a time
+- **3 daily bounties** and **26 wanted-poster achievements**, each adding to your bounty
+
+All of it lives in `~/.local/share/optcg/progress.json` (per computer). The rules are in
+`app/progress.js`. `OPTCG_SANDBOX=1` opens everything for free without saving anything.
+
 ## Desktop showcase
 
-Press D on a card (or "Show on desktop" in the binder) and it sits on your desktop, above the
+The desktop companion is always there (started at login): a status bar with your berries, free
+packs (click to open one), streak and a focus button with a countdown. It also runs the
+progression clock and sends notifications. Press D on a card (or "Show on desktop" in the binder)
+and the card sits above it on your desktop, above the
 wallpaper and below your windows, in a graded-style acrylic slab (label with name, set, rarity and
 the date you pulled it) over an info plate: copies owned, set completion, and the TCGplayer market
 price from optcgapi.com, checked about once a day and kept in `prices.json` so it shows ▲/▼. Hover to tilt it (the foil only animates while hovered), drag to

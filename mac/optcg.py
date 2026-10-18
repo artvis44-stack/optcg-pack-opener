@@ -9,7 +9,8 @@ usage: optcg.py [box]          toggle the overlay (box = start in booster box mo
 
 The app itself (UI, shaders, pack logic, downloader) is shared with the Linux
 version; this file only provides what the app asks its host for -- env(),
-readText(), writeText(), run(), appPath(), startShowcase(), openInspect() -- plus the windows,
+readText(), writeText(), run(), appPath(), startShowcase(), openInspect(), openOverlay(),
+isIdle(), notify() -- plus the windows,
 single-instance toggle and
 the --ipc commands (the Linux version's `qs ipc`). It runs on Linux too,
 which is how it's tested.
@@ -28,7 +29,8 @@ SOCKET = "optcg-pack-opener"
 SHOWCASE_SOCKET = "optcg-showcase"
 # commands --ipc can send -> functions on the window in main.qml
 COMMANDS = {name: name for name in ("advance", "revealAll", "newPack", "inspect", "binder", "switchMode",
-                                    "openAll", "openPack", "sets", "chooseSet", "snapshot", "showcase")}
+                                    "openAll", "openPack", "sets", "chooseSet", "snapshot", "showcase",
+                                    "board", "sellBulk")}
 COMMANDS["close"] = "closeOverlay"
 
 
@@ -46,6 +48,29 @@ class Host(QObject):
     @Slot(str, result=str)
     def appPath(self, relative):
         return str(HERE.parent / relative)
+
+    @Slot("QVariantList")
+    def openOverlay(self, args):
+        QProcess.startDetached(sys.executable, [str(HERE / "optcg.py"), *[str(a) for a in args]])
+
+    @Slot(result=bool)
+    def isIdle(self):
+        """Away from the computer 5+ minutes (macOS: seconds since the last input event)."""
+        if sys.platform != "darwin":
+            return False
+        try:
+            from Quartz import CGEventSourceSecondsSinceLastEventType
+            return CGEventSourceSecondsSinceLastEventType(1, 0xFFFFFFFF) >= 300   # HID state, any input
+        except Exception:
+            return False
+
+    @Slot(str, str)
+    def notify(self, title, text):
+        if sys.platform == "darwin":
+            esc = lambda s: s.replace("\\", "\\\\").replace('"', '\\"')
+            QProcess.startDetached("osascript", ["-e", f'display notification "{esc(text)}" with title "{esc(title)}"'])
+        else:
+            QProcess.startDetached("notify-send", ["-a", "OPTCG", title, text])
 
     @Slot()
     def openInspect(self):

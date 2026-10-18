@@ -1,6 +1,6 @@
 // OPTCG desktop showcase -- macOS host window (see optcg.py --showcase).
 // A card you picked with D, on the desktop above the icons; the shared
-// ShowcaseCard does the rest. Quits by itself when no card is picked.
+// ShowcaseCard does the rest, including the always-on status bar.
 // Dragging uses macOS's own window dragging (startSystemMove), which is as
 // smooth as moving any window; where it ends up is saved once it settles.
 import QtQuick
@@ -24,7 +24,6 @@ Window {
         anchors.fill: parent
         host: macHost
         moveInside: false
-        onEmptied: Qt.quit()
         onSystemMoveRequested: {
             win.startSystemMove();
             settle.restart();

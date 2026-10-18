@@ -30,5 +30,7 @@ Window {
     function sets() { stage.toggleSets(); }
     function chooseSet(id) { stage.chooseSet(String(id)); }
     function showcase() { stage.showcase(stage.focusedCard()); }
+    function board() { stage.toggleBoard(); }
+    function sellBulk() { stage.sell(stage.bulkDuplicates); }
     function snapshot(path) { stage.grabToImage(r => r.saveToFile(String(path))); }
 }

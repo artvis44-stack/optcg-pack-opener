@@ -1,5 +1,6 @@
 import QtQuick
 import "tiers.js" as Tiers
+import "progress.js" as Progress
 
 // Full-screen overlay: sealed pack -> tear -> reveal one by one -> summary.
 // Box mode wraps that: sealed box -> grid of 24 packs -> box summary, with the
@@ -51,6 +52,8 @@ Item {
     property string phase: "loading"   // loading | error | pack | reveal | summary | binder
                                        // | boxSealed | boxGrid | boxSummary | sets | downloading
                                        // | showcaseView (opened by double-clicking the desktop showcase)
+                                       // | board (the wanted board: bounties and achievements)
+    property string boardReturn: "pack"
     property string mode: host.env("OPTCG_MODE") === "box" ? "box" : "pack"
     readonly property bool inBoxScreen: phase === "boxSealed" || phase === "boxGrid" || phase === "boxSummary"
     property var pack: []
@@ -74,6 +77,21 @@ Item {
     readonly property string collectionPath: host.env("OPTCG_COLLECTION") || dataDir + "/collection.json"
     readonly property string forceHit: host.env("OPTCG_FORCE_HIT")
     readonly property bool cheating: forceHit !== ""
+    // sandbox: everything free, nothing saved (no collection, no progression)
+    readonly property bool sandbox: host.env("OPTCG_SANDBOX") === "1"
+    readonly property bool offTheRecord: cheating || sandbox
+
+    // ---- progression (see progress.js) ----------------------------------------------
+    readonly property string progressPath: dataDir + "/progress.json"
+    property var progress: Progress.fresh(Date.now())
+    property bool packPaid: false           // the sealed single pack on screen is paid for
+    property var celebrations: []           // completions waiting to be shown
+    property var market: ({})               // "<id>|<name>" -> usd, for the current set
+    readonly property int setTotal: {
+        var seen = {};
+        if (db) db.cards.forEach(c => seen[c.image.split("/").pop()] = true);
+        return Object.keys(seen).length;
+    }
     property var collection: ({ packs: 0, cards: {} })
     property var packNew: []            // per card of the current pack: first time pulled?
     property string binderReturn: "pack"
@@ -102,6 +120,9 @@ Item {
                 console.warn("collection file unreadable, starting a new one:", e);
             }
         }
+        if (!offTheRecord) {
+            prog(p => Progress.accrue(p, Date.now(), () => downloadedSets()));
+        }
         if (host.env("OPTCG_INSPECT") === "1" && openShowcaseView()) return;
         if (!host.env("OPTCG_SET")) {
             try {
@@ -111,6 +132,178 @@ Item {
         }
         loadSet(setId);
     }
+
+    // ---- progression ----------------------------------------------------------------
+
+    // change progress.json; completions (achievements, bounties, streak...) get celebrated
+    function prog(fn) {
+        if (offTheRecord) return null;
+        var r = Progress.update(host, progressPath, fn);
+        progress = r.p;
+        if (Array.isArray(r.result) && r.result.length) celebrate(r.result);
+        return r.result;
+    }
+
+    function reloadProgress() {
+        if (!offTheRecord) progress = Progress.parse(host.readText(progressPath), Date.now());
+    }
+
+    function downloadedSets() {
+        return Object.keys(sets).filter(id => downloaded(id)).map(id => ({ id: id, name: sets[id].name }));
+    }
+
+    function celebrate(items) {
+        celebrations = celebrations.concat(items);
+        if (!celebrationTimer.running) nextCelebration();
+    }
+
+    property var currentCelebration: null
+    function nextCelebration() {
+        if (!celebrations.length) {
+            currentCelebration = null;
+            return;
+        }
+        currentCelebration = celebrations[0];
+        celebrations = celebrations.slice(1);
+        celebrationTimer.restart();
+    }
+    Timer {
+        id: celebrationTimer
+        interval: 3800
+        onTriggered: stage.nextCelebration()
+    }
+    Timer {   // the companion changes progress too (income, focus, free packs)
+        interval: 3000
+        running: !stage.offTheRecord
+        repeat: true
+        onTriggered: stage.reloadProgress()
+    }
+
+    readonly property int packCost: Progress.packPrice(cfg.family)
+    readonly property int boxCost: Progress.boxPrice(cfg.family, cfg.packsPerBox)
+    readonly property int boxesLeftToBuy: !caseState ? 0
+        : cfg.boxes - boxIndex - (caseState.boxPaid ? 1 : 0) - (caseState.prepaid || 0)
+    readonly property int caseCost: Progress.casePrice(cfg.family, cfg.packsPerBox, Math.max(0, boxesLeftToBuy))
+
+    function payForPack() {
+        if (offTheRecord || packPaid) return true;
+        var how = prog(p => Progress.pay(p, packCost, true));
+        if (!how) {
+            toast("Not enough berries: a pack is " + Progress.format(packCost) + ". Focus, keep your streak, sell duplicates or wait for a free pack.");
+            return false;
+        }
+        packPaid = true;
+        return true;
+    }
+
+    function payForBox() {
+        if (offTheRecord || caseState.boxPaid) return true;
+        if ((caseState.prepaid || 0) > 0) {
+            caseState.prepaid--;
+        } else if (!prog(p => Progress.pay(p, boxCost, false))) {
+            toast("Not enough berries: a box is " + Progress.format(boxCost) + " (you have " + Progress.format(progress.berries) + ").");
+            return false;
+        }
+        caseState.boxPaid = true;
+        saveCase();
+        return true;
+    }
+
+    function buyCase() {
+        if (offTheRecord || !inBoxScreen || boxesLeftToBuy <= 0) return;
+        var n = boxesLeftToBuy, cost = caseCost;
+        if (!prog(p => Progress.pay(p, cost, false))) {
+            toast("Not enough berries: the rest of this case (" + n + " boxes) is " + Progress.format(cost) + ".");
+            return;
+        }
+        caseState.prepaid = (caseState.prepaid || 0) + n;
+        saveCase();
+        toast("Bought the rest of the case: " + n + " boxes for " + Progress.format(cost));
+    }
+
+    // a pack's worth of cards went into the binder
+    function recordPackProgress(cards) {
+        if (offTheRecord) return;
+        var owned = Object.keys(collection.cards).filter(k => k.indexOf(setId + ":") === 0).length;
+        prog(p => Progress.record(p, { type: "pack", set: setId, tiers: cards.map(c => c.tier),
+                                       completion: setTotal ? owned / setTotal : 0 }));
+    }
+
+    // the box (and maybe the case) is done
+    function recordBoxDone() {
+        if (offTheRecord || caseState.boxRecorded) return;
+        caseState.boxRecorded = true;
+        saveCase();
+        prog(p => {
+            var done = Progress.record(p, { type: "box" });
+            if (boxIndex === cfg.boxes - 1) done = done.concat(Progress.record(p, { type: "case" }));
+            return done;
+        });
+    }
+
+    // ---- selling --------------------------------------------------------------------
+
+    function cardValue(c) {
+        return Progress.cardValue(c, market);
+    }
+
+    // market prices for the current set, cached per day in market/<set>.json
+    function loadMarket() {
+        var id = setId, path = dataDir + "/market/" + id + ".json", cached = null;
+        try { cached = JSON.parse(host.readText(path) || "null"); } catch (e) {}
+        if (cached) market = cached.prices;
+        if (cached && cached.day === Progress.dayOf(Date.now())) return;
+        var xhr = new XMLHttpRequest();
+        xhr.onreadystatechange = function () {
+            if (xhr.readyState !== XMLHttpRequest.DONE || xhr.status !== 200) return;
+            try {
+                var prices = {};
+                JSON.parse(xhr.responseText).forEach(c => {
+                    if (c.market_price !== null && c.market_price !== undefined) prices[c.card_image_id + "|" + c.card_name] = Number(c.market_price);
+                });
+                host.writeText(path, JSON.stringify({ day: Progress.dayOf(Date.now()), prices: prices }));
+                if (id === stage.setId) stage.market = prices;
+            } catch (e) {}
+        };
+        xhr.open("GET", "https://optcgapi.com/api/sets/" + id + "/");
+        xhr.send();
+    }
+
+    // sell `count` copies of these cards: [{ card, count }]; returns ฿ earned
+    function sell(items) {
+        if (offTheRecord || !items.length) return 0;
+        var col = JSON.parse(JSON.stringify(collection)), total = 0, n = 0;
+        items.forEach(it => {
+            var e = col.cards[cardKey(it.card)];
+            if (!e) return;
+            var k = Math.min(it.count, e.count);
+            total += k * cardValue(it.card);
+            n += k;
+            e.count -= k;
+            if (e.count <= 0) delete col.cards[cardKey(it.card)];
+        });
+        if (!n) return 0;
+        collection = col;
+        host.writeText(collectionPath, JSON.stringify(col, null, 1));
+        prog(p => {
+            Progress.earn(p, total);
+            return Progress.record(p, { type: "sell", count: n, value: total });
+        });
+        toast("Sold " + n + " card" + (n > 1 ? "s" : "") + " for " + Progress.format(total));
+        return total;
+    }
+
+    // copies past the first, of cards worth less than BULK_LIMIT, in the current set
+    readonly property var bulkDuplicates: {
+        var out = [];
+        if (!db) return out;
+        db.cards.forEach(c => {
+            var e = collection.cards[cardKey(c)];
+            if (e && e.count > 1 && cardValue(c) < Progress.BULK_LIMIT) out.push({ card: c, count: e.count - 1 });
+        });
+        return out;
+    }
+    readonly property int bulkValue: bulkDuplicates.reduce((a, it) => a + it.count * cardValue(it.card), 0)
 
     function downloaded(id) {
         return host.readText(cacheRoot + "/" + id + "/cards.json") !== "";
@@ -139,6 +332,7 @@ Item {
             return;
         }
         host.writeText(settingsPath, JSON.stringify({ set: id }));
+        loadMarket();
         if (mode === "box") startBox();
         else newPack();
     }
@@ -151,6 +345,16 @@ Item {
         host.run([python, "-I", "-u", fetchScript, id],
                  line => downloadLine = line,
                  code => loadSet(id, true));
+    }
+
+    function toggleBoard() {
+        if (phase === "board") {
+            phase = boardReturn;
+        } else if (phase === "error" || (phase === "pack" && !cardsIn) || phase === "summary" || inBoxScreen) {
+            reloadProgress();
+            boardReturn = phase;
+            phase = "board";
+        }
     }
 
     function toggleSets() {
@@ -199,6 +403,9 @@ Item {
             set: setId,
             box: 0,
             opened: [],
+            boxPaid: false,
+            boxRecorded: false,
+            prepaid: 0,
             topperTaken: false,
             toppers: [],
             boxes: []
@@ -224,6 +431,8 @@ Item {
             caseState.box++;
             caseState.opened = [];
             caseState.topperTaken = false;
+            caseState.boxPaid = false;
+            caseState.boxRecorded = false;
             if (caseState.box >= cfg.boxes) newCase();
         }
         boxIndex = caseState.box;
@@ -260,18 +469,27 @@ Item {
 
     function backToBox() {
         currentPackIdx = -1;
-        phase = nextUnopened() < 0 ? "boxSummary" : "boxGrid";
+        if (nextUnopened() < 0) {
+            recordBoxDone();
+            phase = "boxSummary";
+        } else {
+            phase = "boxGrid";
+        }
     }
 
     function openAllRemaining() {
         if (phase !== "boxGrid") return;
         var opened = boxOpened.slice();
         boxPacks.forEach((p, i) => {
-            if (!opened[i]) recordCards(p);
+            if (!opened[i]) {
+                recordCards(p);
+                recordPackProgress(p);
+            }
             opened[i] = true;
         });
         boxOpened = opened;
         saveCase();
+        recordBoxDone();
         phase = "boxSummary";
     }
 
@@ -279,6 +497,7 @@ Item {
         var leaders = db.cards.filter(c => c.tier === "L");
         packArt = leaders.length ? "file://" + leaders[Math.floor(Math.random() * leaders.length)].image : "";
         pack = Tiers.makePack(db.cards, setInfo, forceHit);
+        packPaid = false;
         revealed = 0;
         cardsIn = false;
         inspectIndex = -1;
@@ -293,6 +512,7 @@ Item {
             return;
         }
         if (phase === "boxSealed") {
+            if (!payForBox()) return;
             phase = "boxGrid";
             if (boxTopper && !topperTaken) {   // the box topper comes off first
                 recordCards([boxTopper]);
@@ -306,7 +526,9 @@ Item {
         } else if (phase === "boxSummary") {
             startBox();
         } else if (phase === "pack") {
-            if (packLoader.item) packLoader.item.tear();
+            if (cardsIn || !packLoader.item) return;
+            if (mode !== "box" && !payForPack()) return;
+            packLoader.item.tear();
         } else if (phase === "reveal") {
             if (revealed >= pack.length) {
                 phase = "summary";
@@ -337,6 +559,7 @@ Item {
     function recordPack() {
         packNew = pack.map(c => !collection.cards[cardKey(c)]);
         recordCards(pack);
+        recordPackProgress(pack);
         if (mode === "box" && currentPackIdx >= 0) {
             var opened = boxOpened.slice();
             opened[currentPackIdx] = true;
@@ -346,7 +569,7 @@ Item {
     }
 
     function recordCards(cards) {
-        if (cheating) return;   // forced pulls don't go in the binder
+        if (offTheRecord) return;   // forced pulls / sandbox don't go in the binder
         var col = JSON.parse(JSON.stringify(collection));
         cards.forEach(c => {
             var e = col.cards[cardKey(c)];
@@ -462,6 +685,7 @@ Item {
         case Qt.Key_Escape:
             if (phase === "binder") binderView.back();
             else if (phase === "sets") toggleSets();
+            else if (phase === "board") toggleBoard();
             else if (inBoxScreen && boxView.inspected) boxView.inspected = null;
             else if (mode === "box" && phase === "pack" && !cardsIn) backToBox();
             else if (inspectIndex >= 0) inspectIndex = -1;
@@ -490,6 +714,12 @@ Item {
             break;
         case Qt.Key_X:
             switchMode();
+            break;
+        case Qt.Key_W:
+            toggleBoard();
+            break;
+        case Qt.Key_C:
+            buyCase();
             break;
         case Qt.Key_S:
             toggleSets();
@@ -545,6 +775,7 @@ Item {
             setCode: stage.db.set
             setName: stage.db.set_name
             onTearStarted: stage.cardsIn = true
+            onTapped: stage.advance()
             onTorn: {
                 stage.recordPack();
                 stage.phase = "reveal";
@@ -732,10 +963,11 @@ Item {
             loading: "Loading cards…",
             error: "S: choose another set   ·   Esc to close",
             pack: stage.mode === "box" ? "Click or Space to tear it open   ·   Esc: back to the box"
-                  : "Click or Space to tear it open   ·   X: open a box   ·   S: sets   ·   B: binder   ·   Esc to close",
+                  : "Click or Space to tear it open   ·   X: open a box   ·   S: sets   ·   B: binder   ·   W: wanted board   ·   Esc to close",
             binder: "",
             boxSealed: "",
             showcaseView: "Move the mouse to tilt   ·   click, Space or Esc to close",
+            board: "",
             sets: "",
             downloading: "",
             boxGrid: "",
@@ -743,7 +975,7 @@ Item {
             reveal: "Space / click: next card   ·   Tab: reveal all   ·   D: show on desktop   ·   Esc: close",
             summary: stage.inspectIndex >= 0 ? "Move the mouse to tilt   ·   D: show on desktop   ·   click or Esc to go back"
                      : stage.mode === "box" ? "Hover to tilt   ·   click a card to inspect   ·   Space: back to the box   ·   B: binder   ·   Esc: close"
-                     : "Hover to tilt   ·   click a card to inspect   ·   Space: open another pack   ·   X: open a box   ·   S: sets   ·   B: binder   ·   Esc: close"
+                     : "Hover to tilt   ·   click a card to inspect   ·   Space: open another pack   ·   X: open a box   ·   S: sets   ·   B: binder   ·   W: wanted board   ·   Esc: close"
         })[stage.phase]
     }
 
@@ -812,6 +1044,162 @@ Item {
             color: Tiers.tierOf(stage.viewCard).color
             font { pixelSize: 17; weight: Font.Bold }
         }
+    }
+
+    // ---- progression on screen ----------------------------------------------------------
+
+    // wallet, top left
+    Row {
+        z: 280
+        visible: stage.phase !== "loading" && stage.phase !== "showcaseView" && stage.phase !== "downloading"
+        x: 22
+        y: 16
+        spacing: 18
+        Text {
+            visible: stage.offTheRecord
+            text: stage.sandbox ? "SANDBOX: free, nothing is saved" : "FORCED PULLS: nothing is saved"
+            color: "#ff9a7a"
+            font { pixelSize: 15; weight: Font.Black }
+        }
+        Text {
+            visible: !stage.offTheRecord
+            text: Progress.format(stage.progress.berries)
+            color: "#ffd56b"
+            font { pixelSize: 20; weight: Font.Black }
+        }
+        Text {
+            visible: !stage.offTheRecord
+            anchors.baseline: parent.children[1].baseline
+            text: stage.progress.freePacks > 0
+                  ? stage.progress.freePacks + " free pack" + (stage.progress.freePacks > 1 ? "s" : "")
+                  : "next free pack in " + Math.ceil(Progress.nextFreePackIn(stage.progress, Date.now()) / 3600000) + "h"
+            color: stage.progress.freePacks > 0 ? "#7fd1b9" : "#9aa0ad"
+            font { pixelSize: 14; weight: Font.Bold }
+        }
+        Text {
+            visible: !stage.offTheRecord && stage.progress.streak.count > 0
+            anchors.baseline: parent.children[1].baseline
+            text: "day " + stage.progress.streak.count + " streak"
+            color: "#ffb347"
+            font { pixelSize: 14; weight: Font.Bold }
+        }
+        Text {
+            visible: !stage.offTheRecord
+            anchors.baseline: parent.children[1].baseline
+            text: "bounty " + Progress.formatBounty(Progress.totalBounty(stage.progress)) + "   (W)"
+            color: "#c8ccd6"
+            font { pixelSize: 14; weight: Font.Bold }
+        }
+    }
+
+    // what the sealed pack costs
+    Text {
+        z: 150
+        visible: stage.phase === "pack" && stage.mode !== "box" && !stage.cardsIn && !stage.offTheRecord && !stage.packPaid
+        anchors.horizontalCenter: parent.horizontalCenter
+        y: stage.height * 0.875
+        readonly property bool free: stage.progress.freePacks > 0
+        readonly property bool short: !free && stage.progress.berries < stage.packCost
+        text: free ? "Free pack  (" + stage.progress.freePacks + " left)"
+              : short ? Progress.format(stage.packCost) + "  ·  not enough berries yet"
+              : Progress.format(stage.packCost)
+        color: free ? "#7fd1b9" : short ? "#ff8a7a" : "#ffd56b"
+        font { pixelSize: 18; weight: Font.Black }
+    }
+
+    // celebrations: a wanted poster for achievements, a banner for the rest
+    Item {
+        id: celebration
+        z: 295
+        anchors.horizontalCenter: parent.horizontalCenter
+        y: stage.height * 0.09
+        width: poster.visible ? poster.width : banner2.width
+        height: poster.visible ? poster.height : banner2.height
+        readonly property var c: stage.currentCelebration
+        opacity: c ? 1 : 0
+        visible: opacity > 0
+        Behavior on opacity { NumberAnimation { duration: 220 } }
+        scale: c ? 1 : 0.85
+        Behavior on scale { NumberAnimation { duration: 260; easing.type: Easing.OutBack } }
+
+        Rectangle {
+            id: poster
+            visible: !!celebration.c && celebration.c.kind === "achievement"
+            width: 300
+            height: posterColumn.height + 36
+            color: "#ead9ae"
+            border.color: "#5a4325"
+            border.width: 3
+            radius: 4
+            Column {
+                id: posterColumn
+                anchors.horizontalCenter: parent.horizontalCenter
+                y: 16
+                spacing: 4
+                readonly property var a: celebration.c && celebration.c.a ? celebration.c.a : null
+                Text {
+                    anchors.horizontalCenter: parent.horizontalCenter
+                    text: "WANTED"
+                    color: "#3b2a16"
+                    font { pixelSize: 40; weight: Font.Black; family: "serif"; letterSpacing: 4 }
+                }
+                Text {
+                    anchors.horizontalCenter: parent.horizontalCenter
+                    text: posterColumn.a ? posterColumn.a.title.toUpperCase() : ""
+                    color: "#3b2a16"
+                    font { pixelSize: 20; weight: Font.Black; family: "serif" }
+                }
+                Text {
+                    anchors.horizontalCenter: parent.horizontalCenter
+                    text: posterColumn.a ? posterColumn.a.text : ""
+                    color: "#5a4325"
+                    font.pixelSize: 13
+                }
+                Text {
+                    anchors.horizontalCenter: parent.horizontalCenter
+                    text: posterColumn.a ? Progress.format(posterColumn.a.bounty) : ""
+                    color: "#3b2a16"
+                    font { pixelSize: 24; weight: Font.Black; family: "serif" }
+                }
+                Text {
+                    anchors.horizontalCenter: parent.horizontalCenter
+                    visible: !!posterColumn.a && posterColumn.a.reward > 0
+                    text: posterColumn.a ? "reward  +" + Progress.format(posterColumn.a.reward) : ""
+                    color: "#7a4e10"
+                    font { pixelSize: 13; weight: Font.Bold }
+                }
+            }
+        }
+
+        Rectangle {
+            id: banner2
+            visible: !!celebration.c && celebration.c.kind !== "achievement"
+            width: bannerText.width + 40
+            height: bannerText.height + 22
+            radius: height / 2
+            color: "#1b2236"
+            border.color: "#7fd1b9"
+            border.width: 2
+            Text {
+                id: bannerText
+                anchors.centerIn: parent
+                readonly property var c: celebration.c
+                text: !c ? ""
+                      : c.kind === "bounty" ? "Bounty complete: " + Progress.bountyText(c.b) + "   +" + Progress.bountyRewardText(c.b)
+                      : c.kind === "streak" ? "Day " + c.count + " streak   +" + Progress.format(c.reward) + (c.freePack ? "  and a free pack" : "")
+                      : c.kind === "freePack" ? "A free pack is ready"
+                      : ""
+                color: "#fff6e0"
+                font { pixelSize: 17; weight: Font.Bold }
+            }
+        }
+    }
+
+    BountyBoard {
+        anchors.fill: parent
+        z: 248
+        visible: stage.phase === "board"
+        stage: stage
     }
 
     SetPicker {

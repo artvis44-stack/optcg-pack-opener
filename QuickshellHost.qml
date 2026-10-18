@@ -1,6 +1,7 @@
 import QtQuick
 import Quickshell
 import Quickshell.Io
+import Quickshell.Wayland
 
 // The host interface the shared app (app/) needs, implemented with Quickshell.
 // A port to another platform provides an object with the same functions:
@@ -12,6 +13,9 @@ import Quickshell.Io
 //   startShowcase()                 -> starts the desktop showcase if it isn't running
 //   appPath(relative)               -> filesystem path of a file in this folder (e.g. "app/sets.json")
 //   openInspect()                   -> opens the overlay showing the showcased card big
+//   openOverlay(args)               -> opens the pack opener (args: [] or ["box"])
+//   isIdle()                        -> true once you've been away from the computer 5+ minutes
+//   notify(title, text)             -> a desktop notification
 QtObject {
     id: host
 
@@ -21,6 +25,23 @@ QtObject {
 
     function appPath(relative) {
         return Quickshell.shellPath(relative);   // Qt.resolvedUrl gives qs:@/... URLs here
+    }
+
+    function openOverlay(args) {
+        Quickshell.execDetached([appPath("open-pack.sh")].concat(args || []));
+    }
+
+    function isIdle() {
+        return idleMonitor.isIdle;
+    }
+
+    function notify(title, text) {
+        Quickshell.execDetached(["notify-send", "-a", "OPTCG", title, text]);
+    }
+
+    property IdleMonitor idleMonitor: IdleMonitor {
+        timeout: 300
+        respectInhibitors: false   // a video playing doesn't mean you're there
     }
 
     function openInspect() {

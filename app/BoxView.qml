@@ -1,5 +1,6 @@
 import QtQuick
 import "tiers.js" as Tiers
+import "progress.js" as Progress
 
 // Box mode screens: the sealed display box, its packs, and the box summary.
 Item {
@@ -166,6 +167,32 @@ Item {
                 cursorShape: Qt.PointingHandCursor
                 onClicked: view.stage.advance()
             }
+        }
+    }
+
+    // what opening this box costs, and the rest-of-the-case deal
+    Column {
+        visible: view.phase === "boxSealed" && !view.stage.offTheRecord
+        anchors.horizontalCenter: parent.horizontalCenter
+        y: view.height * 0.86
+        spacing: 6
+        readonly property var cs: view.stage.caseState || {}
+        Text {
+            anchors.horizontalCenter: parent.horizontalCenter
+            readonly property bool short: view.stage.progress.berries < view.stage.boxCost
+            text: parent.cs.boxPaid ? "Paid"
+                  : (parent.cs.prepaid || 0) > 0 ? "Prepaid with the case (" + parent.cs.prepaid + " box" + (parent.cs.prepaid > 1 ? "es" : "") + " left)"
+                  : "Open this box: " + Progress.format(view.stage.boxCost) + (short ? "  ·  not enough berries yet" : "")
+            color: parent.cs.boxPaid || (parent.cs.prepaid || 0) > 0 ? "#7fd1b9" : short ? "#ff8a7a" : "#ffd56b"
+            font { pixelSize: 18; weight: Font.Black }
+        }
+        Text {
+            anchors.horizontalCenter: parent.horizontalCenter
+            visible: view.stage.boxesLeftToBuy > 1
+            text: "C: buy the rest of this case (" + view.stage.boxesLeftToBuy + " boxes) for "
+                  + Progress.format(view.stage.caseCost) + "  ·  15% off"
+            color: "#c8ccd6"
+            font.pixelSize: 14
         }
     }
 

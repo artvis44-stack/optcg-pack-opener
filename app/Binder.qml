@@ -1,5 +1,6 @@
 import QtQuick
 import "tiers.js" as Tiers
+import "progress.js" as Progress
 
 // Collection binder: the whole set, owned cards first (in colour, with a
 // count), then the missing ones faded; best cards first within each.
@@ -86,6 +87,15 @@ Item {
                 height: parent.height; radius: 3
                 color: "#ffd56b"
             }
+        }
+        PillButton {   // sell the spare copies of cheap cards; valuable ones are sold one by one
+            anchors.horizontalCenter: parent.horizontalCenter
+            visible: !binder.stage.offTheRecord && binder.stage.bulkDuplicates.length > 0
+            text: "Sell bulk duplicates (" + binder.stage.bulkDuplicates.reduce((a, it) => a + it.count, 0)
+                  + " cards, +" + Progress.format(binder.stage.bulkValue) + ")"
+            accent: "#7fd1b9"
+            fontSize: 13
+            onClicked: binder.stage.sell(binder.stage.bulkDuplicates)
         }
     }
 
@@ -184,30 +194,30 @@ Item {
         }
     }
 
-    Rectangle {   // "show on desktop" button under the inspected card
+    Row {   // under the inspected card: show it on the desktop, or sell a copy
         visible: !!binder.inspected
         z: 1
         anchors.horizontalCenter: parent.horizontalCenter
         anchors.bottom: parent.bottom
         anchors.bottomMargin: 46
-        width: showLabel.width + 30
-        height: showLabel.height + 14
-        radius: height / 2
-        color: showMouse.containsMouse ? "#ffd56b" : "#1b2236"
-        border.color: "#ffd56b"
-        Text {
-            id: showLabel
-            anchors.centerIn: parent
+        spacing: 14
+        readonly property var entry: binder.inspected ? binder.stage.collection.cards[binder.stage.cardKey(binder.inspected)] : null
+        PillButton {
             text: "Show on desktop (D)"
-            color: showMouse.containsMouse ? "#2a0a10" : "#ffd56b"
-            font { pixelSize: 14; weight: Font.Bold }
-        }
-        MouseArea {
-            id: showMouse
-            anchors.fill: parent
-            hoverEnabled: true
-            cursorShape: Qt.PointingHandCursor
+            visible: !!parent.entry
             onClicked: binder.stage.showcase(binder.inspected)
+        }
+        PillButton {
+            visible: !!parent.entry && !binder.stage.offTheRecord
+            text: !binder.inspected ? ""
+                  : (parent.entry && parent.entry.count === 1 ? "Sell your only copy" : "Sell one")
+                    + " (+" + Progress.format(binder.stage.cardValue(binder.inspected)) + ")"
+            accent: parent.entry && parent.entry.count === 1 ? "#ff8a7a" : "#7fd1b9"
+            onClicked: {
+                var c = binder.inspected;
+                binder.stage.sell([{ card: c, count: 1 }]);
+                if (!binder.stage.collection.cards[binder.stage.cardKey(c)]) binder.inspected = null;
+            }
         }
     }
 
