@@ -107,6 +107,15 @@ and `~/Library/Application Support/optcg`.
 3. Hotkey: Shortcuts app → New Shortcut → "Run Shell Script" with the path to `mac/optcg` → in its
    details, "Add Keyboard Shortcut". skhd, Raycast or Hammerspoon work too.
 
+**Updates install themselves:** `install.sh` adds a login item that runs `mac/update.py` at login
+and every 6 hours. It checks the latest GitHub release, downloads its `optcg.bundle`, fast-forwards
+the checkout, refreshes the Python packages if needed, restarts the desktop showcase and shows a
+notification (log: `~/Library/Logs/optcg-update.log`). Double-click `mac/Update OPTCG.command` in
+Finder to check right away. If the repo is private, put a GitHub token in
+`~/Library/Application Support/optcg/github-token`.
+
+Publishing a release from here: `tools/release.sh v1.3.0 "what changed"`.
+
 With PyObjC the overlay has no Dock icon, takes focus from the app you were in, sits above the menu
 bar and shows over full-screen apps. Python from python.org needs its "Install Certificates" step
 for the downloads; Homebrew's Python doesn't. The PySide6 host also runs on Linux (that's how it's

@@ -1,0 +1,188 @@
+#!/usr/bin/env python3
+"""OPTCG auto-updater for macOS (run every few hours by a LaunchAgent, see install.sh).
+
+Checks the latest GitHub release; if it's newer than this copy, downloads the
+release's optcg.bundle, fast-forwards the repo to it, refreshes the Python
+packages, restarts the desktop showcase on the new code and shows a
+notification. A pack opener that's open is left alone (the next launch runs
+the new version).
+
+usage: update.py            check and update if there's a newer release
+       update.py --force    reinstall the latest release even if it's not newer
+
+The repo may be private: then it needs a GitHub token, read from
+$OPTCG_GITHUB_TOKEN, ~/Library/Application Support/optcg/github-token, or `gh`.
+Log: ~/Library/Logs/optcg-update.log
+"""
+import json
+import os
+import re
+import subprocess
+import sys
+import tempfile
+import time
+import urllib.error
+import urllib.request
+from pathlib import Path
+
+REPO = "artvis44-stack/optcg-pack-opener"
+API = f"https://api.github.com/repos/{REPO}/releases/latest"
+HERE = Path(__file__).resolve().parent          # .../optcg/mac
+ROOT = HERE.parent                               # the git checkout
+VENV_PY = HERE / ".venv" / "bin" / "python"
+DATA = Path.home() / "Library" / "Application Support" / "optcg"
+LOG = Path.home() / "Library" / "Logs" / "optcg-update.log"
+INSTALLED = DATA / "installed-version"   # what this updater last put in place
+
+
+def log(msg):
+    line = time.strftime("%Y-%m-%d %H:%M:%S ") + msg
+    print(line)
+    try:
+        LOG.parent.mkdir(parents=True, exist_ok=True)
+        with open(LOG, "a") as f:
+            f.write(line + "\n")
+    except OSError:
+        pass
+
+
+def notify(text):
+    if sys.platform == "darwin":
+        script = f'display notification "{text}" with title "OPTCG"'
+        subprocess.run(["osascript", "-e", script], check=False)
+
+
+def token():
+    if os.environ.get("OPTCG_GITHUB_TOKEN"):
+        return os.environ["OPTCG_GITHUB_TOKEN"].strip()
+    f = DATA / "github-token"
+    if f.exists():
+        return f.read_text().strip()
+    try:
+        out = subprocess.run(["gh", "auth", "token"], capture_output=True, text=True, timeout=10)
+        if out.returncode == 0:
+            return out.stdout.strip()
+    except (OSError, subprocess.TimeoutExpired):
+        pass
+    return ""
+
+
+def api_get(url, tok, accept="application/vnd.github+json"):
+    req = urllib.request.Request(url, headers={"Accept": accept, "User-Agent": "optcg-updater"})
+    if tok:
+        req.add_header("Authorization", f"Bearer {tok}")
+    return urllib.request.urlopen(req, timeout=60)
+
+
+class NoRedirect(urllib.request.HTTPRedirectHandler):
+    def redirect_request(self, *args, **kwargs):
+        return None
+
+
+def download_asset(asset, tok, dest):
+    """Release assets of a private repo come from the API, which redirects to
+    storage that must NOT get the token -- so follow that redirect by hand."""
+    if not tok:
+        urllib.request.urlretrieve(asset["browser_download_url"], dest)
+        return
+    req = urllib.request.Request(asset["url"], headers={
+        "Accept": "application/octet-stream", "User-Agent": "optcg-updater",
+        "Authorization": f"Bearer {tok}"})
+    opener = urllib.request.build_opener(NoRedirect)
+    try:
+        resp = opener.open(req, timeout=60)
+        data = resp.read()
+    except urllib.error.HTTPError as e:
+        if e.code not in (301, 302, 303, 307, 308):
+            raise
+        location = e.headers["Location"]
+        data = urllib.request.urlopen(urllib.request.Request(location, headers={"User-Agent": "optcg-updater"}),
+                                      timeout=120).read()
+    Path(dest).write_bytes(data)
+
+
+def version(tag):
+    return tuple(int(n) for n in re.findall(r"\d+", tag)[:3]) or (0,)
+
+
+def git(*args, check=True):
+    return subprocess.run(["git", "-C", str(ROOT), *args], capture_output=True, text=True, check=check)
+
+
+def current_tag():
+    # the newest of: the nearest tag in git, and what we last installed (bundles
+    # up to v1.2.1 were made before their own tag, so git alone can lag behind)
+    out = git("describe", "--tags", "--abbrev=0", check=False)
+    tags = [out.stdout.strip() if out.returncode == 0 else "v0.0.0"]
+    if INSTALLED.exists():
+        tags.append(INSTALLED.read_text().strip())
+    return max(tags, key=version)
+
+
+def restart_showcase():
+    """Restart a running showcase so it picks up the new code."""
+    out = subprocess.run(["pgrep", "-f", f"{HERE}/optcg.py --showcase"], capture_output=True, text=True)
+    pids = [p for p in out.stdout.split() if p.strip() and int(p) != os.getpid()]
+    if not pids:
+        return
+    for pid in pids:
+        subprocess.run(["kill", pid], check=False)
+    time.sleep(1)
+    subprocess.Popen([str(VENV_PY), str(HERE / "optcg.py"), "--showcase"],
+                     stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, start_new_session=True)
+    log("restarted the desktop showcase")
+
+
+def main():
+    force = "--force" in sys.argv
+    tok = token()
+    try:
+        release = json.load(api_get(API, tok))
+    except urllib.error.HTTPError as e:
+        if e.code == 404:
+            log("can't see the releases: the repo is private and there's no token "
+                f"(put one in {DATA / 'github-token'})")
+        else:
+            log(f"GitHub API error {e.code}")
+        return 1
+    except OSError as e:
+        log(f"offline? {e}")
+        return 1
+
+    latest, have = release["tag_name"], current_tag()
+    if version(latest) <= version(have) and not force:
+        log(f"up to date ({have})")
+        return 0
+    asset = next((a for a in release.get("assets", []) if a["name"] == "optcg.bundle"), None)
+    if not asset:
+        log(f"{latest} has no optcg.bundle asset")
+        return 1
+
+    log(f"updating {have} -> {latest}")
+    before_reqs = (HERE / "requirements.txt").read_text()
+    with tempfile.TemporaryDirectory() as tmp:
+        bundle = os.path.join(tmp, "optcg.bundle")
+        download_asset(asset, tok, bundle)
+        git("bundle", "verify", bundle)
+        git("fetch", "--tags", "--force", bundle, "main")
+        if git("merge", "--ff-only", "FETCH_HEAD", check=False).returncode != 0:
+            # local edits in the way: keep them on a branch, then take the release
+            backup = time.strftime("backup-%Y%m%d-%H%M%S")
+            git("branch", backup)
+            git("reset", "--hard", "FETCH_HEAD")
+            log(f"local changes kept on branch {backup}")
+
+    if (HERE / "requirements.txt").read_text() != before_reqs or force:
+        log("updating Python packages")
+        subprocess.run([str(VENV_PY), "-m", "pip", "install", "-q", "-r", str(HERE / "requirements.txt")], check=False)
+    subprocess.run(["bash", str(HERE / "install.sh"), "--agents-only"], check=False)
+    restart_showcase()
+    DATA.mkdir(parents=True, exist_ok=True)
+    INSTALLED.write_text(latest)
+    log(f"updated to {latest}")
+    notify(f"Updated to {latest}")
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())
