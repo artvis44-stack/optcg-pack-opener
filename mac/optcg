@@ -1,0 +1,11 @@
+#!/usr/bin/env bash
+# Toggle the OPTCG overlay on macOS (bind this to a hotkey).
+# usage: optcg [box]        optcg --ipc COMMAND [ARG]
+# Works through symlinks (e.g. ln -s .../mac/optcg ~/bin/optcg).
+SOURCE="${BASH_SOURCE[0]}"
+while [ -L "$SOURCE" ]; do
+    LINK="$(readlink "$SOURCE")"
+    [[ "$LINK" = /* ]] && SOURCE="$LINK" || SOURCE="$(dirname "$SOURCE")/$LINK"
+done
+DIR="$(cd "$(dirname "$SOURCE")" && pwd)"
+exec "$DIR/.venv/bin/python" "$DIR/optcg.py" "$@"

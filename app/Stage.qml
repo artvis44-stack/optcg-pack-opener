@@ -18,6 +18,7 @@ Item {
     // ---- sets -------------------------------------------------------------
     readonly property string appDir: Qt.resolvedUrl(".").toString().replace("file://", "")
     readonly property string fetchScript: Qt.resolvedUrl("../fetch_cards.py").toString().replace("file://", "")
+    readonly property string python: host.env("OPTCG_PYTHON") || "python3"   // runs fetch_cards.py
     property var sets: ({})             // sets.json, loaded once at startup
     readonly property string settingsPath: dataDir + "/settings.json"
     property string setId: host.env("OPTCG_SET") || "OP-17"
@@ -146,7 +147,7 @@ Item {
         db = null;
         downloadLine = "";
         phase = "downloading";
-        host.run(["python3", "-I", "-u", fetchScript, id],
+        host.run([python, "-I", "-u", fetchScript, id],
                  line => downloadLine = line,
                  code => loadSet(id, true));
     }

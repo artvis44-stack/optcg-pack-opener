@@ -17,7 +17,7 @@ Item {
         have = h;
         if (!previewsFetched) {   // pack photos of every set (skips ones already cached)
             previewsFetched = true;
-            stage.host.run(["python3", "-I", "-u", stage.fetchScript, "previews"], null, code => {
+            stage.host.run([stage.python, "-I", "-u", stage.fetchScript, "previews"], null, code => {
                 reloading = true;   // pick up the new files
                 reloading = false;
             });

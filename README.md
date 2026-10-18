@@ -80,6 +80,24 @@ Every pack you open is saved to `~/.local/share/optcg/collection.json` (count pe
 date first pulled). Cards you pull for the first time get a NEW! badge. Packs opened with
 `OPTCG_FORCE_HIT` are not saved. `OPTCG_COLLECTION=/path/to/file.json` uses a different file.
 
+## macOS
+
+`mac/` is a port of the same app: `optcg.py` hosts `app/` with PySide6 (the four host functions,
+a frameless always-on-top window, open/close toggle, `--ipc` commands) and `main.qml` is the window.
+The shaders already include Metal. Card images and your collection live in `~/Library/Caches/optcg`
+and `~/Library/Application Support/optcg`.
+
+1. Copy this folder to the Mac (or `git clone` it), then run `mac/install.sh`
+   (Python venv with PySide6 + PyObjC, and imagemagick + poppler via Homebrew).
+2. Run `mac/optcg` (or `mac/optcg box`); run it again or press Esc to close.
+3. Hotkey: Shortcuts app → New Shortcut → "Run Shell Script" with the path to `mac/optcg` → in its
+   details, "Add Keyboard Shortcut". skhd, Raycast or Hammerspoon work too.
+
+With PyObjC the overlay has no Dock icon, takes focus from the app you were in, sits above the menu
+bar and shows over full-screen apps. Python from python.org needs its "Install Certificates" step
+for the downloads; Homebrew's Python doesn't. The PySide6 host also runs on Linux (that's how it's
+tested): `mac/optcg.py` with a venv from `mac/requirements.txt`.
+
 ## Tweaks
 
 - Other set: press S in the app, or `OPTCG_SET=OP-16 ./open-pack.sh`; the last set is remembered

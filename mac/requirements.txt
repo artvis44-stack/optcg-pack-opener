@@ -1,0 +1,3 @@
+PySide6>=6.11
+# window level / no Dock icon / focus on macOS (optional elsewhere)
+pyobjc-framework-Cocoa; sys_platform == "darwin"
