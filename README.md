@@ -87,8 +87,9 @@ a frameless always-on-top window, open/close toggle, `--ipc` commands) and `main
 The shaders already include Metal. Card images and your collection live in `~/Library/Caches/optcg`
 and `~/Library/Application Support/optcg`.
 
-1. Copy this folder to the Mac (or `git clone` it), then run `mac/install.sh`
-   (Python venv with PySide6 + PyObjC, and imagemagick + poppler via Homebrew).
+1. Copy this folder to the Mac (or `git clone` it), then run `mac/install.sh`. Needs macOS 13+ and
+   Homebrew; it installs Homebrew's Python (PySide6 needs 3.10+, macOS's own python3 is 3.9),
+   a venv with PySide6 + PyObjC, and imagemagick + poppler.
 2. Run `mac/optcg` (or `mac/optcg box`); run it again or press Esc to close.
 3. Hotkey: Shortcuts app → New Shortcut → "Run Shell Script" with the path to `mac/optcg` → in its
    details, "Add Keyboard Shortcut". skhd, Raycast or Hammerspoon work too.

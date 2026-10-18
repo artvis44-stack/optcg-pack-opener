@@ -8,4 +8,8 @@ while [ -L "$SOURCE" ]; do
     [[ "$LINK" = /* ]] && SOURCE="$LINK" || SOURCE="$(dirname "$SOURCE")/$LINK"
 done
 DIR="$(cd "$(dirname "$SOURCE")" && pwd)"
+if [ ! -x "$DIR/.venv/bin/python" ]; then
+    echo "Not installed yet -- run $DIR/install.sh first." >&2
+    exit 1
+fi
 exec "$DIR/.venv/bin/python" "$DIR/optcg.py" "$@"
