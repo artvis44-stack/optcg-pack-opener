@@ -22,6 +22,7 @@ Boosters EB-01 to EB-03 and the Premium Boosters PRB-01 / PRB-02.
 | D | show the card you're looking at on your desktop (inspected, just revealed, or hovered in the binder) |
 | W | the wanted board: today's bounties, achievements, your total bounty (← → switch between the overall board and each set's) |
 | Y | sync: sign in to your sync server (or create an account) to share your saves between computers |
+| M | sound on / off (remembered) |
 | C | box mode: buy the rest of the case (15% off) |
 | Esc / right-click | close |
 
@@ -38,6 +39,11 @@ The app is split into a platform-independent part (`app/`) and a thin host.
   TCGplayer ids of its pack/box photos and DON!! cards, and the per-set rates the research found.
 - `app/SetPicker.qml`: the set picker
 - `app/Stage.qml`: the flow (pack → reveal → summary, box mode), layout and effects
+- `app/Sounds.qml`, `app/sounds/`: sound effects (tearing, card flips, a charge-up before big hits, chimes
+  and fanfares by rarity, the god pack, coins, wanted posters). They're synthesized by
+  `tools/make_sounds.py` (no samples): tweak a recipe and run it again. Playing them needs Qt
+  Multimedia (`qt6-multimedia` on Arch; PySide6 includes it on macOS); without it the app is silent.
+  `OPTCG_MUTE=1` starts muted
 - `app/Pack.qml`, `app/PackFace.qml`: the booster wrapper (official photo, or the drawn fallback) and the tear animation
 - `app/BoxView.qml`: box mode (the sealed display box, the grid of 24 packs, the box summary)
 - `app/Binder.qml`: the collection view (owned cards first with counts, missing ones faded)

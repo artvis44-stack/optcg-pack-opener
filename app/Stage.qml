@@ -58,6 +58,33 @@ Item {
     property string boardReturn: "pack"
     property string mode: host.env("OPTCG_MODE") === "box" ? "box" : "pack"
     readonly property bool inBoxScreen: phase === "boxSealed" || phase === "boxGrid" || phase === "boxSummary"
+    // ---- sound (Sounds.qml; M mutes, remembered in settings.json) ----------------
+    property bool muted: host.env("OPTCG_MUTE") === "1" || !!readSettings().muted
+    Loader {
+        id: soundLoader
+        source: "Sounds.qml"
+        onLoaded: item.dir = "file://" + stage.host.appPath("app/sounds")
+    }
+    function sfx(name) {
+        if (!muted && soundLoader.item) soundLoader.item.play(name);
+    }
+    // the sound for revealing a card of this tier (nothing below Super Rare)
+    function revealSound(tier) {
+        return tier.rank >= 10 ? "legendary" : tier.rank >= 6 ? "epic" : tier.rank >= 4 ? "rare" : "";
+    }
+    function toggleMute() {
+        muted = !muted;
+        saveSettings({ muted: muted });
+        toast(muted ? "Sound off (M)" : "Sound on (M)");
+        if (muted && soundLoader.item) soundLoader.item.stop("charge");
+    }
+    function readSettings() {
+        try { return JSON.parse(host.readText(settingsPath) || "{}"); } catch (e) { return {}; }
+    }
+    function saveSettings(changes) {
+        host.writeText(settingsPath, JSON.stringify(Object.assign(readSettings(), changes)));
+    }
+
     property var pack: []
     readonly property string godPack: pack.length && Tiers.isGodPack(pack) ? Tiers.godPackName(pack, setInfo) : ""
     property int revealed: 0
@@ -124,7 +151,7 @@ Item {
         if (host.env("OPTCG_INSPECT") === "1" && openShowcaseView()) return;
         if (!host.env("OPTCG_SET")) {
             try {
-                var last = JSON.parse(host.readText(settingsPath) || "{}").set;
+                var last = readSettings().set;
                 if (last && sets[last]) setId = last;
             } catch (e) {}
         }
@@ -168,6 +195,7 @@ Item {
         }
         currentCelebration = celebrations[0];
         celebrations = celebrations.slice(1);
+        sfx(currentCelebration.kind === "achievement" ? "poster" : "chime");
         celebrationTimer.restart();
     }
     Timer {
@@ -246,6 +274,7 @@ Item {
             return false;
         }
         packPaid = true;
+        if (how === "paid") sfx("coin");
         return true;
     }
 
@@ -259,6 +288,7 @@ Item {
         }
         caseState.boxPaid = true;
         saveCase();
+        sfx("coin");
         return true;
     }
 
@@ -271,6 +301,7 @@ Item {
         }
         caseState.prepaid = (caseState.prepaid || 0) + n;
         saveCase();
+        sfx("coin");
         toast("Bought the rest of the case: " + n + " boxes for " + Progress.format(cost));
     }
 
@@ -354,6 +385,7 @@ Item {
             return Progress.record(p, { type: "sell", count: n, value: total });
         });
         refreshValue();
+        sfx("coin");
         toast("Sold " + n + " card" + (n > 1 ? "s" : "") + " for " + Progress.format(total));
         return total;
     }
@@ -396,7 +428,7 @@ Item {
             phase = "error";
             return;
         }
-        host.writeText(settingsPath, JSON.stringify({ set: id }));
+        saveSettings({ set: id });
         loadMarket();
         if (mode === "box") startBox();
         else newPack();
@@ -594,6 +626,7 @@ Item {
         if (phase === "boxSealed") {
             if (!payForBox()) return;
             phase = "boxGrid";
+            sfx("box");
             if (boxTopper && !topperTaken) {   // the box topper comes off first
                 recordCards([boxTopper]);
                 topperTaken = true;
@@ -614,9 +647,11 @@ Item {
                 phase = "summary";
             } else if (nextTier.rank >= 4) {
                 charging = true;   // build suspense before a big card
+                sfx("charge");
                 chargeTimer.start();
             } else {
                 revealed++;
+                sfx("flip");
             }
         } else if (phase === "summary") {
             if (inspectIndex >= 0) inspectIndex = -1;
@@ -627,8 +662,10 @@ Item {
 
     function revealAll() {
         if (phase === "reveal" && !charging) {
+            var best = pack.slice(revealed).reduce((a, c) => Math.max(a, Tiers.tierOf(c).rank), -1);
             revealed = pack.length;
             phase = "summary";
+            sfx(revealSound({ rank: best }) || "flip");
         }
     }
 
@@ -838,6 +875,9 @@ Item {
         case Qt.Key_Y:
             toggleSync();
             break;
+        case Qt.Key_M:
+            toggleMute();
+            break;
         case Qt.Key_C:
             buyCase();
             break;
@@ -894,7 +934,10 @@ Item {
             artSource: stage.packArt
             setCode: stage.db.set
             setName: stage.db.set_name
-            onTearStarted: stage.cardsIn = true
+            onTearStarted: {
+                stage.cardsIn = true;
+                stage.sfx("tear");
+            }
             onTapped: stage.advance()
             onTorn: {
                 stage.recordPack();
@@ -902,6 +945,7 @@ Item {
                 if (stage.godPack) {
                     flashAnim.restart();
                     godAnim.restart();
+                    stage.sfx("god");
                 }
             }
         }
@@ -978,6 +1022,7 @@ Item {
         onTriggered: {
             stage.charging = false;
             stage.revealed++;
+            stage.sfx(stage.revealSound(stage.centerTier));
             if (stage.centerTier.rank >= 6) flashAnim.restart();
             popAnim.restart();
         }
