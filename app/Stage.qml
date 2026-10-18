@@ -268,9 +268,19 @@ Item {
 
     readonly property int packCost: Progress.packPrice(cfg.family, progress, setId)
     readonly property int boxCost: Progress.boxPrice(cfg.family, cfg.packsPerBox, progress, setId)
-    readonly property int boxesLeftToBuy: !caseState ? 0
-        : cfg.boxes - boxIndex - (caseState.boxPaid ? 1 : 0) - (caseState.prepaid || 0)
-    readonly property int caseCost: Progress.casePrice(cfg.family, cfg.packsPerBox, Math.max(0, boxesLeftToBuy), progress, setId)
+    // caseState is changed in place, so these depend on caseRev (bumped by saveCase) to stay current
+    property int caseRev: 0
+    readonly property int boxesLeftToBuy: { caseRev; return boxesLeft(); }
+    readonly property int prepaidBoxes: { caseRev; return caseState ? caseState.prepaid || 0 : 0; }
+    readonly property bool boxPaidNow: { caseRev; return !!(caseState && caseState.boxPaid); }
+    // C: the rest of this case, or once that's paid for, another whole case (its boxes carry over)
+    readonly property int caseCost: Progress.casePrice(cfg.family, cfg.packsPerBox, boxesLeftToBuy > 0 ? boxesLeftToBuy : cfg.boxes, progress, setId)
+
+    // boxes of this case not paid for yet (the open one counts once it's paid)
+    function boxesLeft() {
+        if (!caseState) return 0;
+        return Math.max(0, cfg.boxes - boxIndex - (caseState.boxPaid ? 1 : 0) - (caseState.prepaid || 0));
+    }
 
     function payForPack() {
         if (offTheRecord || packPaid) return true;
@@ -299,16 +309,20 @@ Item {
     }
 
     function buyCase() {
-        if (offTheRecord || !inBoxScreen || boxesLeftToBuy <= 0) return;
-        var n = boxesLeftToBuy, cost = caseCost;
+        if (offTheRecord || !inBoxScreen || !caseState) return;
+        // worked out now, not from a binding: pressing C fast must not pay twice for the same boxes
+        var rest = boxesLeft(), n = rest > 0 ? rest : cfg.boxes;
+        var cost = Progress.casePrice(cfg.family, cfg.packsPerBox, n, progress, setId);
         if (!prog(p => Progress.pay(p, cost, false, "cases"))) {
-            toast("Not enough berries: the rest of this case (" + n + " boxes) is " + Progress.format(cost) + ".");
+            toast("Not enough berries: " + (rest > 0 ? "the rest of this case (" + n + " boxes)" : "another case (" + n + " boxes)")
+                  + " is " + Progress.format(cost) + ".");
             return;
         }
         caseState.prepaid = (caseState.prepaid || 0) + n;
         saveCase();
         sfx("coin");
-        toast("Bought the rest of the case: " + n + " boxes for " + Progress.format(cost));
+        toast((rest > 0 ? "Bought the rest of the case: " : "Bought another case: ") + n + " boxes for " + Progress.format(cost)
+              + "  ·  " + caseState.prepaid + " prepaid boxes waiting");
     }
 
     // a pack's worth of cards went into the binder
@@ -707,6 +721,7 @@ Item {
     function saveCase() {
         caseState.opened = boxOpened;
         host.writeText(casePath, JSON.stringify(caseState));
+        caseRev++;
     }
 
     function newCase() {
@@ -1068,7 +1083,7 @@ Item {
             toggleBinder();
             break;
         case Qt.Key_O:
-            if (phase === "binder" && !binderView.allSets) binderView.ownedOnly = !binderView.ownedOnly;
+            if (phase === "binder") binderView.toggleOwned();
             break;
         case Qt.Key_Left:
             if (phase === "vault") vaultView.step(-1);
@@ -1114,6 +1129,10 @@ Item {
             break;
         case Qt.Key_G:
             toggleVault();
+            break;
+        case Qt.Key_F:
+            if (phase === "binder") binderView.filtersOpen = !binderView.filtersOpen;
+            else return;
             break;
         case Qt.Key_C:
             buyCase();

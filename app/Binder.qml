@@ -5,20 +5,152 @@ import "progress.js" as Progress
 // Collection binder. "This set": the whole set, owned cards first (in colour,
 // with a count), then the missing ones faded; best cards first within each.
 // "All sets" (Tab): everything you own from every set, best pulls first, with
-// set filter chips and an estimated value.
+// set filter chips and an estimated value. Both can be searched, filtered (F:
+// rarity, card type, colour, owned / missing / duplicates / graded) and sorted.
 Item {
     id: binder
 
     property Item stage
-    property bool ownedOnly: false
     property bool allSets: false
+
+    // ---- search, filters, sort ----
+    property string search: ""
+    property string rarity: ""        // a RARITIES id
+    property string cardType: ""      // Leader, Character, Event, Stage, DON!!
+    property string cardColor: ""     // Red, Green, Blue, Purple, Black, Yellow
+    property string show: ""          // "" | owned | missing | dupes | graded
+    property string sortBy: "rarity"  // rarity | number | value | count
+    property bool filtersOpen: false
+    readonly property int activeFilters: (search ? 1 : 0) + (rarity ? 1 : 0) + (cardType ? 1 : 0) + (cardColor ? 1 : 0) + (show ? 1 : 0)
+    readonly property var rarities: [
+        ["common", "Common", ["C"]], ["uncommon", "Uncommon", ["UC"]], ["rare", "Rare", ["R", "FOIL"]],
+        ["leader", "Leader", ["L"]], ["sr", "Super Rare", ["SR"]], ["sec", "Secret Rare", ["SEC"]],
+        ["alt", "Alt Art", ["AA", "L_AA", "TEX", "SEC_AA"]], ["sp", "SP", ["SP", "SP_GOLD"]],
+        ["chase", "Chase (TR, Manga, Super)", ["TR", "MANGA", "SUPER", "SUPER_L", "SIGNED"]],
+        ["special", "Pandaman / topper", ["PANDA", "TOPPER"]], ["don", "DON!!", ["DON", "DON_GOLD", "DON_SP"]]
+    ]
+    readonly property var types: ["Leader", "Character", "Event", "Stage", "DON!!"]
+    readonly property var colors: ["Red", "Green", "Blue", "Purple", "Black", "Yellow"]
+    function clearFilters() {
+        searchInput.text = "";
+        search = ""; rarity = ""; cardType = ""; cardColor = ""; show = "";
+    }
+    function toggleOwned() {   // O
+        show = show === "owned" ? "" : "owned";
+    }
+
+    // card type and colour for every card of your sets (cards.json); the
+    // collection itself only keeps id, name and rarity
+    property var meta: ({})
+    function loadMeta() {
+        var m = Object.assign({}, meta), changed = false;
+        Object.keys(stage.sets).forEach(id => {
+            if (m["set:" + id]) return;
+            var db = null;
+            try { db = JSON.parse(stage.host.readText(stage.cacheRoot + "/" + id + "/cards.json") || "null"); } catch (e) {}
+            if (!db) return;
+            m["set:" + id] = true;
+            changed = true;
+            (db.cards || []).forEach(c => m[id + ":" + c.image.split("/").pop()] = { type: c.type || "", color: c.color || "" });
+        });
+        if (changed) meta = m;
+    }
+    function infoOf(card) {
+        return meta[(card.set || stage.setId) + ":" + card.image.split("/").pop()] || { type: card.type || "", color: card.color || "" };
+    }
+    function matches(it) {
+        var c = it.card, owned = it.count > 0 || it.slabs.length > 0;
+        if (search) {
+            var q = search.toLowerCase();
+            if (Tiers.displayName(c).toLowerCase().indexOf(q) < 0 && c.id.toLowerCase().indexOf(q) < 0) return false;
+        }
+        if (rarity) {
+            var g = rarities.filter(r => r[0] === rarity)[0];
+            if (g && g[2].indexOf(c.tier) < 0) return false;
+        }
+        if (cardType || cardColor) {
+            var info = infoOf(c);
+            if (cardType && info.type !== cardType) return false;
+            if (cardColor && info.color.indexOf(cardColor) < 0) return false;
+        }
+        if (show === "owned" && !owned) return false;
+        if (show === "missing" && owned) return false;
+        if (show === "dupes" && it.count < 2) return false;
+        if (show === "graded" && !it.slabs.length) return false;
+        return true;
+    }
+
+    // keep the scroll position across a change to the collection (selling,
+    // buying, grading rebuild the list, which would jump back to the top)
+    function keepScroll(fn) {
+        // the grid re-anchors to its rows after a rebuild, so remember the card at the top and how far into its row
+        var i = Math.max(0, grid.indexAt(grid.width / 2, grid.contentY + 1));
+        var item = grid.itemAtIndex(i);
+        restoreScroll.index = i;
+        restoreScroll.offset = item ? grid.contentY - item.y : 0;
+        restoreScroll.atEnd = grid.atYEnd && grid.contentY > grid.originY;
+        fn();
+        restoreScroll.restart();
+    }
+    Timer {   // once the grid has rebuilt
+        id: restoreScroll
+        property int index: 0
+        property real offset: 0
+        property bool atEnd: false
+        interval: 60
+        onTriggered: {
+            grid.forceLayout();
+            if (atEnd) {
+                grid.positionViewAtEnd();
+            } else {
+                grid.positionViewAtIndex(Math.min(index, grid.count - 1), GridView.Beginning);
+                grid.contentY = Math.min(grid.contentY + offset, grid.originY + Math.max(0, grid.contentHeight - grid.height));
+            }
+        }
+    }
+
+    // a row of filter chips: label, then "all" and the options
+    component Chips: Row {
+        id: chips
+        property string label
+        property var options: []      // [value, text]
+        property string value
+        signal picked(string v)
+        spacing: 5
+        Text {
+            width: 62
+            anchors.verticalCenter: parent.verticalCenter
+            text: chips.label
+            color: "#7a8090"
+            font { pixelSize: 12; weight: Font.Bold }
+        }
+        Repeater {
+            model: [["", "all"]].concat(chips.options)
+            PillButton {
+                required property var modelData
+                text: modelData[1]
+                fontSize: 11
+                accent: chips.value === modelData[0] ? "#ffd56b" : "#7a8090"
+                onClicked: chips.picked(chips.value === modelData[0] ? "" : modelData[0])
+            }
+        }
+    }
+
+    property int sellCount: 1           // how many copies of the inspected card to sell
+    onInspectedChanged: sellCount = 1
     property string setFilter: ""    // all sets: just this set ("" = every set)
 
     onAllSetsChanged: {
         inspected = null;
         hoveredCard = null;
-        if (allSets) stage.loadAllMarkets();
+        if (allSets) {
+            stage.loadAllMarkets();
+            loadMeta();
+        }
     }
+    onCardTypeChanged: loadMeta()
+    onCardColorChanged: loadMeta()
+    onSortByChanged: if (sortBy === "value") stage.loadAllMarkets()
 
     // the sets you own cards from, in release order
     readonly property var ownedSets: {
@@ -37,15 +169,10 @@ Item {
         else stage.toggleBinder();
     }
 
-    readonly property var entries: {
+    // everything this view holds, before search / filters
+    readonly property var all: {
         if (!stage) return [];
-        if (allSets) {
-            var order = Object.keys(stage.sets);
-            return stage.allOwned.filter(it => !setFilter || it.card.set === setFilter)
-                .sort((a, b) => Tiers.tierOf(b.card).rank - Tiers.tierOf(a.card).rank
-                                || order.indexOf(a.card.set) - order.indexOf(b.card.set)
-                                || a.card.id.localeCompare(b.card.id));
-        }
+        if (allSets) return stage.allOwned.filter(it => !setFilter || it.card.set === setFilter);
         if (!stage.db) return [];
         var seen = {}, list = [];
         stage.db.cards.forEach(c => {
@@ -53,13 +180,24 @@ Item {
             if (seen[k]) return;
             seen[k] = true;
             var e = stage.collection.cards[k], slabs = stage.slabsByKey[k] || [];
-            if (ownedOnly && !e && !slabs.length) return;
             list.push({ card: c, count: e ? e.count : 0, slabs: slabs });
         });
-        // owned (raw or graded) first, then missing; best cards first within each
+        return list;
+    }
+
+    readonly property var entries: {
+        var meta = binder.meta;   // re-filter once card types / colours are loaded
+        var list = all.filter(it => matches(it)), order = stage ? Object.keys(stage.sets) : [];
         var has = it => it.count > 0 || it.slabs.length > 0;
-        return list.sort((a, b) => has(b) - has(a)
-                                   || Tiers.tierOf(b.card).rank - Tiers.tierOf(a.card).rank
+        var byRarity = (a, b) => Tiers.tierOf(b.card).rank - Tiers.tierOf(a.card).rank;
+        var byNumber = (a, b) => order.indexOf(a.card.set) - order.indexOf(b.card.set) || a.card.id.localeCompare(b.card.id);
+        if (sortBy === "number") return list.sort((a, b) => byNumber(a, b) || byRarity(a, b));
+        if (sortBy === "value") return list.sort((a, b) => stage.cardValue(b.card) - stage.cardValue(a.card) || byRarity(a, b));
+        if (sortBy === "count") return list.sort((a, b) => (b.count + b.slabs.length) - (a.count + a.slabs.length) || byRarity(a, b));
+        // by rarity: in a set, owned (raw or graded) first, then missing; best cards first within each
+        return list.sort((a, b) => (allSets ? 0 : has(b) - has(a))
+                                   || byRarity(a, b)
+                                   || (allSets ? order.indexOf(a.card.set) - order.indexOf(b.card.set) : 0)
                                    || a.card.id.localeCompare(b.card.id));
     }
 
@@ -138,9 +276,102 @@ Item {
                     + "   ·   worth about " + Progress.format(binder.stats.value)
                   : binder.stats.owned + " / " + binder.stats.total + " collected   ·   "
                     + binder.stats.pulled + " cards pulled   ·   " + binder.stats.packs + " packs opened"
-                    + (binder.ownedOnly ? "   ·   showing owned only" : "")
+                    + (binder.activeFilters ? "   ·   showing " + binder.entries.length : "")
             color: "#d0d4dc"
             font.pixelSize: 16
+        }
+        Row {   // search, filters, sort
+            anchors.horizontalCenter: parent.horizontalCenter
+            spacing: 8
+            Rectangle {
+                width: 220
+                height: 30
+                radius: 15
+                color: "#151b2c"
+                border.color: searchInput.activeFocus ? "#ffd56b" : "#2c3550"
+                TextInput {
+                    id: searchInput
+                    anchors { fill: parent; leftMargin: 14; rightMargin: 14 }
+                    verticalAlignment: TextInput.AlignVCenter
+                    color: "#e8e8ee"
+                    font.pixelSize: 13
+                    clip: true
+                    text: binder.search
+                    onTextChanged: binder.search = text
+                    Keys.onEscapePressed: event => {   // clear, then let go of the keyboard
+                        if (text) text = "";
+                        else binder.stage.forceActiveFocus();
+                        event.accepted = true;
+                    }
+                    Keys.onReturnPressed: binder.stage.forceActiveFocus()
+                    Text {
+                        anchors.verticalCenter: parent.verticalCenter
+                        visible: !searchInput.text && !searchInput.activeFocus
+                        text: "Search name or number"
+                        color: "#4a5370"
+                        font.pixelSize: 13
+                    }
+                }
+            }
+            PillButton {
+                text: "Filters" + (binder.activeFilters - (binder.search ? 1 : 0) > 0 ? " (" + (binder.activeFilters - (binder.search ? 1 : 0)) + ")" : "") + "  F"
+                fontSize: 12
+                accent: binder.filtersOpen || binder.activeFilters ? "#ffd56b" : "#7a8090"
+                onClicked: binder.filtersOpen = !binder.filtersOpen
+            }
+            PillButton {
+                visible: binder.activeFilters > 0
+                text: "clear"
+                fontSize: 12
+                accent: "#ff8a7a"
+                onClicked: binder.clearFilters()
+            }
+            Text {
+                anchors.verticalCenter: parent.verticalCenter
+                text: "   sort:"
+                color: "#7a8090"
+                font.pixelSize: 12
+            }
+            Repeater {
+                model: [["rarity", "rarity"], ["number", "number"], ["value", "value"], ["count", "copies"]]
+                PillButton {
+                    required property var modelData
+                    text: modelData[1]
+                    fontSize: 12
+                    accent: binder.sortBy === modelData[0] ? "#ffd56b" : "#7a8090"
+                    onClicked: binder.sortBy = modelData[0]
+                }
+            }
+        }
+        Column {   // the filters (F)
+            visible: binder.filtersOpen
+            anchors.horizontalCenter: parent.horizontalCenter
+            spacing: 5
+            Chips {
+                label: "Rarity"
+                // only the rarities this view has
+                options: binder.rarities.filter(r => binder.all.some(it => r[2].indexOf(it.card.tier) >= 0)).map(r => [r[0], r[1]])
+                value: binder.rarity
+                onPicked: v => binder.rarity = v
+            }
+            Chips {
+                label: "Type"
+                options: binder.types.map(t => [t, t])
+                value: binder.cardType
+                onPicked: v => binder.cardType = v
+            }
+            Chips {
+                label: "Colour"
+                options: binder.colors.map(c => [c, c])
+                value: binder.cardColor
+                onPicked: v => binder.cardColor = v
+            }
+            Chips {
+                label: "Show"
+                options: [["owned", "owned"], ["missing", "missing"], ["dupes", "duplicates"], ["graded", "graded"]]
+                value: binder.show
+                onPicked: v => binder.show = v
+            }
         }
         Flow {   // all sets: filter by set
             visible: binder.allSets && binder.ownedSets.length > 1
@@ -183,7 +414,7 @@ Item {
                   + " cards, +" + Progress.format(binder.bulkValue) + ")"
             accent: "#7fd1b9"
             fontSize: 13
-            onClicked: binder.stage.sell(binder.bulk)
+            onClicked: binder.keepScroll(() => binder.stage.sell(binder.bulk))
         }
     }
 
@@ -219,7 +450,10 @@ Item {
                 time: binder.stage.t
                 hoverTilt: cell.owned
                 opacity: cell.owned ? 1 : 0.14
-                onClicked: binder.inspected = cell.modelData.card
+                onClicked: {
+                    binder.inspected = cell.modelData.card;
+                    binder.stage.forceActiveFocus();   // keys work again after typing in the search
+                }
                 onHoveredChanged: {
                     if (hovered && cell.owned) binder.hoveredCard = cell.modelData.card;
                     else if (binder.hoveredCard === cell.modelData.card) binder.hoveredCard = null;
@@ -275,8 +509,8 @@ Item {
 
     Text {
         anchors.centerIn: grid
-        visible: binder.ownedOnly && binder.entries.length === 0
-        text: "Nothing pulled yet. Open a pack!"
+        visible: binder.activeFilters > 0 && binder.entries.length === 0
+        text: "No cards match these filters."
         color: "#9aa0ad"
         font.pixelSize: 20
     }
@@ -285,7 +519,7 @@ Item {
         anchors { bottom: parent.bottom; bottomMargin: 14; horizontalCenter: parent.horizontalCenter }
         text: binder.inspected ? "Move the mouse to tilt   ·   D: show on desktop   ·   click or Esc to go back"
               : "Scroll to browse   ·   click a card to inspect   ·   D: show the hovered card on your desktop   ·   Tab: this set / all sets"
-                + (binder.allSets ? "" : "   ·   O: owned only / all") + "   ·   B or Esc: back"
+                + "   ·   F: filters   ·   O: owned only / all   ·   B or Esc: back"
         color: "#9aa0ad"
         font.pixelSize: 14
     }
@@ -317,25 +551,70 @@ Item {
             visible: !!parent.entry
             onClicked: binder.stage.showcase(binder.inspected)
         }
-        PillButton {
-            visible: !!parent.entry && !binder.stage.offTheRecord
-            text: !binder.inspected ? ""
-                  : (parent.entry && parent.entry.count === 1 ? "Sell your only copy" : "Sell one")
-                    + " (+" + Progress.format(binder.stage.sellPrice(binder.inspected)) + ")"
-            accent: parent.entry && parent.entry.count === 1 ? "#ff8a7a" : "#7fd1b9"
-            onClicked: {
-                var c = binder.inspected;
-                binder.stage.sell([{ card: c, count: 1 }]);
-                if (!binder.stage.collection.cards[binder.stage.cardKey(c)]) binder.inspected = null;
-            }
-        }
         PillButton {   // the card shop: order any card, at a markup
             visible: !!binder.inspected && !binder.stage.offTheRecord
             readonly property int price: binder.inspected ? Math.round(binder.stage.cardValue(binder.inspected) * Progress.ORDER_MARKUP) : 0
             text: "Buy one (" + Progress.format(price) + ")"
             accent: "#ffd56b"
             enabledLook: binder.stage.progress.berries >= price
-            onClicked: binder.stage.buyCard(binder.inspected, price, false)
+            onClicked: binder.keepScroll(() => binder.stage.buyCard(binder.inspected, price, false))
+        }
+    }
+
+    Row {   // sell: how many copies
+        id: sellRow
+        readonly property var entry: binder.inspected ? binder.stage.collection.cards[binder.stage.cardKey(binder.inspected)] : null
+        readonly property int have: entry ? entry.count : 0
+        readonly property int n: Math.max(1, Math.min(binder.sellCount, have))
+        visible: have > 0 && !binder.stage.offTheRecord
+        z: 1
+        anchors.horizontalCenter: parent.horizontalCenter
+        anchors.bottom: parent.bottom
+        anchors.bottomMargin: 92
+        spacing: 8
+        Text {
+            anchors.verticalCenter: parent.verticalCenter
+            text: "Sell"
+            color: "#c8ccd6"
+            font { pixelSize: 14; weight: Font.Bold }
+        }
+        PillButton {
+            text: "−"
+            fontSize: 14
+            enabledLook: sellRow.n > 1
+            onClicked: binder.sellCount = Math.max(1, sellRow.n - 1)
+        }
+        Text {
+            anchors.verticalCenter: parent.verticalCenter
+            width: 70
+            horizontalAlignment: Text.AlignHCenter
+            text: sellRow.n + " of " + sellRow.have
+            color: "#fff6e0"
+            font { pixelSize: 15; weight: Font.Black }
+        }
+        PillButton {
+            text: "+"
+            fontSize: 14
+            enabledLook: sellRow.n < sellRow.have
+            onClicked: binder.sellCount = Math.min(sellRow.have, sellRow.n + 1)
+        }
+        PillButton {
+            visible: sellRow.have > 2
+            text: "all but one"
+            fontSize: 12
+            onClicked: binder.sellCount = sellRow.have - 1
+        }
+        PillButton {
+            text: (sellRow.n === sellRow.have ? (sellRow.have === 1 ? "Sell your only copy" : "Sell every copy") : "Sell " + sellRow.n)
+                  + " (+" + Progress.format(sellRow.n * (binder.inspected ? binder.stage.sellPrice(binder.inspected) : 0)) + ")"
+            accent: sellRow.n === sellRow.have ? "#ff8a7a" : "#7fd1b9"
+            onClicked: {
+                var c = binder.inspected, n = sellRow.n;
+                binder.keepScroll(() => binder.stage.sell([{ card: c, count: n }]));
+                binder.sellCount = 1;
+                var k = binder.stage.cardKey(c);
+                if (!binder.stage.collection.cards[k] && !(binder.stage.slabsByKey[k] || []).length) binder.inspected = null;
+            }
         }
     }
 
@@ -344,7 +623,7 @@ Item {
         z: 1
         anchors.horizontalCenter: parent.horizontalCenter
         anchors.bottom: parent.bottom
-        anchors.bottomMargin: 92
+        anchors.bottomMargin: 138
         spacing: 12
         readonly property string key: binder.inspected ? binder.stage.cardKey(binder.inspected) : ""
         readonly property var slabs: binder.stage.slabsByKey[key] || []
@@ -379,7 +658,7 @@ Item {
     Text {
         visible: !!binder.inspected
         anchors.horizontalCenter: parent.horizontalCenter
-        y: 16
+        y: 56   // under the wallet line
         readonly property var c: binder.inspected
         readonly property var owned: c ? binder.stage.collection.cards[binder.stage.cardKey(c)] : null
         readonly property var slabs: c ? binder.stage.slabsByKey[binder.stage.cardKey(c)] || [] : []
@@ -507,7 +786,9 @@ Item {
                                     enabledLook: parent.parent.afford
                                     onClicked: {
                                         var c = binder.grading;
-                                        if (!binder.stage.gradeCard(c, modelData.id)) return;
+                                        var sent = false;
+                                        binder.keepScroll(() => sent = binder.stage.gradeCard(c, modelData.id));
+                                        if (!sent) return;
                                         binder.grading = null;
                                         if (!binder.stage.collection.cards[binder.stage.cardKey(c)] && !(binder.stage.slabsByKey[binder.stage.cardKey(c)] || []).length)
                                             binder.inspected = null;

@@ -176,21 +176,22 @@ Item {
         anchors.horizontalCenter: parent.horizontalCenter
         y: view.height * 0.86
         spacing: 6
-        readonly property var cs: view.stage.caseState || {}
+        readonly property int prepaid: view.stage.prepaidBoxes
         Text {
             anchors.horizontalCenter: parent.horizontalCenter
             readonly property bool short: view.stage.progress.berries < view.stage.boxCost
-            text: parent.cs.boxPaid ? "Paid"
-                  : (parent.cs.prepaid || 0) > 0 ? "Prepaid with the case (" + parent.cs.prepaid + " box" + (parent.cs.prepaid > 1 ? "es" : "") + " left)"
+            text: view.stage.boxPaidNow ? "Paid" + (parent.prepaid ? "  ·  " + parent.prepaid + " more prepaid" : "")
+                  : parent.prepaid > 0 ? "Prepaid (" + parent.prepaid + " box" + (parent.prepaid > 1 ? "es" : "") + " left)"
                   : "Open this box: " + Progress.format(view.stage.boxCost) + (short ? "  ·  not enough berries yet" : "")
-            color: parent.cs.boxPaid || (parent.cs.prepaid || 0) > 0 ? "#7fd1b9" : short ? "#ff8a7a" : "#ffd56b"
+            color: view.stage.boxPaidNow || parent.prepaid > 0 ? "#7fd1b9" : short ? "#ff8a7a" : "#ffd56b"
             font { pixelSize: 18; weight: Font.Black }
         }
         Text {
             anchors.horizontalCenter: parent.horizontalCenter
-            visible: view.stage.boxesLeftToBuy > 1
-            text: "C: buy the rest of this case (" + view.stage.boxesLeftToBuy + " boxes) for "
-                  + Progress.format(view.stage.caseCost) + "  ·  15% off"
+            text: view.stage.boxesLeftToBuy > 0
+                  ? "C: buy the rest of this case (" + view.stage.boxesLeftToBuy + " box" + (view.stage.boxesLeftToBuy > 1 ? "es" : "")
+                    + ") for " + Progress.format(view.stage.caseCost) + "  ·  15% off"
+                  : "C: buy another case (" + view.stage.cfg.boxes + " boxes) for " + Progress.format(view.stage.caseCost) + "  ·  15% off"
             color: "#c8ccd6"
             font.pixelSize: 14
         }
