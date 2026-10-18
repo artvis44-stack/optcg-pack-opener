@@ -11,6 +11,8 @@ Item {
     property real time: 0
     property bool sway: false        // gentle automatic tilt (showcase)
     property bool hoverTilt: false   // tilt toward the mouse
+    property bool tiltRotates: true  // false: tilt only moves the foil (e.g. inside a slab that tilts)
+    property bool dropShadow: true
     readonly property var tier: card ? Tiers.tierOf(card) : Tiers.info.C
     readonly property bool hovered: mouse.containsMouse
 
@@ -34,6 +36,7 @@ Item {
 
     // drop shadow
     Rectangle {
+        visible: root.dropShadow
         anchors.fill: flip
         anchors.margins: -root.width * 0.02
         anchors.topMargin: root.width * 0.04
@@ -89,12 +92,12 @@ Item {
             Rotation {
                 origin.x: flip.width / 2; origin.y: flip.height / 2
                 axis { x: 0; y: 1; z: 0 }
-                angle: root.flipAngle + root.tx * 14
+                angle: root.flipAngle + (root.tiltRotates ? root.tx * 14 : 0)
             },
             Rotation {
                 origin.x: flip.width / 2; origin.y: flip.height / 2
                 axis { x: 1; y: 0; z: 0 }
-                angle: -root.ty * 14
+                angle: root.tiltRotates ? -root.ty * 14 : 0
             }
         ]
     }

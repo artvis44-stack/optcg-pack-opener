@@ -377,7 +377,7 @@ Item {
         if (!c) return;
         var path = dataDir + "/showcase.json", s = {};
         try { s = JSON.parse(host.readText(path) || "{}"); } catch (e) {}
-        s.card = { id: c.id, name: c.name, tier: c.tier, type: c.type, image: c.image };
+        s.card = { id: c.id, name: c.name, tier: c.tier, type: c.type, image: c.image, set: setId };
         host.writeText(path, JSON.stringify(s));
         host.startShowcase();
         toast("Showing " + Tiers.displayName(c) + " on your desktop  ·  drag to move, scroll to resize, right-click to remove");

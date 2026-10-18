@@ -52,7 +52,9 @@ The app is split into a platform-independent part (`app/`) and a thin host.
 ## Desktop showcase
 
 Press D on a card (or "Show on desktop" in the binder) and it sits on your desktop, above the
-wallpaper and below your windows. Hover to tilt it (the foil only animates while hovered), drag to
+wallpaper and below your windows, in a graded-style acrylic slab (label with name, set, rarity and
+the date you pulled it) over an info plate: copies owned, set completion, and the TCGplayer market
+price from optcgapi.com, checked about once a day and kept in `prices.json` so it shows ▲/▼. Hover to tilt it (the foil only animates while hovered), drag to
 move, scroll to resize, right-click to remove; pick another card to swap it. It's a separate small
 process (`showcase.qml` on Linux, `mac/optcg.py --showcase` on macOS) that reads
 `~/.local/share/optcg/showcase.json` and quits when no card is picked, so it's safe to start at
