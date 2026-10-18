@@ -50,6 +50,7 @@ Item {
     property string error: ""
     property string phase: "loading"   // loading | error | pack | reveal | summary | binder
                                        // | boxSealed | boxGrid | boxSummary | sets | downloading
+                                       // | showcaseView (opened by double-clicking the desktop showcase)
     property string mode: host.env("OPTCG_MODE") === "box" ? "box" : "pack"
     readonly property bool inBoxScreen: phase === "boxSealed" || phase === "boxGrid" || phase === "boxSummary"
     property var pack: []
@@ -101,6 +102,7 @@ Item {
                 console.warn("collection file unreadable, starting a new one:", e);
             }
         }
+        if (host.env("OPTCG_INSPECT") === "1" && openShowcaseView()) return;
         if (!host.env("OPTCG_SET")) {
             try {
                 var last = JSON.parse(host.readText(settingsPath) || "{}").set;
@@ -286,6 +288,10 @@ Item {
 
     function advance() {
         if (charging) return;
+        if (phase === "showcaseView") {
+            close();
+            return;
+        }
         if (phase === "boxSealed") {
             phase = "boxGrid";
             if (boxTopper && !topperTaken) {   // the box topper comes off first
@@ -381,6 +387,26 @@ Item {
         host.writeText(path, JSON.stringify(s));
         host.startShowcase();
         toast("Showing " + Tiers.displayName(c) + " on your desktop  ·  drag to move, scroll to resize, right-click to remove");
+    }
+
+    // ---- the showcased card, big (double-click on the desktop widget) ------------------
+    property var viewCard: null
+    property real viewPrice: -1
+
+    function openShowcaseView() {
+        try {
+            viewCard = JSON.parse(host.readText(dataDir + "/showcase.json") || "{}").card || null;
+        } catch (e) {
+            viewCard = null;
+        }
+        if (!viewCard) return false;
+        var set = viewCard.set || ((viewCard.image || "").match(/optcg\/([^/]+)\//) || [])[1] || "";
+        try {
+            var hist = JSON.parse(host.readText(dataDir + "/prices.json") || "{}")[set + ":" + viewCard.image.split("/").pop()] || [];
+            viewPrice = hist.length ? hist[hist.length - 1].p : -1;
+        } catch (e) {}
+        phase = "showcaseView";
+        return true;
     }
 
     property string toastText: ""
@@ -709,6 +735,7 @@ Item {
                   : "Click or Space to tear it open   ·   X: open a box   ·   S: sets   ·   B: binder   ·   Esc to close",
             binder: "",
             boxSealed: "",
+            showcaseView: "Move the mouse to tilt   ·   click, Space or Esc to close",
             sets: "",
             downloading: "",
             boxGrid: "",
@@ -751,6 +778,39 @@ Item {
             text: "card images (~40 MB) go to ~/.cache/optcg, once per set"
             color: "#7a8090"
             font.pixelSize: 13
+        }
+    }
+
+    // the showcased card, big
+    Card {
+        z: 150
+        visible: stage.phase === "showcaseView"
+        anchors.centerIn: parent
+        width: Math.min(440, stage.height * 0.78 * 0.716)
+        card: stage.viewCard
+        faceUp: true
+        hoverTilt: true
+        time: stage.t
+        onClicked: stage.close()
+    }
+    Column {
+        z: 150
+        visible: stage.phase === "showcaseView" && !!stage.viewCard
+        anchors.horizontalCenter: parent.horizontalCenter
+        y: stage.height * 0.04
+        spacing: 4
+        Text {
+            anchors.horizontalCenter: parent.horizontalCenter
+            text: stage.viewCard ? Tiers.displayName(stage.viewCard) : ""
+            color: "#fff6e0"
+            font { pixelSize: 28; weight: Font.Black; italic: true }
+        }
+        Text {
+            anchors.horizontalCenter: parent.horizontalCenter
+            text: !stage.viewCard ? "" : stage.viewCard.id + "   ·   " + Tiers.tierOf(stage.viewCard).label
+                  + (stage.viewPrice >= 0 ? "   ·   $" + stage.viewPrice.toFixed(2) + " market" : "")
+            color: Tiers.tierOf(stage.viewCard).color
+            font { pixelSize: 17; weight: Font.Bold }
         }
     }
 

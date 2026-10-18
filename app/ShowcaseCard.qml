@@ -5,7 +5,8 @@ import "tiers.js" as Tiers
 // graded-style acrylic slab (label with name, set, rarity, pull date) above
 // an info plate (copies owned, set completion, TCGplayer market price).
 // Hover to tilt the slab (the foil only animates then, so it costs nothing
-// while you work), drag to move, scroll to resize, right-click to put it away.
+// while you work), drag to move, scroll to resize, double-click to inspect it
+// big in the overlay, right-click to put it away.
 //
 // The card and its placement live in showcase.json, written by the pack
 // opener (D on a card) and by this item; it's re-read every couple of seconds,
@@ -542,6 +543,9 @@ Item {
                 if (!show.dragging) return;
                 show.dragging = false;
                 show.save();
+            }
+            onDoubleClicked: e => {
+                if (e.button === Qt.LeftButton) show.host.openInspect();
             }
             onClicked: e => {
                 if (e.button !== Qt.RightButton) return;

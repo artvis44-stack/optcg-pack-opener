@@ -11,6 +11,7 @@ import Quickshell.Io
 //                                      onLine(text) per stdout line, onDone(exitCode)
 //   startShowcase()                 -> starts the desktop showcase if it isn't running
 //   appPath(relative)               -> filesystem path of a file in this folder (e.g. "app/sets.json")
+//   openInspect()                   -> opens the overlay showing the showcased card big
 QtObject {
     id: host
 
@@ -20,6 +21,10 @@ QtObject {
 
     function appPath(relative) {
         return Quickshell.shellPath(relative);   // Qt.resolvedUrl gives qs:@/... URLs here
+    }
+
+    function openInspect() {
+        Quickshell.execDetached(["env", "OPTCG_INSPECT=1", "qs", "-n", "-p", appPath("shell.qml")]);
     }
 
     function startShowcase() {

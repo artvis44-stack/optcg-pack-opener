@@ -3,12 +3,13 @@
 
 usage: optcg.py [box]          toggle the overlay (box = start in booster box mode)
        optcg.py --showcase      the desktop showcase (a card you picked with D)
+       optcg.py --inspect       the overlay showing the showcased card big (double-click it)
        optcg.py --ipc CMD [ARG] send a command to the running overlay, e.g.
                                 --ipc advance, --ipc chooseSet OP-05, --ipc snapshot /tmp/x.png
 
 The app itself (UI, shaders, pack logic, downloader) is shared with the Linux
 version; this file only provides what the app asks its host for -- env(),
-readText(), writeText(), run(), appPath(), startShowcase() -- plus the windows,
+readText(), writeText(), run(), appPath(), startShowcase(), openInspect() -- plus the windows,
 single-instance toggle and
 the --ipc commands (the Linux version's `qs ipc`). It runs on Linux too,
 which is how it's tested.
@@ -45,6 +46,10 @@ class Host(QObject):
     @Slot(str, result=str)
     def appPath(self, relative):
         return str(HERE.parent / relative)
+
+    @Slot()
+    def openInspect(self):
+        QProcess.startDetached(sys.executable, [str(HERE / "optcg.py"), "--inspect"])
 
     @Slot()
     def startShowcase(self):
@@ -174,7 +179,11 @@ def main():
     if args[:1] == ["--showcase"]:
         sys.exit(run_showcase(app))
 
-    if send("close"):   # already open -> this was a toggle
+    if "--inspect" in args:
+        os.environ["OPTCG_INSPECT"] = "1"
+        if send("ping"):   # the overlay is already up
+            return
+    elif send("close"):   # already open -> this was a toggle
         return
     if "box" in args:
         os.environ["OPTCG_MODE"] = "box"
