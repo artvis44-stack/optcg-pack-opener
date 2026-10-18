@@ -64,16 +64,18 @@ function formatBounty(n) {
 // ---- the Port: ship and crew ---------------------------------------------------
 // Upgrades cost about 5× the one before; each makes passive income bigger and
 // free packs come faster or stack higher. card: the ship's Stage card, for a
-// picture (the Thousand Sunny is OP09-080; art from your downloaded sets).
+// picture: a card id or name, or a list tried in order (art from your
+// downloaded sets); the Going Merry is "Merry Go" on the cards. picture: a
+// drawing in app/pictures instead, for a boat no card shows.
 
 var SHIPS = [
-    { name: "Rowboat",                        price: 0,        income: 0,    freeHours: 6, freeMax: 2,
+    { name: "Rowboat",                        price: 0,        income: 0,    freeHours: 6, freeMax: 2, picture: "pictures/rowboat.svg",
       text: "Where every pirate starts." },
-    { name: "Fishing Boat",                   price: 20000,    income: 0.2,  freeHours: 6, freeMax: 2,
+    { name: "Fishing Boat",                   price: 20000,    income: 0.2,  freeHours: 6, freeMax: 2, card: ["OP12-080", "Baratie"],
       text: "+20% passive income" },
-    { name: "Going Merry",                    price: 100000,   income: 0.5,  freeHours: 6, freeMax: 3, card: "Going Merry",
+    { name: "Going Merry",                    price: 100000,   income: 0.5,  freeHours: 6, freeMax: 3, card: ["EB02-041", "Merry Go", "Going Merry", "Mini-Merry"],
       text: "+50% passive income, hold 3 free packs" },
-    { name: "Going Merry (Flying Model)",     price: 500000,   income: 1,    freeHours: 5, freeMax: 3, card: "Going Merry",
+    { name: "Going Merry (Flying Model)",     price: 500000,   income: 1,    freeHours: 5, freeMax: 3, card: ["EB02-060", "Merry Go", "Going Merry", "Mini-Merry"],
       text: "+100% passive income, a free pack every 5 hours" },
     { name: "Thousand Sunny",                 price: 2500000,  income: 2,    freeHours: 5, freeMax: 4, card: "Thousand Sunny",
       text: "+200% passive income, hold 4 free packs" },
@@ -980,9 +982,19 @@ function equipCosmetic(p, kind, id) {
 }
 
 // The best art of a character (or ship) among cards: the highest rarity whose
-// name starts with `name` ("Monkey.D.Luffy" matches "Monkey.D.Luffy (Alternate Art)").
+// name starts with `name` ("Monkey.D.Luffy" matches "Monkey.D.Luffy (Alternate Art)"),
+// or the card with that id. name: a list is tried in order.
 // rank: card -> rarity rank. Returns a card or null.
 function artFor(cards, name, rank) {
+    if (Array.isArray(name)) {
+        for (var i = 0; i < name.length; i++) {
+            var found = artFor(cards, name[i], rank);
+            if (found) return found;
+        }
+        return null;
+    }
+    var byId = cards.filter(function (c) { return c.id === name; });
+    if (byId.length) return byId[0];
     var norm = function (t) { return t.toLowerCase().replace(/[^a-z0-9]/g, ""); };
     var want = norm(name), best = null;
     cards.forEach(function (c) {

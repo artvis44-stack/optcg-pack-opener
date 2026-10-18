@@ -138,10 +138,12 @@ Item {
     }
 
     // card art, cropped to fill (from the top: faces and ships sit there); a
-    // placeholder letter when there's no card for it
+    // placeholder letter when there's no card for it. picture: a drawing in
+    // app/ instead of a card
     component Art: Rectangle {
         id: artBox
         property var card: null
+        property string picture: ""
         property string fallback: ""
         property bool dim: false
         radius: 8
@@ -149,7 +151,8 @@ Item {
         clip: true
         Image {
             anchors.fill: parent
-            source: artBox.card ? "file://" + artBox.card.image : ""
+            source: artBox.picture ? Qt.resolvedUrl(artBox.picture)
+                  : artBox.card ? "file://" + artBox.card.image : ""
             fillMode: Image.PreserveAspectCrop
             verticalAlignment: Image.AlignTop
             sourceSize.width: 400
@@ -158,7 +161,7 @@ Item {
         }
         Text {
             anchors.centerIn: parent
-            visible: !artBox.card
+            visible: !artBox.card && !artBox.picture
             text: artBox.fallback
             color: "#3a4258"
             font { pixelSize: parent.height * 0.4; weight: Font.Black }
@@ -212,6 +215,7 @@ Item {
                         width: 220
                         height: 150
                         card: port.art(shipCol.cur.card)
+                        picture: shipCol.cur.picture || ""
                         fallback: "⚓"
                     }
                     Column {
