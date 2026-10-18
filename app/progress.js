@@ -16,8 +16,9 @@ var PACK_PRICE = { main: 500, extra: 500, premium: 800 };   // ฿ (an English p
 var BOX_DISCOUNT = 0.95;
 var CASE_DISCOUNT = 0.85;          // on the boxes left in the case
 var USD_TO_BERRY = 100;            // selling: $1 market value = 100 ฿
-var INCOME_PER_MINUTE = 4;         // while you're at the computer
-var INCOME_DAILY_CAP = 2000;
+var INCOME_PER_MINUTE = 4;         // while you're at the computer, plus more the more your collection is worth
+var INCOME_VALUE_SCALE = 2;        // + 2 × √(collection value / 1,000) ฿ a minute
+var INCOME_CAP_MINUTES = 500;      // a day's income is capped at this many minutes' worth
 var FREE_PACK_HOURS = 6;
 var FREE_PACK_MAX = 2;
 var STREAK_REWARD = [100, 200, 300, 400, 500, 600, 700];   // day 1..7, then 700; every 7th day +1 free pack
@@ -57,42 +58,170 @@ function formatBounty(n) {
 }
 
 // ---- achievements: wanted posters ---------------------------------------------
+// One overall board, plus a board per set (its posters' ids are "<set>:<key>").
+// Posters with a count/goal show how far along you are while locked.
 
 function pulled(p, tiers) {
     return tiers.reduce(function (a, t) { return a + (p.stats.pulled[t] || 0); }, 0);
 }
 
+var CHASE_TIERS = ["TR", "SP_GOLD", "MANGA", "SIGNED", "SUPER", "SUPER_L"];
+
+// tier groups a set's "own every ..." posters track (Stage works out how much of each you own)
+var SET_GROUPS = {
+    leaders: ["L"],
+    sr: ["SR"],
+    sec: ["SEC", "SEC_AA"],
+    aa: ["AA", "L_AA", "TEX"]
+};
+
+function setsWhere(p, fn) {
+    var b = p.stats.bySet || {};
+    return Object.keys(b).filter(function (k) { return fn(setStats(p, k)); }).length;
+}
+
+function setPosterCount(p) {
+    return Object.keys(p.achievements).filter(function (id) { return id.indexOf(":") > 0; }).length;
+}
+
+function a(id, title, text, bounty, reward, test, count, goal, fmt) {
+    var x = { id: id, title: title, text: text, bounty: bounty, reward: reward, test: test };
+    if (count) { x.count = count; x.goal = goal; x.fmt = fmt || ""; x.test = function (p) { return count(p) >= goal; }; }
+    return x;
+}
+
 var ACHIEVEMENTS = [
-    { id: "pack1",    title: "Set Sail",             text: "Open your first pack",               bounty: 1e6,   reward: 500,   test: function (p) { return p.stats.packs >= 1; } },
-    { id: "leader",   title: "Captain",              text: "Pull a Leader",                      bounty: 3e6,   reward: 300,   test: function (p) { return pulled(p, ["L"]) >= 1; } },
-    { id: "sr",       title: "Super Rookie",         text: "Pull a Super Rare",                  bounty: 5e6,   reward: 500,   test: function (p) { return pulled(p, ["SR"]) >= 1; } },
-    { id: "pack10",   title: "Rookie",               text: "Open 10 packs",                      bounty: 8e6,   reward: 800,   test: function (p) { return p.stats.packs >= 10; } },
-    { id: "box1",     title: "Box Breaker",          text: "Open a whole booster box",           bounty: 1e7,   reward: 1500,  test: function (p) { return p.stats.boxes >= 1; } },
-    { id: "aa",       title: "Alternate Reality",    text: "Pull an Alternate Art",              bounty: 2e7,   reward: 2000,  test: function (p) { return pulled(p, ["AA", "TEX"]) >= 1; } },
-    { id: "sec",      title: "Secret Keeper",        text: "Pull a Secret Rare",                 bounty: 3e7,   reward: 3000,  test: function (p) { return pulled(p, ["SEC", "SEC_AA"]) >= 1; } },
-    { id: "laa",      title: "Leader of Legends",    text: "Pull an Alternate Art Leader",       bounty: 5e7,   reward: 5000,  test: function (p) { return pulled(p, ["L_AA", "SUPER_L"]) >= 1; } },
-    { id: "panda",    title: "Where's Pandaman?",    text: "Find a Pandaman variant",            bounty: 6.6e7, reward: 3000,  test: function (p) { return pulled(p, ["PANDA"]) >= 1; } },
-    { id: "sp",       title: "Special Delivery",     text: "Pull an SP card",                    bounty: 8e7,   reward: 8000,  test: function (p) { return pulled(p, ["SP", "SP_GOLD"]) >= 1; } },
-    { id: "golddon",  title: "Golden DON!!",         text: "Pull a Gold or Special Foil DON!!",  bounty: 1e8,   reward: 8000,  test: function (p) { return pulled(p, ["DON_GOLD", "DON_SP"]) >= 1; } },
-    { id: "pack100",  title: "Supernova",            text: "Open 100 packs",                     bounty: 1.2e8, reward: 5000,  test: function (p) { return p.stats.packs >= 100; } },
-    { id: "case1",    title: "Case Closed",          text: "Open every box in a case",           bounty: 1.5e8, reward: 20000, test: function (p) { return p.stats.cases >= 1; } },
-    { id: "tr",       title: "Treasure Hunter",      text: "Pull a Treasure Rare",               bounty: 3e8,   reward: 20000, test: function (p) { return pulled(p, ["TR"]) >= 1; } },
-    { id: "manga",    title: "Manga Panel",          text: "Pull a Manga Rare",                  bounty: 5e8,   reward: 50000, test: function (p) { return pulled(p, ["MANGA", "SIGNED"]) >= 1; } },
-    { id: "super",    title: "Super Parallel",       text: "Pull a Super Alternate Art",         bounty: 1e9,   reward: 80000, test: function (p) { return pulled(p, ["SUPER", "SUPER_L"]) >= 1; } },
-    { id: "pack1000", title: "Emperor",              text: "Open 1,000 packs",                   bounty: 1.5e9, reward: 50000, test: function (p) { return p.stats.packs >= 1000; } },
-    { id: "sets5",    title: "World Traveler",       text: "Open packs from 5 different sets",   bounty: 2e7,   reward: 2000,  test: function (p) { return Object.keys(p.stats.sets).length >= 5; } },
-    { id: "half",     title: "Halfway to Laugh Tale", text: "Own half of a set",                 bounty: 4e7,   reward: 4000,  test: function (p) { return p.stats.bestCompletion >= 0.5; } },
-    { id: "most",     title: "Laugh Tale",           text: "Own 90% of a set",                   bounty: 4e8,   reward: 30000, test: function (p) { return p.stats.bestCompletion >= 0.9; } },
-    { id: "sell1",    title: "Merchant",             text: "Sell a card",                        bounty: 2e6,   reward: 200,   test: function (p) { return p.stats.sold >= 1; } },
-    { id: "rich",     title: "Big Spender",          text: "Hold 100,000 ฿ at once",             bounty: 6e7,   reward: 0,     test: function (p) { return p.berries >= 100000; } },
-    { id: "streak7",  title: "Loyal Crew",           text: "Keep a 7-day streak",                bounty: 3e7,   reward: 3000,  test: function (p) { return p.streak.count >= 7; } },
-    { id: "streak30", title: "Nakama for Life",      text: "Keep a 30-day streak",               bounty: 3e8,   reward: 20000, test: function (p) { return p.streak.count >= 30; } },
-    { id: "focus1",   title: "Focused",              text: "Finish a focus session",             bounty: 4e6,   reward: 300,   test: function (p) { return p.stats.focus >= 1; } },
-    { id: "focus25",  title: "Haki Master",          text: "Finish 25 focus sessions",           bounty: 2.5e8, reward: 15000, test: function (p) { return p.stats.focus >= 25; } }
+    a("pack1",    "Set Sail",              "Open your first pack",                 1e6,   500,   null, function (p) { return p.stats.packs; }, 1),
+    a("leader",   "Captain",               "Pull a Leader",                        3e6,   300,   function (p) { return pulled(p, ["L"]) >= 1; }),
+    a("sr",       "Super Rookie",          "Pull a Super Rare",                    5e6,   500,   function (p) { return pulled(p, ["SR"]) >= 1; }),
+    a("pack10",   "Rookie",                "Open 10 packs",                        8e6,   800,   null, function (p) { return p.stats.packs; }, 10),
+    a("box1",     "Box Breaker",           "Open a whole booster box",             1e7,   1500,  null, function (p) { return p.stats.boxes; }, 1),
+    a("aa",       "Alternate Reality",     "Pull an Alternate Art",                2e7,   2000,  function (p) { return pulled(p, ["AA", "TEX"]) >= 1; }),
+    a("sec",      "Secret Keeper",         "Pull a Secret Rare",                   3e7,   3000,  function (p) { return pulled(p, ["SEC", "SEC_AA"]) >= 1; }),
+    a("laa",      "Leader of Legends",     "Pull an Alternate Art Leader",         5e7,   5000,  function (p) { return pulled(p, ["L_AA", "SUPER_L"]) >= 1; }),
+    a("panda",    "Where's Pandaman?",     "Find a Pandaman variant",              6.6e7, 3000,  function (p) { return pulled(p, ["PANDA"]) >= 1; }),
+    a("sp",       "Special Delivery",      "Pull an SP card",                      8e7,   8000,  function (p) { return pulled(p, ["SP", "SP_GOLD"]) >= 1; }),
+    a("golddon",  "Golden DON!!",          "Pull a Gold or Special Foil DON!!",    1e8,   8000,  function (p) { return pulled(p, ["DON_GOLD", "DON_SP"]) >= 1; }),
+    a("pack100",  "Supernova",             "Open 100 packs",                       1.2e8, 5000,  null, function (p) { return p.stats.packs; }, 100),
+    a("case1",    "Case Closed",           "Open every box in a case",             1.5e8, 20000, null, function (p) { return p.stats.cases; }, 1),
+    a("tr",       "Treasure Hunter",       "Pull a Treasure Rare",                 3e8,   20000, function (p) { return pulled(p, ["TR"]) >= 1; }),
+    a("manga",    "Manga Panel",           "Pull a Manga Rare",                    5e8,   50000, function (p) { return pulled(p, ["MANGA", "SIGNED"]) >= 1; }),
+    a("super",    "Super Parallel",        "Pull a Super Alternate Art",           1e9,   80000, function (p) { return pulled(p, ["SUPER", "SUPER_L"]) >= 1; }),
+    a("pack1000", "Emperor",               "Open 1,000 packs",                     1.5e9, 50000, null, function (p) { return p.stats.packs; }, 1000),
+    a("sets5",    "World Traveler",        "Open packs from 5 different sets",     2e7,   2000,  null, function (p) { return Object.keys(p.stats.sets).length; }, 5),
+    a("half",     "Halfway to Laugh Tale", "Own half of a set",                    4e7,   4000,  function (p) { return p.stats.bestCompletion >= 0.5; }),
+    a("most",     "Laugh Tale",            "Own 90% of a set",                     4e8,   30000, function (p) { return p.stats.bestCompletion >= 0.9; }),
+    a("sell1",    "Merchant",              "Sell a card",                          2e6,   200,   null, function (p) { return p.stats.sold; }, 1),
+    a("rich",     "Big Spender",           "Hold 100,000 ฿ at once",               6e7,   0,     null, function (p) { return p.berries; }, 100000, "money"),
+    a("streak7",  "Loyal Crew",            "Keep a 7-day streak",                  3e7,   3000,  null, function (p) { return p.streak.count; }, 7),
+    a("streak30", "Nakama for Life",       "Keep a 30-day streak",                 3e8,   20000, null, function (p) { return p.streak.count; }, 30),
+    a("focus1",   "Focused",               "Finish a focus session",               4e6,   300,   null, function (p) { return p.stats.focus; }, 1),
+    a("focus25",  "Haki Master",           "Finish 25 focus sessions",             2.5e8, 15000, null, function (p) { return p.stats.focus; }, 25),
+
+    // the hard ones
+    a("worth1m",  "Treasure Hoard",        "Own a collection worth ฿1,000,000",    3e8,   20000, null, function (p) { return p.stats.value; }, 1e6, "money"),
+    a("worth10m", "City of Gold",          "Own a collection worth ฿10,000,000",   2e9,   150000, null, function (p) { return p.stats.value; }, 1e7, "money"),
+    a("worth100m","The One Piece",         "Own a collection worth ฿100,000,000",  5e9,   500000, null, function (p) { return p.stats.value; }, 1e8, "money"),
+    a("rich1m",   "Millionaire",           "Hold 1,000,000 ฿ at once",             1e9,   0,     null, function (p) { return p.berries; }, 1e6, "money"),
+    a("earn10m",  "Tycoon",                "Earn ฿10,000,000 in total",            2e9,   100000, null, function (p) { return p.stats.earned; }, 1e7, "money"),
+    a("sets15",   "Grand Fleet",           "Open packs from 15 different sets",    6e8,   30000, null, function (p) { return Object.keys(p.stats.sets).length; }, 15),
+    a("case10",   "Shipping Magnate",      "Open 10 whole cases",                  2e9,   100000, null, function (p) { return p.stats.cases; }, 10),
+    a("pack10k",  "Unstoppable",           "Open 10,000 packs",                    4e9,   250000, null, function (p) { return p.stats.packs; }, 10000),
+    a("manga10",  "Manga Library",         "Pull 10 Manga Rares",                  3e9,   200000, null, function (p) { return pulled(p, ["MANGA", "SIGNED"]); }, 10),
+    a("super5",   "Supernova Collector",   "Pull a Super Alternate Art in 5 different sets", 4e9, 300000, null,
+      function (p) { return setsWhere(p, function (s) { return (s.pulled.SUPER || 0) + (s.pulled.SUPER_L || 0) > 0; }); }, 5),
+    a("master1",  "Completionist",         "Own every card in a set",              2.5e9, 150000, null, function (p) { return setsWhere(p, function (s) { return s.completion >= 1; }); }, 1),
+    a("master10", "Pirate King",           "Own every card in 10 sets",            5.5648e9, 1000000, null, function (p) { return setsWhere(p, function (s) { return s.completion >= 1; }); }, 10),
+    a("posters100","Most Wanted",          "Earn 100 set wanted posters",          3e9,   200000, null, setPosterCount, 100),
+    a("streak100","Unbreakable Will",      "Keep a 100-day streak",                1.5e9, 100000, null, function (p) { return p.streak.count; }, 100),
+    a("streak365","A Year at Sea",         "Keep a 365-day streak",                4.6e9, 400000, null, function (p) { return p.streak.count; }, 365),
+    a("focus100", "Conqueror's Haki",      "Finish 100 focus sessions",            1.2e9, 80000, null, function (p) { return p.stats.focus; }, 100),
+    a("focus500", "Supreme King",          "Finish 500 focus sessions",            3.5e9, 250000, null, function (p) { return p.stats.focus; }, 500)
 ];
 
-function totalBounty(p) {
-    return ACHIEVEMENTS.reduce(function (a, x) { return a + (p.achievements[x.id] ? x.bounty : 0); }, 0);
+// one set's stats, with defaults for anything not recorded yet
+function setStats(p, set) {
+    var s = (p.stats.bySet || {})[set] || {};
+    return { packs: s.packs || 0, boxes: s.boxes || 0, cases: s.cases || 0, pulled: s.pulled || {},
+             completion: s.completion || 0, groups: s.groups || {}, present: s.present || null, value: s.value || 0 };
+}
+
+function setPulled(s, tiers) {
+    return tiers.reduce(function (n, t) { return n + (s.pulled[t] || 0); }, 0);
+}
+
+// the set board's posters, by key; `needs`: only shown when the set has one of these tiers
+var SET_POSTERS = [
+    { key: "pack1",    title: "Landfall",            text: "Open a pack",                         bounty: 1e6,   reward: 200,    count: function (s) { return s.packs; }, goal: 1 },
+    { key: "pack24",   title: "A Box's Worth",       text: "Open 24 packs",                       bounty: 5e6,   reward: 800,    count: function (s) { return s.packs; }, goal: 24 },
+    { key: "box1",     title: "Box Breaker",         text: "Open a whole box",                    bounty: 1e7,   reward: 1500,   count: function (s) { return s.boxes; }, goal: 1 },
+    { key: "c25",      title: "Recruiter",           text: "Own a quarter of the set",            bounty: 5e6,   reward: 500,    count: function (s) { return s.completion; }, goal: 0.25, fmt: "pct" },
+    { key: "c50",      title: "Halfway There",       text: "Own half of the set",                 bounty: 3e7,   reward: 3000,   count: function (s) { return s.completion; }, goal: 0.5, fmt: "pct" },
+    { key: "leaders",  title: "Every Captain",       text: "Own every Leader",                    bounty: 2e7,   reward: 2000,   needs: ["L"],   count: function (s) { return s.groups.leaders || 0; }, goal: 1, fmt: "pct" },
+    { key: "sr",       title: "Super Crew",          text: "Own every Super Rare",                bounty: 6e7,   reward: 6000,   needs: ["SR"],  count: function (s) { return s.groups.sr || 0; }, goal: 1, fmt: "pct" },
+    { key: "pack100",  title: "Regular",             text: "Open 100 packs",                      bounty: 5e7,   reward: 5000,   count: function (s) { return s.packs; }, goal: 100 },
+    { key: "c75",      title: "Almost There",        text: "Own 75% of the set",                  bounty: 1.2e8, reward: 10000,  count: function (s) { return s.completion; }, goal: 0.75, fmt: "pct" },
+    { key: "case1",    title: "Case Closed",         text: "Open every box in a case",            bounty: 1.5e8, reward: 15000,  count: function (s) { return s.cases; }, goal: 1 },
+    { key: "sec",      title: "Keeper of Secrets",   text: "Own every Secret Rare",               bounty: 2e8,   reward: 20000,  needs: ["SEC", "SEC_AA"], count: function (s) { return s.groups.sec || 0; }, goal: 1, fmt: "pct" },
+    { key: "worth250k", title: "Treasury",           text: "Own cards from the set worth ฿250,000", bounty: 2e8, reward: 15000,  count: function (s) { return s.value; }, goal: 250000, fmt: "money" },
+    { key: "chase1",   title: "Grand Line Treasure", text: "Pull a chase card: Treasure Rare, Gold SP, Manga or Super Alt Art", bounty: 3e8, reward: 25000, needs: CHASE_TIERS,
+      count: function (s) { return setPulled(s, CHASE_TIERS); }, goal: 1 },
+    { key: "pack500",  title: "Local Legend",        text: "Open 500 packs",                      bounty: 5e8,   reward: 40000,  count: function (s) { return s.packs; }, goal: 500 },
+    { key: "aa",       title: "Alternate Universe",  text: "Own every Alternate Art",             bounty: 6e8,   reward: 50000,  needs: ["AA", "L_AA", "TEX"], count: function (s) { return s.groups.aa || 0; }, goal: 1, fmt: "pct" },
+    { key: "case3",    title: "Warlord of the Sea",  text: "Open 3 whole cases",                  bounty: 1e9,   reward: 60000,  count: function (s) { return s.cases; }, goal: 3 },
+    { key: "chase3",   title: "Treasure Fleet",      text: "Pull 3 chase cards",                  bounty: 1.5e9, reward: 100000, needs: CHASE_TIERS, count: function (s) { return setPulled(s, CHASE_TIERS); }, goal: 3 },
+    { key: "worth2m",  title: "Royal Treasury",      text: "Own cards from the set worth ฿2,500,000", bounty: 2e9, reward: 150000, count: function (s) { return s.value; }, goal: 2500000, fmt: "money" },
+    { key: "c100",     title: "Master Set",          text: "Own every card in the set",           bounty: 3e9,   reward: 250000, count: function (s) { return s.completion; }, goal: 1, fmt: "pct" }
+];
+
+// a set's wanted posters, shaped like ACHIEVEMENTS (with .set)
+function setAchievements(set) {
+    return SET_POSTERS.map(function (t) {
+        return { id: set + ":" + t.key, set: set, title: t.title, text: t.text, bounty: t.bounty, reward: t.reward,
+                 needs: t.needs || null, goal: t.goal, fmt: t.fmt || "",
+                 count: function (p) { return t.count(setStats(p, set)); },
+                 test: function (p) { return t.count(setStats(p, set)) >= t.goal; } };
+    });
+}
+
+// the posters a set's board shows: the ones its cards make possible (all of them until we know its cards)
+function setBoard(p, set) {
+    var present = setStats(p, set).present;
+    return setAchievements(set).filter(function (x) {
+        return !x.needs || !present || x.needs.some(function (t) { return present.indexOf(t) >= 0; });
+    });
+}
+
+var ACHIEVEMENT_BY_ID = {};
+ACHIEVEMENTS.forEach(function (x) { ACHIEVEMENT_BY_ID[x.id] = x; });
+var SET_POSTER_BY_KEY = {};
+SET_POSTERS.forEach(function (t) { SET_POSTER_BY_KEY[t.key] = t; });
+
+function bountyOf(id) {
+    if (ACHIEVEMENT_BY_ID[id]) return ACHIEVEMENT_BY_ID[id].bounty;
+    var t = SET_POSTER_BY_KEY[id.slice(id.indexOf(":") + 1)];
+    return t ? t.bounty : 0;
+}
+
+// set: "" = everything (the overall bounty), else just that set's posters
+function totalBounty(p, set) {
+    return Object.keys(p.achievements).reduce(function (sum, id) {
+        if (set && id.indexOf(set + ":") !== 0) return sum;
+        return sum + bountyOf(id);
+    }, 0);
+}
+
+// a locked poster's progress, as text ("" when it has none)
+function posterProgress(x, p) {
+    if (!x.count) return "";
+    var c = Math.min(x.count(p), x.goal);
+    if (x.fmt === "pct") return Math.floor(c * 100) + "% / " + Math.round(x.goal * 100) + "%";
+    if (x.fmt === "money") return formatBounty(c) + " / " + formatBounty(x.goal);
+    return format(c).slice(1) + " / " + format(x.goal).slice(1);
+}
+
+function posterFraction(x, p) {
+    return x.count ? Math.max(0, Math.min(1, x.count(p) / x.goal)) : 0;
 }
 
 // ---- state ------------------------------------------------------------------------
@@ -107,7 +236,8 @@ function fresh(now) {
         income: { day: "", earned: 0 },
         focus: { startedAt: 0, endsAt: 0, idleMinutes: 0 },
         stats: { packs: 0, boxes: 0, cases: 0, sold: 0, soldValue: 0, earned: 0, focus: 0,
-                 sets: {}, pulled: {}, bestCompletion: 0 },
+                 sets: {}, pulled: {}, bestCompletion: 0, value: 0,
+                 bySet: {} },                     // set -> { packs, boxes, cases, pulled, completion, groups, present, value }
         achievements: {},              // id -> date unlocked
         bounties: { day: "", list: [] }
     };
@@ -120,6 +250,8 @@ function parse(text, now) {
         if (saved) {
             Object.keys(saved).forEach(function (k) { p[k] = saved[k]; });
             Object.keys(fresh(now).stats).forEach(function (k) { if (p.stats[k] === undefined) p.stats[k] = fresh(now).stats[k]; });
+            // from before per-set stats: carry over the pack counts
+            Object.keys(p.stats.sets).forEach(function (k) { if (!p.stats.bySet[k]) p.stats.bySet[k] = { packs: p.stats.sets[k] }; });
         }
     } catch (e) {}
     return p;
@@ -241,23 +373,48 @@ function earn(p, amount) {
 }
 
 // Something happened. ev:
-//   { type: "pack", set, tiers: [...], completion: 0..1 }   a pack was opened
-//   { type: "box" } / { type: "case" }                         a box / a whole case finished
+//   { type: "pack", set, tiers: [...], completion: 0..1,      a pack was opened; groups: how much of
+//     groups: { leaders: 0..1, ... }, present: [tiers] }       each SET_GROUPS you own, present: the set's tiers
+//   { type: "box", set } / { type: "case", set }               a box / a whole case finished
+//   { type: "value", total, bySet: { set: ฿ } }                what the collection is worth now
 //   { type: "sell", count, value }                             cards sold
 //   { type: "focus" }                                          a focus session finished
 //   { type: "income", amount }                                 passive income
 // Returns what got completed: [{ kind: "achievement", a } | { kind: "bounty", b }]
+function bySet(p, set) {
+    if (!p.stats.bySet[set]) p.stats.bySet[set] = {};
+    var b = p.stats.bySet[set];
+    ["packs", "boxes", "cases", "completion", "value"].forEach(function (k) { if (b[k] === undefined) b[k] = 0; });
+    if (!b.pulled) b.pulled = {};
+    if (!b.groups) b.groups = {};
+    return b;
+}
+
 function record(p, ev) {
     var s = p.stats, done = [];
     if (ev.type === "pack") {
+        var b = bySet(p, ev.set);
         s.packs++;
+        b.packs++;
         s.sets[ev.set] = (s.sets[ev.set] || 0) + 1;
-        ev.tiers.forEach(function (t) { s.pulled[t] = (s.pulled[t] || 0) + 1; });
+        ev.tiers.forEach(function (t) {
+            s.pulled[t] = (s.pulled[t] || 0) + 1;
+            b.pulled[t] = (b.pulled[t] || 0) + 1;
+        });
         if (ev.completion > s.bestCompletion) s.bestCompletion = ev.completion;
+        if (ev.completion > b.completion) b.completion = ev.completion;
+        Object.keys(ev.groups || {}).forEach(function (g) { if (ev.groups[g] > (b.groups[g] || 0)) b.groups[g] = ev.groups[g]; });
+        if (ev.present) b.present = ev.present;
     } else if (ev.type === "box") {
         s.boxes++;
+        if (ev.set) bySet(p, ev.set).boxes++;
     } else if (ev.type === "case") {
         s.cases++;
+        if (ev.set) bySet(p, ev.set).cases++;
+    } else if (ev.type === "value") {
+        s.value = ev.total;
+        Object.keys(s.bySet).forEach(function (k) { s.bySet[k].value = 0; });
+        Object.keys(ev.bySet).forEach(function (k) { bySet(p, k).value = ev.bySet[k]; });
     } else if (ev.type === "sell") {
         s.sold += ev.count;
         s.soldValue += ev.value;
@@ -289,21 +446,32 @@ function record(p, ev) {
         }
     });
 
-    // achievements
-    ACHIEVEMENTS.forEach(function (a) {
-        if (p.achievements[a.id] || !a.test(p)) return;
-        p.achievements[a.id] = dayOf(Date.now());
-        if (a.reward) earn(p, a.reward);
-        done.push({ kind: "achievement", a: a });
-    });
+    // achievements: the set posters first (the overall board counts them)
+    var check = function (x) {
+        if (p.achievements[x.id] || !x.test(p)) return;
+        p.achievements[x.id] = dayOf(Date.now());
+        if (x.reward) earn(p, x.reward);
+        done.push({ kind: "achievement", a: x });
+    };
+    Object.keys(s.bySet).forEach(function (set) { setAchievements(set).forEach(check); });
+    ACHIEVEMENTS.forEach(check);
     return done;
+}
+
+// ฿ a minute while you're active: grows with what your collection is worth
+function incomePerMinute(p) {
+    return Math.round(INCOME_PER_MINUTE + INCOME_VALUE_SCALE * Math.sqrt(Math.max(0, p.stats.value || 0) / 1000));
+}
+
+function incomeDailyCap(p) {
+    return incomePerMinute(p) * INCOME_CAP_MINUTES;
 }
 
 // passive income for `minutes` active minutes (capped per day)
 function addIncome(p, minutes, now) {
     var today = dayOf(now);
     if (p.income.day !== today) p.income = { day: today, earned: 0 };
-    var amount = Math.min(INCOME_PER_MINUTE * minutes, INCOME_DAILY_CAP - p.income.earned);
+    var amount = Math.min(incomePerMinute(p) * minutes, incomeDailyCap(p) - p.income.earned);
     if (amount <= 0) return [];
     p.income.earned += amount;
     earn(p, amount);
@@ -339,4 +507,30 @@ function cardValue(card, market) {
     var usd = market ? market[card.id + "|" + card.name] : undefined;
     if (usd !== undefined && usd !== null && usd > 0) return Math.max(1, Math.round(usd * USD_TO_BERRY));
     return BASE_VALUE[card.tier] || 5;
+}
+
+// What the collection is worth: { total, bySet: { set: ฿ } }, from collection.json
+// (or the given collection's cards) and the market prices cached in
+// market/<set>.json (base values without them).
+function collectionValue(host, dataDir, cards) {
+    var markets = {}, out = { total: 0, bySet: {} };
+    if (!cards) {
+        try { cards = JSON.parse(host.readText(dataDir + "/collection.json") || "{}").cards || {}; } catch (e) { cards = {}; }
+    }
+    Object.keys(cards).forEach(function (k) {
+        var set = k.slice(0, k.indexOf(":")), e = cards[k];
+        if (markets[set] === undefined) {
+            markets[set] = null;
+            try { markets[set] = (JSON.parse(host.readText(dataDir + "/market/" + set + ".json") || "null") || {}).prices || null; } catch (err) {}
+        }
+        var v = cardValue(e, markets[set]) * (e.count || 1);
+        out.total += v;
+        out.bySet[set] = (out.bySet[set] || 0) + v;
+    });
+    return out;
+}
+
+// record a fresh collectionValue(); returns the completions
+function setValue(p, v) {
+    return record(p, { type: "value", total: v.total, bySet: v.bySet });
 }

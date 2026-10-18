@@ -20,7 +20,7 @@ Boosters EB-01 to EB-03 and the Premium Boosters PRB-01 / PRB-02.
 | O | binder: show owned only / the whole set |
 | Tab | binder: this set / all sets (everything you own, with set filters and its value) |
 | D | show the card you're looking at on your desktop (inspected, just revealed, or hovered in the binder) |
-| W | the wanted board: today's bounties, achievements, your total bounty |
+| W | the wanted board: today's bounties, achievements, your total bounty (← → switch between the overall board and each set's) |
 | C | box mode: buy the rest of the case (15% off) |
 | Esc / right-click | close |
 
@@ -57,15 +57,21 @@ The app is split into a platform-independent part (`app/`) and a thin host.
 Packs and boxes cost berries (฿): 500 a pack (800 for premium boosters), a box 5% off, the rest
 of a case 15% off. You earn them by:
 
-- **being at your computer**: 4 ฿ a minute while you're active (idle time doesn't count; Hyprland's
-  idle detection on Linux, the system idle timer on macOS), up to 2,000 ฿ a day
+- **being at your computer**: while you're active (idle time doesn't count; Hyprland's idle
+  detection on Linux, the system idle timer on macOS) you earn 4 ฿ a minute plus 2 × √(collection
+  value / 1,000), so roughly 18 ฿/min at a ฿50,000 collection, 67 at ฿1M, 204 at ฿10M, up to
+  500 minutes' worth a day
 - **a free pack every 6 hours** (holds up to 2)
 - **your daily streak**: 100 ฿ on day 1 up to 700 ฿, and a free pack every 7th day
 - **focus sessions**: 25 minutes from the desktop widget = a free pack + 200 ฿ (10 minutes away
   loses it)
 - **selling duplicates** in the binder at their TCGplayer market price ($1 = 100 ฿); bulk selling only
   touches spare copies worth under 1,000 ฿, valuable ones are sold one at a time
-- **3 daily bounties** and **26 wanted-poster achievements**, each adding to your bounty
+- **3 daily bounties** and **wanted posters**, each adding to your bounty: an overall board (43
+  posters, the hardest worth billions: own every card in 10 sets, a 365-day streak, 10,000 packs, a
+  ฿100M collection...) and a board per set (up to 19 posters each: packs, boxes and cases opened,
+  completion up to the master set, owning every Leader / SR / SEC / alt art, pulling chase cards,
+  what the set's cards are worth). Posters you haven't earned show how far along you are
 
 All of it lives in `~/.local/share/optcg/progress.json` (per computer). The rules are in
 `app/progress.js`. `OPTCG_SANDBOX=1` opens everything for free without saving anything.

@@ -123,6 +123,7 @@ Item {
         }
         if (!offTheRecord) {
             prog(p => Progress.accrue(p, Date.now(), () => downloadedSets()));
+            refreshValue();
         }
         if (host.env("OPTCG_INSPECT") === "1" && openShowcaseView()) return;
         if (!host.env("OPTCG_SET")) {
@@ -143,6 +144,11 @@ Item {
         progress = r.p;
         if (Array.isArray(r.result) && r.result.length) celebrate(r.result);
         return r.result;
+    }
+
+    // what the collection is worth feeds the passive income and the value posters
+    function refreshValue() {
+        prog(p => Progress.setValue(p, Progress.collectionValue(host, dataDir, collection.cards)));
     }
 
     function reloadProgress() {
@@ -226,8 +232,24 @@ Item {
     function recordPackProgress(cards) {
         if (offTheRecord) return;
         var owned = Object.keys(collection.cards).filter(k => k.indexOf(setId + ":") === 0).length;
+        // how much of each tier group (every Leader, every SR...) you own, and which tiers the set has
+        var groups = {}, present = {}, seen = {};
+        var have = {}, total = {};
+        db.cards.forEach(c => {
+            var k = cardKey(c);
+            present[c.tier] = true;
+            if (seen[k]) return;
+            seen[k] = true;
+            Object.keys(Progress.SET_GROUPS).forEach(g => {
+                if (Progress.SET_GROUPS[g].indexOf(c.tier) < 0) return;
+                total[g] = (total[g] || 0) + 1;
+                if (collection.cards[k]) have[g] = (have[g] || 0) + 1;
+            });
+        });
+        Object.keys(total).forEach(g => groups[g] = (have[g] || 0) / total[g]);
         prog(p => Progress.record(p, { type: "pack", set: setId, tiers: cards.map(c => c.tier),
-                                       completion: setTotal ? owned / setTotal : 0 }));
+                                       completion: setTotal ? owned / setTotal : 0,
+                                       groups: groups, present: Object.keys(present) }));
     }
 
     // the box (and maybe the case) is done
@@ -236,8 +258,8 @@ Item {
         caseState.boxRecorded = true;
         saveCase();
         prog(p => {
-            var done = Progress.record(p, { type: "box" });
-            if (boxIndex === cfg.boxes - 1) done = done.concat(Progress.record(p, { type: "case" }));
+            var done = Progress.record(p, { type: "box", set: setId });
+            if (boxIndex === cfg.boxes - 1) done = done.concat(Progress.record(p, { type: "case", set: setId }));
             return done;
         });
     }
@@ -272,6 +294,7 @@ Item {
                 });
                 host.writeText(path, JSON.stringify({ day: Progress.dayOf(Date.now()), prices: prices }));
                 stage.setMarket(id, prices);
+                if (!stage.offTheRecord) stage.refreshValue();
             } catch (e) {}
         };
         xhr.open("GET", "https://optcgapi.com/api/sets/" + id + "/");
@@ -298,6 +321,7 @@ Item {
             Progress.earn(p, total);
             return Progress.record(p, { type: "sell", count: n, value: total });
         });
+        refreshValue();
         toast("Sold " + n + " card" + (n > 1 ? "s" : "") + " for " + Progress.format(total));
         return total;
     }
@@ -600,6 +624,7 @@ Item {
         packNew = pack.map(c => !collection.cards[cardKey(c)]);
         recordCards(pack);
         recordPackProgress(pack);
+        if (!offTheRecord) refreshValue();
         if (mode === "box" && currentPackIdx >= 0) {
             var opened = boxOpened.slice();
             opened[currentPackIdx] = true;
@@ -737,10 +762,17 @@ Item {
         case Qt.Key_O:
             if (phase === "binder" && !binderView.allSets) binderView.ownedOnly = !binderView.ownedOnly;
             break;
+        case Qt.Key_Left:
+            if (phase === "board") boardView.step(-1);
+            else return;
+            break;
+        case Qt.Key_Right:
+            if (phase === "board") boardView.step(1);
+            else advance();
+            break;
         case Qt.Key_Space:
         case Qt.Key_Return:
         case Qt.Key_Enter:
-        case Qt.Key_Right:
             advance();
             break;
         case Qt.Key_Tab:
@@ -1131,6 +1163,13 @@ Item {
             color: "#c8ccd6"
             font { pixelSize: 14; weight: Font.Bold }
         }
+        Text {
+            visible: !stage.offTheRecord
+            anchors.baseline: parent.children[1].baseline
+            text: "+" + Progress.format(Progress.incomePerMinute(stage.progress)) + "/min while active"
+            color: "#c8ccd6"
+            font { pixelSize: 14; weight: Font.Bold }
+        }
     }
 
     // what the sealed pack costs
@@ -1192,6 +1231,13 @@ Item {
                 }
                 Text {
                     anchors.horizontalCenter: parent.horizontalCenter
+                    visible: !!posterColumn.a && !!posterColumn.a.set
+                    text: posterColumn.a && posterColumn.a.set ? posterColumn.a.set + "  ·  " + ((stage.sets[posterColumn.a.set] || {}).name || "") : ""
+                    color: "#7a4e10"
+                    font { pixelSize: 13; weight: Font.Bold }
+                }
+                Text {
+                    anchors.horizontalCenter: parent.horizontalCenter
                     text: posterColumn.a ? posterColumn.a.text : ""
                     color: "#5a4325"
                     font.pixelSize: 13
@@ -1237,6 +1283,7 @@ Item {
     }
 
     BountyBoard {
+        id: boardView
         anchors.fill: parent
         z: 248
         visible: stage.phase === "board"

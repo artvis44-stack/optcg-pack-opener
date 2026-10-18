@@ -208,8 +208,10 @@ Item {
 
     function tick() {
         var t = Date.now(), idle = host.isIdle();
+        var value = Progress.collectionValue(host, dataDir);   // income grows with it
         change(p => {
             var done = Progress.accrue(p, t, () => show.downloadedSets());
+            done = done.concat(Progress.setValue(p, value));
             if (!idle) done = done.concat(Progress.addIncome(p, 1, t));
             if (Progress.focusRunning(p, t)) {
                 // isIdle means 5+ minutes away; count the minutes past that
@@ -239,7 +241,7 @@ Item {
             else if (e.kind === "freePack")
                 host.notify("A free pack is ready", "Open it from the desktop widget.");
             else if (e.kind === "achievement")
-                host.notify("WANTED: " + e.a.title, e.a.text + "  ·  bounty " + Progress.formatBounty(e.a.bounty)
+                host.notify("WANTED: " + e.a.title + (e.a.set ? " (" + e.a.set + ")" : ""), e.a.text + "  ·  bounty " + Progress.formatBounty(e.a.bounty)
                             + (e.a.reward ? "  ·  +" + Progress.format(e.a.reward) : ""));
             else if (e.kind === "bounty")
                 host.notify("Bounty complete", Progress.bountyText(e.b) + "  ·  +" + Progress.bountyRewardText(e.b));

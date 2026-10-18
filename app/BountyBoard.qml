@@ -1,14 +1,26 @@
 import QtQuick
 import "progress.js" as Progress
 
-// The wanted board: today's bounties on the left, every achievement as a
-// wanted poster on the right (unlocked ones show their bounty and date,
-// locked ones what it takes), with your total bounty and lifetime stats.
+// The wanted board: today's bounties on the left, wanted posters on the right
+// (unlocked ones show their bounty and date, locked ones what it takes and how
+// far along you are). Tabs across the top: the overall board, then one board
+// per set. Left / Right switch boards.
 Item {
     id: board
 
     property Item stage
     readonly property var p: stage ? stage.progress : Progress.fresh(Date.now())
+    readonly property var setIds: stage ? Object.keys(stage.sets) : []
+    property string set: ""    // "" = the overall board
+    readonly property var shown: set ? Progress.setBoard(p, set) : Progress.ACHIEVEMENTS
+    readonly property int gotCount: shown.filter(x => !!p.achievements[x.id]).length
+
+    function step(d) {
+        var tabs = [""].concat(setIds);
+        set = tabs[(tabs.indexOf(set) + d + tabs.length) % tabs.length];
+    }
+
+    onVisibleChanged: if (visible) set = ""
 
     Rectangle {
         anchors.fill: parent
@@ -26,24 +38,60 @@ Item {
         spacing: 6
         Text {
             anchors.horizontalCenter: parent.horizontalCenter
-            text: "Wanted Board"
+            text: board.set ? board.set + "  " + ((board.stage.sets[board.set] || {}).name || "") : "Wanted Board"
             color: "#ffd56b"
             font { pixelSize: 30; weight: Font.Black; italic: true }
         }
         Text {
             anchors.horizontalCenter: parent.horizontalCenter
-            text: "Your bounty  " + Progress.format(Progress.totalBounty(board.p))
+            text: (board.set ? "Bounty in this set  " : "Your bounty  ") + Progress.format(Progress.totalBounty(board.p, board.set))
             color: "#fff6e0"
             font { pixelSize: 20; weight: Font.Black }
         }
         Text {
             anchors.horizontalCenter: parent.horizontalCenter
             readonly property var s: board.p.stats
-            text: s.packs + " packs  ·  " + s.boxes + " boxes  ·  " + s.cases + " cases  ·  "
-                  + s.focus + " focus sessions  ·  " + s.sold + " cards sold for " + Progress.format(s.soldValue)
-                  + "  ·  day " + board.p.streak.count + " streak"
+            readonly property var ss: Progress.setStats(board.p, board.set)
+            text: board.set
+                  ? ss.packs + " packs  ·  " + ss.boxes + " boxes  ·  " + ss.cases + " cases  ·  "
+                    + Math.floor(ss.completion * 100) + "% of the set  ·  worth " + Progress.format(ss.value)
+                  : s.packs + " packs  ·  " + s.boxes + " boxes  ·  " + s.cases + " cases  ·  "
+                    + s.focus + " focus sessions  ·  " + s.sold + " cards sold for " + Progress.format(s.soldValue)
+                    + "  ·  day " + board.p.streak.count + " streak"
             color: "#9aa0ad"
             font.pixelSize: 14
+        }
+        Text {
+            anchors.horizontalCenter: parent.horizontalCenter
+            visible: !board.set
+            text: "Collection worth " + Progress.format(board.p.stats.value || 0) + "  →  passive income "
+                  + Progress.format(Progress.incomePerMinute(board.p)) + "/min, up to "
+                  + Progress.format(Progress.incomeDailyCap(board.p)) + " a day"
+            color: "#7fd1b9"
+            font { pixelSize: 14; weight: Font.Bold }
+        }
+        Flow {   // the boards: overall, then one per set
+            anchors.horizontalCenter: parent.horizontalCenter
+            width: Math.min(board.width * 0.9, (board.setIds.length + 1) * 92)
+            spacing: 6
+            topPadding: 6
+            PillButton {
+                text: "Overall"
+                fontSize: 12
+                accent: board.set === "" ? "#ffd56b" : "#7a8090"
+                onClicked: board.set = ""
+            }
+            Repeater {
+                model: board.setIds
+                PillButton {
+                    required property string modelData
+                    readonly property int got: Progress.setBoard(board.p, modelData).filter(x => !!board.p.achievements[x.id]).length
+                    text: modelData + (got ? "  " + got : "")
+                    fontSize: 12
+                    accent: board.set === modelData ? "#ffd56b" : got ? "#c8a96a" : "#7a8090"
+                    onClicked: board.set = modelData
+                }
+            }
         }
     }
 
@@ -124,14 +172,15 @@ Item {
             bottom: parent.bottom; bottomMargin: 44
         }
         cellWidth: Math.floor(width / Math.max(1, Math.floor(width / 190)))
-        cellHeight: 230
+        cellHeight: 250
         clip: true
         boundsBehavior: Flickable.StopAtBounds
-        model: Progress.ACHIEVEMENTS
+        model: board.shown
 
         delegate: Item {
             required property var modelData
             readonly property string got: board.p.achievements[modelData.id] || ""
+            readonly property bool legendary: modelData.bounty >= 1e9   // the really hard ones
             width: posters.cellWidth
             height: posters.cellHeight
 
@@ -139,9 +188,9 @@ Item {
                 anchors.fill: parent
                 anchors.margins: 8
                 radius: 3
-                color: parent.got ? "#ead9ae" : "#1a1f2e"
-                border.color: parent.got ? "#5a4325" : "#2c3550"
-                border.width: 2
+                color: parent.got ? (parent.legendary ? "#f3dd8e" : "#ead9ae") : "#1a1f2e"
+                border.color: parent.got ? "#5a4325" : parent.legendary ? "#8a6a2a" : "#2c3550"
+                border.width: parent.legendary ? 3 : 2
                 Column {
                     anchors.centerIn: parent
                     width: parent.width - 20
@@ -151,7 +200,7 @@ Item {
                     Text {
                         anchors.horizontalCenter: parent.horizontalCenter
                         text: "WANTED"
-                        color: parent.got ? "#3b2a16" : "#3a4258"
+                        color: parent.got ? "#3b2a16" : parent.parent.parent.legendary ? "#8a6a2a" : "#3a4258"
                         font { pixelSize: 24; weight: Font.Black; family: "serif"; letterSpacing: 2 }
                     }
                     Rectangle {   // where the portrait would be
@@ -195,6 +244,28 @@ Item {
                         color: parent.got ? "#7a4e10" : "#4a5370"
                         font.pixelSize: 11
                     }
+                    Rectangle {   // a locked poster's progress
+                        readonly property real f: Progress.posterFraction(parent.a, board.p)
+                        visible: !parent.got && !!parent.a.count
+                        anchors.horizontalCenter: parent.horizontalCenter
+                        width: parent.width * 0.8
+                        height: 4
+                        radius: 2
+                        color: "#22283a"
+                        Rectangle {
+                            width: parent.width * parent.f
+                            height: parent.height
+                            radius: 2
+                            color: "#ffd56b"
+                        }
+                    }
+                    Text {
+                        visible: !parent.got && !!parent.a.count
+                        anchors.horizontalCenter: parent.horizontalCenter
+                        text: Progress.posterProgress(parent.a, board.p)
+                        color: "#7a8090"
+                        font.pixelSize: 10
+                    }
                 }
             }
         }
@@ -202,7 +273,7 @@ Item {
 
     Text {
         anchors { bottom: parent.bottom; bottomMargin: 14; horizontalCenter: parent.horizontalCenter }
-        text: Object.keys(board.p.achievements).length + " / " + Progress.ACHIEVEMENTS.length + " posters   ·   W or Esc: back"
+        text: board.gotCount + " / " + board.shown.length + " posters on this board   ·   ← →: switch board   ·   W or Esc: back"
         color: "#9aa0ad"
         font.pixelSize: 14
     }
