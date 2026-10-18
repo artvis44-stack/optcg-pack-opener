@@ -1314,6 +1314,18 @@ Item {
                 onClicked: stage.toggleSync()
             }
         }
+        Text {
+            visible: !stage.offTheRecord
+            anchors.baseline: parent.children[1].baseline
+            text: stage.muted ? "sound off  (M)" : "sound on  (M)"
+            color: stage.muted ? "#7a8090" : "#c8ccd6"
+            font { pixelSize: 14; weight: Font.Bold }
+            MouseArea {
+                anchors.fill: parent
+                cursorShape: Qt.PointingHandCursor
+                onClicked: stage.toggleMute()
+            }
+        }
     }
 
     // what the sealed pack costs
