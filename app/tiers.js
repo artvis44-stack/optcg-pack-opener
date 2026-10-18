@@ -200,9 +200,12 @@ function rollHit(byTier, cfg, srScale, premiumScale) {
 // Pandaman rare slot, "DON" / "DON_GOLD" / "DON_SP" the DON!! card, "GOD" a
 // god pack, anything else the hit slot. Without one, about 1 pack in 5,760 is
 // a god pack.
-function makePack(cards, setInfo, forceHit) {
+// opts (from your crew, Progress.packOptions): luck -- hits that much likelier;
+// godBoost -- god packs that much likelier.
+function makePack(cards, setInfo, forceHit, opts) {
     var cfg = setConfig(setInfo);
-    if (forceHit === "GOD" || (!forceHit && Math.random() < godPacksPerCase(setInfo) / cfg.packsPerCase))
+    var luck = (opts && opts.luck) || 1, godBoost = (opts && opts.godBoost) || 1;
+    if (forceHit === "GOD" || (!forceHit && Math.random() < godBoost * godPacksPerCase(setInfo) / cfg.packsPerCase))
         return makeGodPack(cards, setInfo);
     var byTier = group(cards);
     forceHit = forceHit && byTier[forceHit] ? forceHit : "";
@@ -222,8 +225,8 @@ function makePack(cards, setInfo, forceHit) {
     var live = byTier.L ? cfg.packsPerBox / (cfg.packsPerBox - cfg.leadersPerBox) : 1;
     var hit = forceHit && special.indexOf(forceHit) < 0 ? forceHit
             : leader && cfg.era === "mapped" ? "R"
-            : leader && cfg.era === "transition" ? rollHit(byTier, cfg, 1, 0)
-            : rollHit(byTier, cfg, cfg.era === "mapped" ? live : 1, cfg.era === "random" ? 1 : live);
+            : leader && cfg.era === "transition" ? rollHit(byTier, cfg, luck, 0)
+            : rollHit(byTier, cfg, luck * (cfg.era === "mapped" ? live : 1), luck * (cfg.era === "random" ? 1 : live));
     var panda = byTier.PANDA && Math.random() < caseAmount(cfg, "PANDA") / cfg.packsPerCase;
     return buildPack(byTier, cfg, {
         leader: leader ? "L" : "",
@@ -308,7 +311,8 @@ function godPackName(pack, setInfo) {
 // ---- cases ------------------------------------------------------------------------
 
 // A whole case: { boxes: [boxes][packs][cards], toppers: [one card per box or null] }
-function makeCase(cards, setInfo) {
+// opts: as for makePack (a case's hits are fixed, so only godBoost counts)
+function makeCase(cards, setInfo, opts) {
     var cfg = setConfig(setInfo);
     var byTier = group(cards);
     var B = cfg.boxes, P = cfg.packsPerBox, b, i;
@@ -407,7 +411,7 @@ function makeCase(cards, setInfo) {
     });
 
     // god packs: a rare lottery per case, each replacing a random pack
-    for (i = poisson(godPacksPerCase(setInfo)); i > 0; i--)
+    for (i = poisson(((opts && opts.godBoost) || 1) * godPacksPerCase(setInfo)); i > 0; i--)
         dealt[Math.floor(Math.random() * B)][Math.floor(Math.random() * P)] = makeGodPack(cards, setInfo);
 
     // box toppers (OP-01/02): one per box, outside the packs

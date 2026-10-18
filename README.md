@@ -23,6 +23,7 @@ Boosters EB-01 to EB-03 and the Premium Boosters PRB-01 / PRB-02.
 | W | the wanted board: today's bounties, achievements, your total bounty (← → switch between the overall board and each set's) |
 | Y | sync: sign in to your sync server (or create an account) to share your saves between computers |
 | M | sound on / off (remembered) |
+| P | the Port: ship and crew, card shop, grading, sealed products, cosmetics (← → switch tabs) |
 | C | box mode: buy the rest of the case (15% off) |
 | Esc / right-click | close |
 
@@ -39,6 +40,7 @@ The app is split into a platform-independent part (`app/`) and a thin host.
   TCGplayer ids of its pack/box photos and DON!! cards, and the per-set rates the research found.
 - `app/SetPicker.qml`: the set picker
 - `app/Stage.qml`: the flow (pack → reveal → summary, box mode), layout and effects
+- `app/PortView.qml`: the Port (ship, crew, shop, grading, sealed, cosmetics; the rules are in `app/progress.js`)
 - `app/Sounds.qml`, `app/sounds/`: sound effects (tearing, card flips, a charge-up before big hits, chimes
   and fanfares by rarity, the god pack, coins, wanted posters). They're synthesized by
   `tools/make_sounds.py` (no samples): tweak a recipe and run it again. Playing them needs Qt
@@ -67,8 +69,8 @@ of a case 15% off. You earn them by:
 - **being at your computer**: while you're active (idle time doesn't count; Hyprland's idle
   detection on Linux, the system idle timer on macOS) you earn 4 ฿ a minute plus 2 × √(collection
   value / 1,000), so roughly 18 ฿/min at a ฿50,000 collection, 67 at ฿1M, 204 at ฿10M, up to
-  500 minutes' worth a day
-- **a free pack every 6 hours** (holds up to 2)
+  500 minutes' worth a day (your ship and Nami add to it)
+- **a free pack every 6 hours** (holds up to 2; a better ship: faster and more)
 - **your daily streak**: 100 ฿ on day 1 up to 700 ฿, and a free pack every 7th day
 - **focus sessions**: 25 minutes from the desktop widget = a free pack + 200 ฿ (10 minutes away
   loses it)
@@ -85,6 +87,27 @@ publishes nothing) is a god pack: every card in it is a hit. Most sets get paral
 Manga God Pack, PRB-02 an all-parallel or an all-Gold DON!! pack, EB-03 an SP God Pack and OP-13
 the Demon Pack (the Five Elders). They're in boxes and cases too, replacing a random pack, and
 there are wanted posters for them
+
+## The Port (P): where berries go
+
+- **Ship and crew.** Upgrade from a rowboat to the Going Merry and the Thousand Sunny (each about 5×
+  the last, up to ฿60M): more passive income, free packs faster and more of them. Recruit the
+  Straw Hats, each with a perk: Zoro doubles focus berries, Nami +25% income, Usopp better hit odds
+  in single packs, Sanji cheaper packs, Chopper saves a streak that missed one day, Robin tells you
+  how good a sealed pack is, Franky cheaper boxes and cases, Brook +10% when selling, Jinbe a fourth
+  daily bounty, Luffy (Gear 5) god packs twice as likely.
+- **Card shop.** Eight deals a day from your downloaded sets at market price + 10% (once each), and
+  any card can be ordered from the binder (click it) at + 50%.
+- **Grading.** In the binder, click a card you own and pick a service (Value 24 h, Standard 6 h,
+  Express 30 min; the fee grows with the card's value). It comes back in a slab with a grade from
+  1 to 10 (8% get a 10): a 10 is worth 4× the card, a 9 1.6×, an 8 1.1×, lower less. Slabs show up
+  in the Port; sell them or put them on your desktop, where the slab label shows the grade.
+- **Sealed products.** Buy boxes and cases and hold them: they gain value every week (older sets
+  faster, up to about 2.3× a year) and count toward your collection's value. Sell them for what
+  they're worth, or open them: their boxes wait, prepaid, in that set's box mode.
+- **Cosmetics.** Backdrops for the pack opener and labels for your desktop slab.
+
+There are wanted posters for all of it, and for how much you've spent.
 
 All of it lives in `~/.local/share/optcg/progress.json` (per computer, unless you sync them: see below). The rules are in
 `app/progress.js`. `OPTCG_SANDBOX=1` opens everything for free without saving anything.
