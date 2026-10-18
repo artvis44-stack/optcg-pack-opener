@@ -2,13 +2,31 @@ import QtQuick
 import "tiers.js" as Tiers
 import "progress.js" as Progress
 
-// Collection binder: the whole set, owned cards first (in colour, with a
-// count), then the missing ones faded; best cards first within each.
+// Collection binder. "This set": the whole set, owned cards first (in colour,
+// with a count), then the missing ones faded; best cards first within each.
+// "All sets" (Tab): everything you own from every set, best pulls first, with
+// set filter chips and an estimated value.
 Item {
     id: binder
 
     property Item stage
     property bool ownedOnly: false
+    property bool allSets: false
+    property string setFilter: ""    // all sets: just this set ("" = every set)
+
+    onAllSetsChanged: {
+        inspected = null;
+        hoveredCard = null;
+        if (allSets) stage.loadAllMarkets();
+    }
+
+    // the sets you own cards from, in release order
+    readonly property var ownedSets: {
+        if (!stage) return [];
+        var seen = {};
+        stage.allOwned.forEach(it => seen[it.card.set] = true);
+        return Object.keys(stage.sets).filter(id => seen[id]);
+    }
     property var inspected: null
     property var hoveredCard: null   // an owned card under the mouse (D shows it on the desktop)
 
@@ -18,7 +36,15 @@ Item {
     }
 
     readonly property var entries: {
-        if (!stage || !stage.db) return [];
+        if (!stage) return [];
+        if (allSets) {
+            var order = Object.keys(stage.sets);
+            return stage.allOwned.filter(it => !setFilter || it.card.set === setFilter)
+                .sort((a, b) => Tiers.tierOf(b.card).rank - Tiers.tierOf(a.card).rank
+                                || order.indexOf(a.card.set) - order.indexOf(b.card.set)
+                                || a.card.id.localeCompare(b.card.id));
+        }
+        if (!stage.db) return [];
         var seen = {}, list = [];
         stage.db.cards.forEach(c => {
             var k = stage.cardKey(c);
@@ -35,19 +61,34 @@ Item {
     }
 
     readonly property var stats: {
-        var res = { owned: 0, total: 0, pulled: 0, packs: 0 };
-        if (!stage || !stage.db) return res;
+        var res = { owned: 0, total: 0, pulled: 0, packs: 0, value: 0 };
+        if (!stage) return res;
+        res.packs = stage.collection.packs || 0;
+        if (allSets) {
+            entries.forEach(it => {
+                res.owned++;
+                res.pulled += it.count;
+                res.value += it.count * stage.cardValue(it.card);
+            });
+            return res;
+        }
+        if (!stage.db) return res;
         var inSet = {};
         stage.db.cards.forEach(c => inSet[stage.cardKey(c)] = true);
         res.total = Object.keys(inSet).length;
         var cards = stage.collection.cards;
         Object.keys(cards).forEach(k => {
+            if (!inSet[k]) return;
             res.pulled += cards[k].count;
-            if (inSet[k]) res.owned++;
+            res.owned++;
         });
-        res.packs = stage.collection.packs || 0;
         return res;
     }
+
+    readonly property var bulk: !stage ? [] : allSets
+        ? stage.allBulkDuplicates.filter(it => !setFilter || it.card.set === setFilter)
+        : stage.bulkDuplicates
+    readonly property int bulkValue: bulk.reduce((a, it) => a + it.count * stage.cardValue(it.card), 0)
 
     Rectangle {
         anchors.fill: parent
@@ -65,20 +106,64 @@ Item {
         spacing: 6
         Text {
             anchors.horizontalCenter: parent.horizontalCenter
-            text: binder.stage && binder.stage.db ? "Binder  ·  " + binder.stage.db.set + "  " + binder.stage.db.set_name : "Binder"
+            text: binder.allSets ? "Binder  ·  all sets" + (binder.setFilter ? "  ·  " + binder.setFilter : "")
+                  : binder.stage && binder.stage.db ? "Binder  ·  " + binder.stage.db.set + "  " + binder.stage.db.set_name : "Binder"
             color: "#ffd56b"
             font { pixelSize: 28; weight: Font.Black; italic: true }
         }
+        Row {   // this set / all sets
+            anchors.horizontalCenter: parent.horizontalCenter
+            spacing: 8
+            PillButton {
+                text: "This set"
+                fontSize: 13
+                accent: binder.allSets ? "#7a8090" : "#ffd56b"
+                onClicked: binder.allSets = false
+            }
+            PillButton {
+                text: "All sets"
+                fontSize: 13
+                accent: binder.allSets ? "#ffd56b" : "#7a8090"
+                onClicked: binder.allSets = true
+            }
+        }
         Text {
             anchors.horizontalCenter: parent.horizontalCenter
-            text: binder.stats.owned + " / " + binder.stats.total + " collected   ·   "
-                  + binder.stats.pulled + " cards pulled   ·   " + binder.stats.packs + " packs opened"
-                  + (binder.ownedOnly ? "   ·   showing owned only" : "")
+            text: binder.allSets
+                  ? binder.stats.owned + " different cards   ·   " + binder.stats.pulled + " cards   ·   "
+                    + (binder.setFilter ? binder.setFilter : binder.ownedSets.length + " sets")
+                    + "   ·   worth about " + Progress.format(binder.stats.value)
+                  : binder.stats.owned + " / " + binder.stats.total + " collected   ·   "
+                    + binder.stats.pulled + " cards pulled   ·   " + binder.stats.packs + " packs opened"
+                    + (binder.ownedOnly ? "   ·   showing owned only" : "")
             color: "#d0d4dc"
             font.pixelSize: 16
         }
+        Flow {   // all sets: filter by set
+            visible: binder.allSets && binder.ownedSets.length > 1
+            anchors.horizontalCenter: parent.horizontalCenter
+            width: Math.min(binder.width * 0.85, (binder.ownedSets.length + 1) * 70)
+            spacing: 6
+            PillButton {
+                text: "every set"
+                fontSize: 11
+                accent: binder.setFilter === "" ? "#ffd56b" : "#7a8090"
+                onClicked: binder.setFilter = ""
+            }
+            Repeater {
+                model: binder.ownedSets
+                PillButton {
+                    required property string modelData
+                    text: modelData
+                    fontSize: 11
+                    accent: binder.setFilter === modelData ? "#ffd56b" : "#7a8090"
+                    onClicked: binder.setFilter = binder.setFilter === modelData ? "" : modelData
+                }
+            }
+        }
         // completion bar
         Rectangle {
+            visible: !binder.allSets
             anchors.horizontalCenter: parent.horizontalCenter
             width: 420; height: 6; radius: 3
             color: "#22283a"
@@ -90,12 +175,12 @@ Item {
         }
         PillButton {   // sell the spare copies of cheap cards; valuable ones are sold one by one
             anchors.horizontalCenter: parent.horizontalCenter
-            visible: !binder.stage.offTheRecord && binder.stage.bulkDuplicates.length > 0
-            text: "Sell bulk duplicates (" + binder.stage.bulkDuplicates.reduce((a, it) => a + it.count, 0)
-                  + " cards, +" + Progress.format(binder.stage.bulkValue) + ")"
+            visible: !binder.stage.offTheRecord && binder.bulk.length > 0
+            text: "Sell bulk duplicates (" + binder.bulk.reduce((a, it) => a + it.count, 0)
+                  + " cards, +" + Progress.format(binder.bulkValue) + ")"
             accent: "#7fd1b9"
             fontSize: 13
-            onClicked: binder.stage.sell(binder.stage.bulkDuplicates)
+            onClicked: binder.stage.sell(binder.bulk)
         }
     }
 
@@ -156,7 +241,10 @@ Item {
 
             Text {
                 anchors { top: cardView.bottom; topMargin: 4; horizontalCenter: parent.horizontalCenter }
-                text: Tiers.tierOf(cell.modelData.card).label
+                width: grid.cardW + 20
+                horizontalAlignment: Text.AlignHCenter
+                elide: Text.ElideRight
+                text: (binder.allSets ? cell.modelData.card.set + " · " : "") + Tiers.tierOf(cell.modelData.card).label
                 color: Tiers.tierOf(cell.modelData.card).color
                 opacity: cell.owned ? 1 : 0.35
                 font { pixelSize: 12; weight: Font.Bold }
@@ -175,7 +263,8 @@ Item {
     Text {
         anchors { bottom: parent.bottom; bottomMargin: 14; horizontalCenter: parent.horizontalCenter }
         text: binder.inspected ? "Move the mouse to tilt   ·   D: show on desktop   ·   click or Esc to go back"
-              : "Scroll to browse   ·   hover to tilt   ·   click a card to inspect   ·   D: show the hovered card on your desktop   ·   O: owned only / all   ·   B or Esc: back"
+              : "Scroll to browse   ·   click a card to inspect   ·   D: show the hovered card on your desktop   ·   Tab: this set / all sets"
+                + (binder.allSets ? "" : "   ·   O: owned only / all") + "   ·   B or Esc: back"
         color: "#9aa0ad"
         font.pixelSize: 14
     }

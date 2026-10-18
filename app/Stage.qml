@@ -86,7 +86,8 @@ Item {
     property var progress: Progress.fresh(Date.now())
     property bool packPaid: false           // the sealed single pack on screen is paid for
     property var celebrations: []           // completions waiting to be shown
-    property var market: ({})               // "<id>|<name>" -> usd, for the current set
+    property var markets: ({})              // set id -> { "<id>|<name>": usd } (market prices)
+    readonly property var market: markets[setId] || ({})
     readonly property int setTotal: {
         var seen = {};
         if (db) db.cards.forEach(c => seen[c.image.split("/").pop()] = true);
@@ -244,14 +245,22 @@ Item {
     // ---- selling --------------------------------------------------------------------
 
     function cardValue(c) {
-        return Progress.cardValue(c, market);
+        return Progress.cardValue(c, markets[c.set || setId]);
     }
 
     // market prices for the current set, cached per day in market/<set>.json
-    function loadMarket() {
-        var id = setId, path = dataDir + "/market/" + id + ".json", cached = null;
+    function setMarket(id, prices) {
+        var m = Object.assign({}, markets);
+        m[id] = prices;
+        markets = m;
+    }
+
+    // market prices for a set (default: the current one), cached per day in market/<set>.json
+    function loadMarket(id) {
+        id = id || setId;
+        var path = dataDir + "/market/" + id + ".json", cached = null;
         try { cached = JSON.parse(host.readText(path) || "null"); } catch (e) {}
-        if (cached) market = cached.prices;
+        if (cached) setMarket(id, cached.prices);
         if (cached && cached.day === Progress.dayOf(Date.now())) return;
         var xhr = new XMLHttpRequest();
         xhr.onreadystatechange = function () {
@@ -262,7 +271,7 @@ Item {
                     if (c.market_price !== null && c.market_price !== undefined) prices[c.card_image_id + "|" + c.card_name] = Number(c.market_price);
                 });
                 host.writeText(path, JSON.stringify({ day: Progress.dayOf(Date.now()), prices: prices }));
-                if (id === stage.setId) stage.market = prices;
+                stage.setMarket(id, prices);
             } catch (e) {}
         };
         xhr.open("GET", "https://optcgapi.com/api/sets/" + id + "/");
@@ -345,6 +354,10 @@ Item {
         host.run([python, "-I", "-u", fetchScript, id],
                  line => downloadLine = line,
                  code => loadSet(id, true));
+    }
+
+    function toggleAllSets() {   // the binder's "This set" / "All sets"
+        if (phase === "binder") binderView.allSets = !binderView.allSets;
     }
 
     function toggleBoard() {
@@ -553,7 +566,34 @@ Item {
     }
 
     function cardKey(c) {
-        return setId + ":" + c.image.split("/").pop();   // unique per printing
+        // unique per printing; cards from the all-sets binder carry their own set
+        return (c.set || setId) + ":" + c.image.split("/").pop();
+    }
+
+    // ---- the whole collection, across sets (the binder's "All sets" view) --------------
+
+    // every owned printing as a card: { id, name, tier, type, image, set }, plus its count
+    readonly property var allOwned: {
+        var out = [];
+        Object.keys(collection.cards).forEach(k => {
+            var cut = k.indexOf(":"), set = k.slice(0, cut), e = collection.cards[k];
+            out.push({ card: { id: e.id, name: e.name, tier: e.tier, set: set,
+                               type: e.tier && e.tier.indexOf("DON") === 0 ? "DON!!" : (e.tier === "L" || e.tier === "L_AA" || e.tier === "SUPER_L" ? "Leader" : ""),
+                               image: cacheRoot + "/" + set + "/" + k.slice(cut + 1) },
+                       count: e.count });
+        });
+        return out;
+    }
+
+    // spare copies worth under BULK_LIMIT, in every set
+    readonly property var allBulkDuplicates: allOwned.filter(it => it.count > 1 && cardValue(it.card) < Progress.BULK_LIMIT)
+                                                     .map(it => ({ card: it.card, count: it.count - 1 }))
+    readonly property int allBulkValue: allBulkDuplicates.reduce((a, it) => a + it.count * cardValue(it.card), 0)
+
+    function loadAllMarkets() {
+        var seen = {};
+        allOwned.forEach(it => seen[it.card.set] = true);
+        Object.keys(seen).forEach(id => { if (!markets[id]) loadMarket(id); });
     }
 
     function recordPack() {
@@ -606,7 +646,7 @@ Item {
         if (!c) return;
         var path = dataDir + "/showcase.json", s = {};
         try { s = JSON.parse(host.readText(path) || "{}"); } catch (e) {}
-        s.card = { id: c.id, name: c.name, tier: c.tier, type: c.type, image: c.image, set: setId };
+        s.card = { id: c.id, name: c.name, tier: c.tier, type: c.type, image: c.image, set: c.set || setId };
         host.writeText(path, JSON.stringify(s));
         host.startShowcase();
         toast("Showing " + Tiers.displayName(c) + " on your desktop  ·  drag to move, scroll to resize, right-click to remove");
@@ -695,7 +735,7 @@ Item {
             toggleBinder();
             break;
         case Qt.Key_O:
-            if (phase === "binder") binderView.ownedOnly = !binderView.ownedOnly;
+            if (phase === "binder" && !binderView.allSets) binderView.ownedOnly = !binderView.ownedOnly;
             break;
         case Qt.Key_Space:
         case Qt.Key_Return:
@@ -704,7 +744,8 @@ Item {
             advance();
             break;
         case Qt.Key_Tab:
-            revealAll();
+            if (phase === "binder") toggleAllSets();
+            else revealAll();
             break;
         case Qt.Key_R:
             if (phase === "summary") mode === "box" ? backToBox() : newPack();

@@ -39,6 +39,7 @@ ShellRoot {
         function chooseSet(id: string): void { stage.chooseSet(id); }
         function showcase(): void { stage.showcase(stage.focusedCard()); }
         function board(): void { stage.toggleBoard(); }
+        function binderAll(): void { stage.toggleAllSets(); }
         function sellBulk(): void { stage.sell(stage.bulkDuplicates); }
         // debugging: render the overlay to a PNG
         function snapshot(path: string): void { stage.grabToImage(r => r.saveToFile(path)); }

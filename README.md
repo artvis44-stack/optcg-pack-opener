@@ -18,6 +18,7 @@ Boosters EB-01 to EB-03 and the Premium Boosters PRB-01 / PRB-02.
 | A | box: open all remaining packs |
 | B | binder: your collection (from the sealed pack or the summary) |
 | O | binder: show owned only / the whole set |
+| Tab | binder: this set / all sets (everything you own, with set filters and its value) |
 | D | show the card you're looking at on your desktop (inspected, just revealed, or hovered in the binder) |
 | W | the wanted board: today's bounties, achievements, your total bounty |
 | C | box mode: buy the rest of the case (15% off) |
