@@ -122,7 +122,7 @@ Item {
             }
         }
         if (!offTheRecord) {
-            prog(p => Progress.accrue(p, Date.now(), () => downloadedSets()));
+            prog(p => Progress.backfill(p, host, dataDir, cacheRoot).concat(Progress.accrue(p, Date.now(), () => downloadedSets())));
             refreshValue();
         }
         if (host.env("OPTCG_INSPECT") === "1" && openShowcaseView()) return;
@@ -233,23 +233,10 @@ Item {
         if (offTheRecord) return;
         var owned = Object.keys(collection.cards).filter(k => k.indexOf(setId + ":") === 0).length;
         // how much of each tier group (every Leader, every SR...) you own, and which tiers the set has
-        var groups = {}, present = {}, seen = {};
-        var have = {}, total = {};
-        db.cards.forEach(c => {
-            var k = cardKey(c);
-            present[c.tier] = true;
-            if (seen[k]) return;
-            seen[k] = true;
-            Object.keys(Progress.SET_GROUPS).forEach(g => {
-                if (Progress.SET_GROUPS[g].indexOf(c.tier) < 0) return;
-                total[g] = (total[g] || 0) + 1;
-                if (collection.cards[k]) have[g] = (have[g] || 0) + 1;
-            });
-        });
-        Object.keys(total).forEach(g => groups[g] = (have[g] || 0) / total[g]);
+        var sp = Progress.setProgress(setId, db.cards, collection.cards);
         prog(p => Progress.record(p, { type: "pack", set: setId, tiers: cards.map(c => c.tier),
                                        completion: setTotal ? owned / setTotal : 0,
-                                       groups: groups, present: Object.keys(present) }));
+                                       groups: sp.groups, present: sp.present }));
     }
 
     // the box (and maybe the case) is done
@@ -1275,6 +1262,7 @@ Item {
                       : c.kind === "bounty" ? "Bounty complete: " + Progress.bountyText(c.b) + "   +" + Progress.bountyRewardText(c.b)
                       : c.kind === "streak" ? "Day " + c.count + " streak   +" + Progress.format(c.reward) + (c.freePack ? "  and a free pack" : "")
                       : c.kind === "freePack" ? "A free pack is ready"
+                      : c.kind === "backfill" ? "Back-dated " + c.count + " wanted posters for what you'd already done   +" + Progress.format(c.reward)
                       : ""
                 color: "#fff6e0"
                 font { pixelSize: 17; weight: Font.Bold }

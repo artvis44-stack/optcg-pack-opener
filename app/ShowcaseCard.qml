@@ -210,7 +210,7 @@ Item {
         var t = Date.now(), idle = host.isIdle();
         var value = Progress.collectionValue(host, dataDir);   // income grows with it
         change(p => {
-            var done = Progress.accrue(p, t, () => show.downloadedSets());
+            var done = Progress.backfill(p, host, dataDir, cacheRoot).concat(Progress.accrue(p, t, () => show.downloadedSets()));
             done = done.concat(Progress.setValue(p, value));
             if (!idle) done = done.concat(Progress.addIncome(p, 1, t));
             if (Progress.focusRunning(p, t)) {
@@ -238,6 +238,9 @@ Item {
         events.forEach(e => {
             if (e.kind === "streak")
                 host.notify("Day " + e.count + " streak", "+" + Progress.format(e.reward) + (e.freePack ? " and a free pack" : ""));
+            else if (e.kind === "backfill")
+                host.notify("Back-dated " + e.count + " wanted posters", "For what you'd already done  ·  +" + Progress.format(e.reward)
+                            + "  ·  bounty +" + Progress.formatBounty(e.bounty));
             else if (e.kind === "freePack")
                 host.notify("A free pack is ready", "Open it from the desktop widget.");
             else if (e.kind === "achievement")
