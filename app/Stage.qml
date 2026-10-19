@@ -360,6 +360,12 @@ Item {
     readonly property int boxesLeftToBuy: { caseRev; return boxesLeft(); }
     readonly property int prepaidBoxes: { caseRev; return caseState ? caseState.prepaid || 0 : 0; }
     readonly property bool boxPaidNow: { caseRev; return !!(caseState && caseState.boxPaid); }
+    // what this box cost you (BoxView's profit); free (off the record) or from before it was kept: the box price
+    readonly property int boxPaidPrice: { caseRev; return caseState && caseState.boxPrice !== undefined ? caseState.boxPrice : boxCost; }
+    // the set's per-box chances (Tiers.boxChances), worked out once per set (progress reloads
+    // every few seconds; godBoost only signals when it changes)
+    readonly property real godBoost: Progress.packOptions(progress, setId).godBoost || 1
+    readonly property var boxOdds: db ? Tiers.boxChances(db.cards, setInfo, godBoost) : null
     // C: the rest of this case, or once that's paid for, another whole case (its boxes carry over)
     readonly property int caseCost: Progress.casePrice(cfg, boxesLeftToBuy > 0 ? boxesLeftToBuy : cfg.boxes, progress, setId)
 
@@ -384,10 +390,15 @@ Item {
     function payForBox() {
         if (offTheRecord || caseState.boxPaid) return true;
         if ((caseState.prepaid || 0) > 0) {
+            var cost = prepaidCostSoFar(), each = Math.round(cost / caseState.prepaid);   // its share of what they cost
+            caseState.prepaidCost = Math.max(0, cost - each);
             caseState.prepaid--;
+            caseState.boxPrice = each;
         } else if (!prog(p => Progress.pay(p, boxCost, false, "boxes"))) {
             toast("Not enough berries: a box is " + Progress.format(boxCost) + " (you have " + Progress.format(progress.berries) + ").");
             return false;
+        } else {
+            caseState.boxPrice = boxCost;
         }
         caseState.boxPaid = true;
         saveCase();
@@ -405,6 +416,7 @@ Item {
                   + " is " + Progress.format(cost) + ".");
             return;
         }
+        caseState.prepaidCost = prepaidCostSoFar() + cost;
         caseState.prepaid = (caseState.prepaid || 0) + n;
         saveCase();
         sfx("coin");
@@ -687,8 +699,13 @@ Item {
             return [];
         });
         if (!n) return;
+        caseState.prepaidCost = prepaidCostSoFar() + n * boxCost;   // a sealed product's boxes: what a box goes for now
         caseState.prepaid = (caseState.prepaid || 0) + n;
         saveCase();
+    }
+    // what the prepaid boxes waiting cost (from before this was kept: today's box price each)
+    function prepaidCostSoFar() {
+        return caseState.prepaidCost !== undefined ? caseState.prepaidCost : (caseState.prepaid || 0) * boxCost;
     }
 
     // market prices for the current set, cached per day in market/<set>.json
@@ -920,6 +937,7 @@ Item {
             boxPaid: false,
             boxRecorded: false,
             prepaid: caseState ? caseState.prepaid || 0 : 0,   // boxes from a sealed case carry over
+            prepaidCost: caseState ? prepaidCostSoFar() : 0,
             topperTaken: false,
             toppers: [],
             boxes: []
@@ -946,6 +964,7 @@ Item {
             caseState.opened = [];
             caseState.topperTaken = false;
             caseState.boxPaid = false;
+            delete caseState.boxPrice;
             caseState.boxRecorded = false;
             if (caseState.box >= cfg.boxes) newCase();
         }
