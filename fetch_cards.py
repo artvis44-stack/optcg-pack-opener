@@ -240,30 +240,23 @@ def download(card, cache):
     return card
 
 
+# bump when cut_out changes: product photos cut out by an older one are redone
+CUT_OUT = "cut2"
+
+
 def cut_out(src, out):
     """A product photo on white -> the product alone: flood the background away from the
-    corners, then keep everything inside the product's convex outline, so a white box
-    (OP-05's) doesn't lose the edges the flood ran into."""
-    flood = out + ".flood.png"
-    hull_mask = out + ".hull.png"
-    try:
-        magick(src, "-bordercolor", "white", "-border", "1", "-fuzz", "6%", "-fill", "none",
-               "-floodfill", "+0+0", "white", "-shave", "1x1", flood)
-        hull = subprocess.run(["magick", flood, "-alpha", "extract", "-threshold", "50%", "-background", "black",
-                               "-fuzz", "0", "-format", "%[convex-hull]", "info:"],
-                              check=True, capture_output=True, text=True).stdout.strip()
-        if hull.count(",") < 3:
-            raise ValueError("no outline")
-        w, h = image_size(src)
-        magick("-size", f"{w}x{h}", "xc:black", "-fill", "white", "-stroke", "white",
-               "-draw", "polygon " + hull, hull_mask)
-        magick(src, hull_mask, "-alpha", "off", "-compose", "CopyOpacity", "-composite", "-trim", "+repage", out)
-    except (subprocess.CalledProcessError, ValueError):
-        magick(flood if os.path.exists(flood) else src, "-trim", "+repage", out)
-    finally:
-        for f in (flood, hull_mask):
-            if os.path.exists(f):
-                os.remove(f)
+    corners, twice. A loose flood clears the JPEG noise around the product but runs into
+    a white product (OP-05's pack and box) and eats holes in it; a tight one (pure white
+    only) keeps those but leaves a speckled fringe. Keep what either keeps, the tight
+    one opened first so its thin fringe goes and only solid product is left."""
+    with tempfile.TemporaryDirectory() as tmp:
+        loose, tight, keep = (os.path.join(tmp, n + ".png") for n in ("loose", "tight", "keep"))
+        for fuzz, mask in (("6%", loose), ("1%", tight)):
+            magick(src, "-bordercolor", "white", "-border", "1", "-fuzz", fuzz, "-fill", "none",
+                   "-floodfill", "+0+0", "white", "-shave", "1x1", "-alpha", "extract", mask)
+        magick(tight, "-morphology", "Open", "Disk:6", loose, "-compose", "lighten", "-composite", keep)
+        magick(src, keep, "-alpha", "off", "-compose", "CopyOpacity", "-composite", "-trim", "+repage", out)
 
 
 def fetch_product_images(set_id, info, cache):
@@ -281,12 +274,13 @@ def fetch_product_images(set_id, info, cache):
             url = TCGPLAYER_IMG.format(tcg)
         else:
             continue
-        src_file = os.path.join(cache, name + ".src")
-        had = open(src_file).read().strip() if os.path.exists(src_file) else None
-        if os.path.exists(dest) and (had == url or (had is None and not photo)):
-            continue
         # Bandai's own shots are cut out already; the rest are photos on white
         studio = url.startswith(("https://en.onepiece-cardgame.com/", "https://www.onepiece-cardgame.com/"))
+        made = url if studio else url + " " + CUT_OUT
+        src_file = os.path.join(cache, name + ".src")
+        had = open(src_file).read().strip() if os.path.exists(src_file) else None
+        if os.path.exists(dest) and (had == made or (studio and had is None and not photo)):
+            continue
         try:
             data = fetch(url)
         except Exception as e:
@@ -308,7 +302,7 @@ def fetch_product_images(set_id, info, cache):
             os.remove(raw)
         os.replace(out, dest)
         with open(src_file, "w") as f:
-            f.write(url + "\n")
+            f.write(made + "\n")
         print(name, "image ->", dest)
 
 
