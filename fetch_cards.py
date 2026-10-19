@@ -306,6 +306,37 @@ def fetch_product_images(set_id, info, cache):
         print(name, "image ->", dest)
 
 
+def fix_card_photos(set_id, info, cache):
+    """Cards whose optcgapi picture is wrong (sets.json "cardPhotos": card id -> TCGplayer
+    product): TCGplayer's photo goes over it, under the same file name, so the copies in
+    collections keep their key. <image>.src remembers which one is on disk."""
+    fixes = info.get("cardPhotos") or {}
+    path = os.path.join(cache, "cards.json")
+    if not fixes or not os.path.exists(path):
+        return
+    with open(path) as f:
+        cards = json.load(f)["cards"]
+    for card in cards:
+        tcg = fixes.get(card["id"])
+        if not tcg:
+            continue
+        url, dest = TCGPLAYER_IMG.format(tcg), card["image"]
+        src_file = dest + ".src"
+        if os.path.exists(src_file) and open(src_file).read().strip() == url:
+            continue
+        try:
+            data = fetch(url)
+        except Exception as e:
+            print(f"no photo for {card['id']} ({e})", flush=True)
+            continue
+        with open(dest + ".part", "wb") as f:
+            f.write(data)
+        os.replace(dest + ".part", dest)
+        with open(src_file, "w") as f:
+            f.write(url + "\n")
+        print(card["id"], "photo ->", dest, flush=True)
+
+
 def fetch_don_cards(set_id, info, cache):
     """DON!! scans for the set, trimmed to the card and sized like the others."""
     cards = []
@@ -469,6 +500,7 @@ def save_set(set_id, info, cache, cards):
     out = {"set": set_id, "set_name": info["name"], "cards": cards}
     with open(out_path, "w") as f:
         json.dump(out, f, indent=1)
+    fix_card_photos(set_id, info, cache)
     print("done")
 
 
@@ -541,6 +573,7 @@ def background(playmats):
         os.makedirs(cache, exist_ok=True)
         try:
             fetch_product_images(set_id, info, cache)
+            fix_card_photos(set_id, info, cache)   # downloaded sets get the fixes too
         except Exception as e:
             print(f"{set_id} photos: {e}", flush=True)
     for mat in playmats:
