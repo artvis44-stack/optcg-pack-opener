@@ -134,6 +134,10 @@ var GRADING = [
 ];
 var GRADE_ODDS = [[10, 0.08], [9, 0.34], [8, 0.3], [7, 0.15], [6, 0.07], [5, 0.03], [4, 0.015], [3, 0.008], [2, 0.004], [1, 0.003]];
 var GRADE_MULT = { 10: 4, 9: 1.6, 8: 1.1, 7: 0.9, 6: 0.75, 5: 0.6, 4: 0.5, 3: 0.45, 2: 0.4, 1: 0.35 };
+// The secret: any grading can come back a DIAMOND LABEL 10, worth 10x the raw card.
+// Rolled when it's sent, like the grade; no odds table shows it.
+var DIAMOND_CHANCE = 0.005;
+var DIAMOND_MULT = 10;
 // A raw copy's condition sets its grading odds. Copies start unchecked (graded
 // like GRADE_ODDS, which is what the conditions average out to); a pre-grade
 // reveals one copy's condition, prep moves one up a level. In the collection a
@@ -282,6 +286,11 @@ function reviewChance(slab) {
 var GRADE_NAME = { 10: "GEM MINT", 9: "MINT", 8: "NM-MT", 7: "NEAR MINT", 6: "EX-MT", 5: "EXCELLENT",
                    4: "VG-EX", 3: "VERY GOOD", 2: "GOOD", 1: "POOR" };
 
+// a slab's grade name: GRADE_NAME, or DIAMOND for a Diamond Label
+function gradeName(slab) {
+    return slab && slab.diamond ? "DIAMOND" : GRADE_NAME[slab && slab.grade] || "";
+}
+
 // ---- the Port: the card shop and sealed products ---------------------------------
 
 var DEAL_MARKUP = 1.1;      // today's deals: a little over market value
@@ -329,6 +338,8 @@ var SLABS = [
     { id: "gold",    name: "Gold Label",  price: 250000,  top: "#ffeab0", bottom: "#d4a640", text: "#2a1a00", sub: "#6b4a10" },
     { id: "holo",    name: "Holo Label",  price: 1000000, top: "#c8f0ff", bottom: "#f4c8ff", text: "#141a2e", sub: "#4a4f7a" }
 ];
+// a Diamond Label slab wears this whatever label you chose; it can't be bought
+var DIAMOND_LABEL = { id: "diamond", name: "Diamond Label", top: "#f4fdff", bottom: "#bfe9ff", text: "#0b2a44", sub: "#2f6f9a" };
 
 // ---- the week: a rotating event and weekly bounties ------------------------------
 // Weeks start on Monday. The events take turns, one a week.
@@ -1205,7 +1216,7 @@ function rollGrade(odds) {
 
 // a slab: { set, key, id, name, tier, image, grade, ... }
 function slabValue(slab, market) {
-    return Math.round(cardValue(slab, market) * (GRADE_MULT[slab.grade] || 1));
+    return Math.round(cardValue(slab, market) * (slab.diamond ? DIAMOND_MULT : GRADE_MULT[slab.grade] || 1));
 }
 
 // send one copy of a card off (the caller takes it out of the collection);
@@ -1216,8 +1227,10 @@ function sendToGrading(p, card, serviceId, value, now) {
     if (!g || !spend(p, fee, "grading")) return null;
     var id = now.toString(36) + Math.floor(Math.random() * 1e6).toString(36);
     var hours = g.hours * (eventIs(p, "grading") ? 0.5 : 1);
-    p.grading[id] = { card: card, service: g.id, fee: fee, grade: rollGrade(serviceOdds(card.cond, g.id)),
+    var diamond = Math.random() < DIAMOND_CHANCE;
+    p.grading[id] = { card: card, service: g.id, fee: fee, grade: diamond ? 10 : rollGrade(serviceOdds(card.cond, g.id)),
                       sentAt: now, readyAt: now + hours * 3600 * 1000 };
+    if (diamond) p.grading[id].diamond = true;
     return id;
 }
 
@@ -1230,7 +1243,9 @@ function collectOrder(p, id) {
     var o = p.grading[id];
     if (!o) return null;
     delete p.grading[id];
-    return Object.assign({}, o.card, { grade: o.grade, gradedAt: Date.now(), service: o.service });
+    var slab = Object.assign({}, o.card, { grade: o.grade, gradedAt: Date.now(), service: o.service });
+    if (o.diamond) slab.diamond = true;
+    return slab;
 }
 
 // ---- the Port: the card shop ------------------------------------------------------------
