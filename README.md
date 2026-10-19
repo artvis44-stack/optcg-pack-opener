@@ -151,7 +151,8 @@ there are wanted posters for them
   Limited Edition Vol.1-5, the Flame-Flame Fruit Coliseum Edition, the 2024 / 2025 Regional prize
   mats), plain colour backdrops, and labels for your desktop slab. Playmat pictures are downloaded
   by `fetch_cards.py --playmat` (TCGplayer's product photo, or the official product page) into
-  `~/.cache/optcg/playmats/` the first time they're shown.
+  `~/.cache/optcg/playmats/` the first time they're shown; Limited Edition Vol.2, 3 and 5 come with
+  the app (`app/pictures/playmats/`).
 
 The crew's portraits and the ship pictures are art from cards in your downloaded sets (each Straw
 Hat's best card; the Thousand Sunny is the OP09-080 Stage card), so download more sets for more of
