@@ -250,10 +250,35 @@ Item {
         currentCelebration = celebrations[0];
         celebrations = celebrations.slice(1);
         var ck = currentCelebration;
-        if (ck.kind === "graded" && ck.slab.grade === 10) flashAnim.restart();
-        sfx(ck.kind === "achievement" ? "poster" : ck.kind === "graded" && ck.slab.grade === 10 ? "legendary"
-            : ck.kind === "graded" && ck.slab.grade >= 9 ? "epic" : "chime");
+        var diamond = ck.kind === "graded" && !!ck.slab.diamond;
+        celebrationTimer.interval = diamond ? 9000 : 3800;
+        if (diamond) {   // the secret grade (DiamondReveal.qml): everything at once
+            diamondFlash.restart();
+            sfx("god");
+            diamondSounds.restart();
+        } else {
+            if (ck.kind === "graded" && ck.slab.grade === 10) flashAnim.restart();
+            sfx(ck.kind === "achievement" ? "poster" : ck.kind === "graded" && ck.slab.grade === 10 ? "legendary"
+                : ck.kind === "graded" && ck.slab.grade >= 9 ? "epic" : "chime");
+        }
         celebrationTimer.restart();
+    }
+    // try the Diamond Label reveal on this set's best card; only shown, nothing saved
+    function testDiamond() {
+        if (!db || !db.cards.length) return;
+        var c = db.cards.slice().sort((a, b) => Tiers.tierOf(b).rank - Tiers.tierOf(a).rank)[0];
+        celebrations = [{ kind: "graded", slab: Object.assign({}, c, { set: setId, key: cardKey(c), grade: 10, diamond: true }) }]
+                       .concat(currentCelebration ? [currentCelebration] : [], celebrations);   // now, ahead of the rest
+        celebrationTimer.stop();
+        nextCelebration();
+    }
+    readonly property bool diamondShowing: !!currentCelebration && currentCelebration.kind === "graded" && !!currentCelebration.slab.diamond
+    SequentialAnimation {
+        id: diamondSounds
+        PauseAnimation { duration: 650 }
+        ScriptAction { script: stage.sfx("legendary") }
+        PauseAnimation { duration: 900 }
+        ScriptAction { script: stage.sfx("coin") }
     }
     // a click dismisses the one on screen; "clear all" (or a right click) the whole queue
     function clearCelebrations() {
@@ -847,9 +872,14 @@ Item {
         }
     }
 
-    function chooseSet(id) {
+    // kind: "pack" (from the shop counter) | "box" (from the shelf); left out, the mode stays
+    function chooseSet(id, kind) {
+        var switching = !!kind && kind !== mode;
+        if (kind) mode = kind;
         if (id === setId && db && db.set === id) {
-            phase = pickerReturn;
+            if (!switching) phase = pickerReturn;
+            else if (mode === "box") startBox();
+            else newPack();
             return;
         }
         db = null;
@@ -1154,6 +1184,7 @@ Item {
         try { s = JSON.parse(host.readText(path) || "{}"); } catch (e) {}
         s.card = { id: c.id, name: c.name, tier: c.tier, type: c.type, image: c.image, set: c.set || setId };
         if (c.grade) s.card.grade = c.grade;   // a graded slab: its grade goes on the label
+        if (c.diamond) s.card.diamond = true;
         host.writeText(path, JSON.stringify(s));
         host.startShowcase();
         toast("Showing " + Tiers.displayName(c) + " on your desktop  ·  drag to move, scroll to resize, right-click to remove");
@@ -1846,7 +1877,7 @@ Item {
         width: poster.visible ? poster.width : slabReveal.visible ? slabReveal.width : banner2.width
         height: poster.visible ? poster.height : slabReveal.visible ? slabReveal.height : banner2.height
         readonly property var c: stage.currentCelebration
-        opacity: c ? 1 : 0
+        opacity: c && !stage.diamondShowing ? 1 : 0   // a Diamond Label has its own (DiamondReveal)
         visible: opacity > 0
         Behavior on opacity { NumberAnimation { duration: 220 } }
         scale: c ? 1 : 0.85
@@ -1884,7 +1915,7 @@ Item {
             width: 240
             Text {
                 anchors.horizontalCenter: parent.horizontalCenter
-                text: slabReveal.visible ? "GRADED  " + celebration.c.slab.grade + "  " + Progress.GRADE_NAME[celebration.c.slab.grade] : ""
+                text: slabReveal.visible ? "GRADED  " + celebration.c.slab.grade + "  " + Progress.gradeName(celebration.c.slab) : ""
                 color: slabReveal.visible && celebration.c.slab.grade === 10 ? "#ffd700" : "#fff6e0"
                 style: Text.Outline; styleColor: "#000000"
                 font { pixelSize: 24; weight: Font.Black; italic: true }
@@ -1975,13 +2006,22 @@ Item {
                       : c.kind === "streak" ? "Day " + c.count + " streak   +" + Progress.format(c.reward) + (c.freePack ? "  and a free pack" : "")
                       : c.kind === "freePack" ? "A free pack is ready"
                       : c.kind === "graded" ? "Grading is back: " + Tiers.displayName(c.slab) + "  ·  "
-                                              + c.slab.grade + " " + Progress.GRADE_NAME[c.slab.grade]
+                                              + c.slab.grade + " " + Progress.gradeName(c.slab)
                       : c.kind === "backfill" ? "Back-dated " + c.count + " wanted posters for what you'd already done   +" + Progress.format(c.reward)
                       : ""
                 color: "#fff6e0"
                 font { pixelSize: 17; weight: Font.Bold }
             }
         }
+    }
+
+    DiamondReveal {
+        anchors.fill: parent
+        z: 296
+        slab: stage.diamondShowing ? stage.localCard(stage.currentCelebration.slab) : null
+        value: stage.diamondShowing ? stage.slabValue(stage.currentCelebration.slab) : 0
+        time: stage.t
+        onDismissed: stage.skipCelebration()
     }
 
     VaultView {
@@ -2071,6 +2111,16 @@ Item {
         id: flashAnim
         NumberAnimation { target: flash; property: "opacity"; to: 0.85; duration: 60 }
         NumberAnimation { target: flash; property: "opacity"; to: 0; duration: 700; easing.type: Easing.OutQuad }
+    }
+    SequentialAnimation {   // a Diamond Label: three flashes, the last one long
+        id: diamondFlash
+        NumberAnimation { target: flash; property: "opacity"; to: 1; duration: 50 }
+        NumberAnimation { target: flash; property: "opacity"; to: 0; duration: 120 }
+        NumberAnimation { target: flash; property: "opacity"; to: 1; duration: 50 }
+        NumberAnimation { target: flash; property: "opacity"; to: 0; duration: 120 }
+        PauseAnimation { duration: 280 }
+        NumberAnimation { target: flash; property: "opacity"; to: 1; duration: 60 }
+        NumberAnimation { target: flash; property: "opacity"; to: 0; duration: 1100; easing.type: Easing.OutQuad }
     }
 
     SequentialAnimation {

@@ -41,6 +41,7 @@ ShellRoot {
         function board(): void { stage.toggleBoard(); }
         function binderAll(): void { stage.toggleAllSets(); }
         function sellBulk(): void { stage.sell(stage.bulkDuplicates); }
+        function testDiamond(): void { stage.testDiamond(); }
         // debugging: render the overlay to a PNG
         function snapshot(path: string): void { stage.grabToImage(r => r.saveToFile(path)); }
     }

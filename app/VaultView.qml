@@ -190,7 +190,7 @@ Item {
                 anchors { top: slabView.bottom; topMargin: 6; horizontalCenter: parent.horizontalCenter }
                 text: Progress.format(vault.stage.slabValue(cell.modelData))
                       + (cell.modelData.gradedAt && vault.now - cell.modelData.gradedAt < 86400000 ? "   ·   NEW" : "")
-                color: cell.modelData.grade === 10 ? "#ffd700" : "#c8ccd6"
+                color: cell.modelData.diamond ? "#7ae8ff" : cell.modelData.grade === 10 ? "#ffd700" : "#c8ccd6"
                 font { pixelSize: 13; weight: Font.Bold }
             }
         }
@@ -444,6 +444,7 @@ Item {
                    : s.cond === "unchecked" || s.grade <= 7 ? " (unchecked, a fresh chance)"
                    : " (" + (s.grade >= 10 ? "Pristine" : s.grade === 9 ? "Clean" : "Decent") + ", or a level worse " + Math.round(Progress.CRACK_WEAR * 100) + "% of the time)")
                 + ", to grade again."
+                + (s.diamond ? "  The Diamond Label goes with the slab: cracked, it's gone." : "")
         color: "#9aa0ad"
         font.pixelSize: 13
     }

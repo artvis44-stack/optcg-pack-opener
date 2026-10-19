@@ -30,7 +30,7 @@ SHOWCASE_SOCKET = "optcg-showcase"
 # commands --ipc can send -> functions on the window in main.qml
 COMMANDS = {name: name for name in ("advance", "revealAll", "newPack", "inspect", "binder", "switchMode",
                                     "openAll", "openPack", "sets", "chooseSet", "snapshot", "showcase",
-                                    "board", "sellBulk", "binderAll")}
+                                    "board", "sellBulk", "binderAll", "testDiamond")}
 COMMANDS["close"] = "closeOverlay"
 
 

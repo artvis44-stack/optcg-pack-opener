@@ -457,7 +457,7 @@ Item {
                         font.pixelSize: 4.2 * show.u
                     }
                     Text {
-                        text: show.card && show.card.grade ? Progress.GRADE_NAME[show.card.grade] + "  ·  " + (show.shortTier[show.card.tier] || show.card.tier)
+                        text: show.card && show.card.grade ? Progress.gradeName(show.card) + "  ·  " + (show.shortTier[show.card.tier] || show.card.tier)
                               : show.owned && show.owned.first
                               ? "PULLED  " + new Date(show.owned.first).toLocaleDateString(Qt.locale("en_GB"), "d MMM yyyy").toUpperCase()
                               : "SHOWCASE"
@@ -481,8 +481,8 @@ Item {
                         spacing: 0
                         Text {
                             anchors.horizontalCenter: parent.horizontalCenter
-                            text: !show.card ? "" : show.card.grade ? String(show.card.grade) : show.shortTier[show.card.tier] || show.card.tier
-                            color: show.card && show.card.grade === 10 ? "#ffd700" : show.tier.color
+                            text: !show.card ? "" : show.card.diamond ? "◆10" : show.card.grade ? String(show.card.grade) : show.shortTier[show.card.tier] || show.card.tier
+                            color: show.card && show.card.diamond ? "#7ae8ff" : show.card && show.card.grade === 10 ? "#ffd700" : show.tier.color
                             font { pixelSize: (text.length > 4 ? 6.2 : 9.5) * show.u; weight: Font.Black }
                         }
                         Text {
