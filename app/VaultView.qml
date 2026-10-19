@@ -11,7 +11,7 @@ Item {
 
     property Item stage
     readonly property var p: stage ? stage.progress : Progress.fresh(Date.now())
-    readonly property var tabs: [["slabs", "Slabs"], ["out", "Out for grading"], ["registry", "Set registry"]]
+    readonly property var tabs: [["slabs", "Slabs"], ["sets", "Sets"], ["out", "Out for grading"], ["registry", "Set registry"]]
     property string tab: "slabs"
     property string setFilter: ""
     property int gradeFilter: 0          // 0: every grade, 7: 7 or lower
@@ -26,6 +26,7 @@ Item {
 
     function back() {
         if (inspected) inspected = null;
+        else if (tab === "sets" && setsView.opened) setsView.opened = "";
         else stage.toggleVault();
     }
 
@@ -189,7 +190,8 @@ Item {
             Text {
                 anchors { top: slabView.bottom; topMargin: 6; horizontalCenter: parent.horizontalCenter }
                 text: Progress.format(vault.stage.slabValue(cell.modelData))
-                      + (cell.modelData.gradedAt && vault.now - cell.modelData.gradedAt < 86400000 ? "   ·   NEW" : "")
+                      + (vault.stage.lockedSlabs[cell.modelData.slabId] ? "   ·   in a case"
+                         : cell.modelData.gradedAt && vault.now - cell.modelData.gradedAt < 86400000 ? "   ·   NEW" : "")
                 color: cell.modelData.diamond ? "#7ae8ff" : cell.modelData.grade === 10 ? "#ffd700" : "#c8ccd6"
                 font { pixelSize: 13; weight: Font.Bold }
             }
@@ -275,6 +277,19 @@ Item {
                 }
             }
         }
+    }
+
+    // ---- sets: collections and their display cases (SetsView.qml) --------------------------
+    SetsView {
+        id: setsView
+        visible: vault.tab === "sets"
+        anchors {
+            top: header.bottom; topMargin: 16
+            bottom: parent.bottom; bottomMargin: 40
+            left: parent.left; right: parent.right
+        }
+        stage: vault.stage
+        onInspect: slab => vault.inspected = slab
     }
 
     // ---- the set registry ----------------------------------------------------------------
@@ -390,7 +405,9 @@ Item {
         readonly property var s: vault.inspected
         readonly property real chance: s ? Progress.reviewChance(s) : 0
         readonly property int reviewFee: s ? Progress.reviewFee(vault.stage.slabValue(s)) : 0
+        readonly property string inCase: s ? vault.stage.lockedSlabs[s.slabId] || "" : ""   // in a display case: hands off
         PillButton {
+            visible: !slabActions.inCase
             text: vault.inspected ? "Sell (+" + Progress.format(vault.stage.slabValue(vault.inspected)) + ")" : ""
             accent: "#7fd1b9"
             onClicked: {
@@ -403,7 +420,7 @@ Item {
             onClicked: vault.stage.showcase(vault.inspected)
         }
         PillButton {   // up a grade or stays, never down; once per slab
-            visible: !!slabActions.s && !vault.stage.offTheRecord && slabActions.chance > 0
+            visible: !!slabActions.s && !vault.stage.offTheRecord && slabActions.chance > 0 && !slabActions.inCase
             text: "Review (" + Progress.format(slabActions.reviewFee) + ", " + Math.round(slabActions.chance * 100) + "% it goes up to "
                   + (slabActions.s ? slabActions.s.grade + 1 : "") + ")"
             accent: "#c8a0ff"
@@ -415,7 +432,7 @@ Item {
             }
         }
         PillButton {   // back to a raw copy in the binder, to grade again
-            visible: !!slabActions.s && !vault.stage.offTheRecord
+            visible: !!slabActions.s && !vault.stage.offTheRecord && !slabActions.inCase
             text: vault.confirmCrack ? "Crack it open? Yes" : "Crack it open"
             accent: "#ff8a7a"
             onClicked: {
@@ -437,6 +454,8 @@ Item {
         readonly property var s: slabActions.s
         readonly property var cond: s ? Progress.CONDITION[s.cond] : null
         text: !s ? ""
+              : slabActions.inCase ? "In the " + (vault.stage.savedSets[slabActions.inCase] || {}).title
+                                     + " display case (the Sets tab): break the set to sell, review or crack it."
               : (cond ? "Graded from a " + cond.name + " copy." : s.cond === "unchecked" ? "Graded from an unchecked copy." : "Graded before conditions.")
                 + (s.reviewed ? "  Reviewed already." : s.grade >= 10 ? "" : "  A review lifts it a grade or leaves it, never lower.")
                 + "  Cracking it puts the card back in the binder raw"
@@ -452,6 +471,7 @@ Item {
     Text {
         anchors { bottom: parent.bottom; bottomMargin: 14; horizontalCenter: parent.horizontalCenter }
         text: vault.inspected ? "Move the mouse to tilt   ·   click or Esc to go back"
+              : vault.tab === "sets" ? "← →: switch tabs   ·   save a complete collection in a display case   ·   G or Esc: back"
               : "← →: switch tabs   ·   click a slab to see it big   ·   G or Esc: back"
         color: "#9aa0ad"
         font.pixelSize: 14

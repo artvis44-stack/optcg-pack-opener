@@ -116,6 +116,10 @@ function mergeCollection(b, l, r) {
     var graded = mergeTree(b.graded || {}, l.graded || {}, r.graded || {}, "graded");
     if (graded && Object.keys(graded).length) out.graded = graded;
     else delete out.graded;
+    // saved sets (the vault's display cases): by id, the same way
+    var sets = mergeTree(b.sets || {}, l.sets || {}, r.sets || {}, "sets");
+    if (sets && Object.keys(sets).length) out.sets = sets;
+    else delete out.sets;
     return out;
 }
 
@@ -200,6 +204,7 @@ var PROGRESS_RULES = [
     ["version", max], ["freePackClock", max],
     ["streak", mergeStreak], ["income", mergeIncome], ["focus", pickLater("startedAt")], ["bounties", mergeBounties],
     ["achievements.*", earliest], ["graded.*", slab], ["grading.*", slab], ["sealed.*", slab],
+    ["sets.*", slab], ["collections.*", slab],
     ["stats.bestCompletion", max], ["stats.backfilled", max], ["stats.value", preferLocal],
     ["stats.bySet.*.completion", max], ["stats.bySet.*.groups.*", max],
     ["stats.bySet.*.present", preferLocal], ["stats.bySet.*.value", preferLocal],
