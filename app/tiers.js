@@ -359,18 +359,10 @@ function godPackName(pack, setInfo) {
 
 // A whole case: { boxes: [boxes][packs][cards], toppers: [one card per box or null] }
 // opts: as for makePack (a case's hits are fixed, so only godBoost counts)
-function makeCase(cards, setInfo, opts) {
-    var cfg = setConfig(setInfo);
-    var byTier = group(cards);
-    var B = cfg.boxes, P = cfg.packsPerBox, b, i;
-    // the "mapped" era places hits in a fixed pattern per set (same every case);
-    // which card lands there is still random
-    var place = cfg.era === "mapped" ? seededRandom((setInfo && setInfo.name) || "") : Math.random;
-    var boxes = [];
-    for (b = 0; b < B; b++) boxes.push({ hits: [], srs: [], leaders: [], dons: [], pandas: 0 });
-
-    // premium hits
-    var hits = [];
+// a case's premium hits into its boxes (each { hits: [] }); place: the random
+// source for the mapped era's fixed pattern
+function dealHits(cfg, byTier, boxes, place) {
+    var B = boxes.length, hits = [];
     HIT_TIERS.forEach(function (t) {
         if (!byTier[t]) return;
         var n = cfg.fixed[t] !== undefined ? Math.round(cfg.fixed[t]) : poisson(cfg.lottery[t] || 0);
@@ -395,6 +387,18 @@ function makeCase(cards, setInfo, opts) {
             }
         }
     }
+}
+
+function makeCase(cards, setInfo, opts) {
+    var cfg = setConfig(setInfo);
+    var byTier = group(cards);
+    var B = cfg.boxes, P = cfg.packsPerBox, b, i;
+    // the "mapped" era places hits in a fixed pattern per set (same every case);
+    // which card lands there is still random
+    var place = cfg.era === "mapped" ? seededRandom((setInfo && setInfo.name) || "") : Math.random;
+    var boxes = [];
+    for (b = 0; b < B; b++) boxes.push({ hits: [], srs: [], leaders: [], dons: [], pandas: 0 });
+    dealHits(cfg, byTier, boxes, place);
 
     // SRs: an even number of copies of each, dealt round-robin
     var srCards = byTier.SR || [];
@@ -464,6 +468,36 @@ function makeCase(cards, setInfo, opts) {
     // box toppers (OP-01/02): one per box, outside the packs
     var toppers = boxes.map(function () { return byTier.TOPPER ? pick(byTier.TOPPER) : null; });
     return { boxes: dealt, toppers: toppers };
+}
+
+// What one box of the set holds, from dealing its hits round a case the way
+// makeCase does, many times over (not from the box you're about to open): for
+// each hit tier the set has, the chance of at least one in a box.
+// godBoost: Progress.packOptions(...).godBoost
+function boxChances(cards, setInfo, godBoost) {
+    var cfg = setConfig(setInfo), byTier = group(cards), B = cfg.boxes, CASES = 2000, seen = {}, hits = [], b, k;
+    for (k = 0; k < CASES; k++) {
+        var boxes = [];
+        for (b = 0; b < B; b++) boxes.push({ hits: [] });
+        dealHits(cfg, byTier, boxes, cfg.era === "mapped" ? seededRandom((setInfo && setInfo.name) || "") : Math.random);
+        boxes.forEach(function (box) {
+            box.hits.filter(function (t, i) { return box.hits.indexOf(t) === i; })
+                    .forEach(function (t) { seen[t] = (seen[t] || 0) + 1; });
+        });
+    }
+    var add = function (t, p) { if (p > 0) hits.push({ tier: t, chance: Math.min(1, p) }); };
+    Object.keys(seen).forEach(function (t) { add(t, seen[t] / (CASES * B)); });
+    if (byTier.DON && byTier.DON_GOLD)
+        add("DON_GOLD", cfg.goldDonPerBox ? 1 : 1 - Math.pow(1 - 1 / B, Math.round(cfg.fixed.DON_GOLD || 0)));
+    hits.sort(function (x, y) { return info[y.tier].rank - info[x.tier].rank; });
+    return {
+        hits: hits,
+        god: 1 - Math.exp(-((godBoost || 1) * godPacksPerCase(setInfo)) / B),
+        packs: cfg.packsPerBox,
+        srs: byTier.SR ? cfg.srPerBox : 0,
+        leaders: byTier.L ? cfg.leadersPerBox : 0,
+        topper: !!byTier.TOPPER
+    };
 }
 
 // highest-ranked card in a pack
