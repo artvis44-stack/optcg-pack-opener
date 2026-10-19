@@ -2,6 +2,7 @@ import QtQuick
 import "tiers.js" as Tiers
 import "progress.js" as Progress
 import "sync.js" as Sync
+import "collections.js" as Collections
 
 // Full-screen overlay: sealed pack -> tear -> reveal one by one -> summary.
 // Box mode wraps that: sealed box -> grid of 24 packs -> box summary, with the
@@ -225,7 +226,7 @@ Item {
 
     // what the collection is worth feeds the passive income and the value posters
     function refreshValue() {
-        prog(p => Progress.setValue(p, Progress.collectionValue(host, dataDir, collection.cards, collection.graded || {})));
+        prog(p => Progress.setValue(p, Progress.collectionValue(host, dataDir, collection.cards, collection.graded || {}, collection.sets || {})));
     }
 
     function reloadProgress() {
@@ -552,7 +553,7 @@ Item {
     // crack a slab open: the card goes back in the binder, raw (Progress.crackCondition)
     function crackSlab(id) {
         var col = readCollection(), s = (col.graded || {})[id];
-        if (!s || offTheRecord) return;
+        if (!s || offTheRecord || inCase(col, id)) return;
         var cond = Progress.crackCondition(s);
         delete col.graded[id];
         var key = s.key || (s.set + ":" + String(s.image).split("/").pop());
@@ -572,7 +573,7 @@ Item {
     // review: a slab's grade goes up one, or stays (Progress.reviewChance); once per slab
     function reviewSlab(id) {
         var col = readCollection(), s = (col.graded || {})[id];
-        if (!s || offTheRecord) return;
+        if (!s || offTheRecord || inCase(col, id)) return;
         var chance = Progress.reviewChance(s);
         if (chance <= 0) return;
         var fee = Progress.reviewFee(slabValue(s));
@@ -638,7 +639,7 @@ Item {
 
     function sellSlab(id) {
         var col = readCollection(), s = (col.graded || {})[id];
-        if (!s || offTheRecord) return;
+        if (!s || offTheRecord || inCase(col, id)) return;
         var v = slabValue(s);
         delete col.graded[id];
         writeCollection(col);
@@ -650,6 +651,116 @@ Item {
         refreshRegistry();
         sfx("coin");
         toast("Sold the " + s.grade + " " + Tiers.displayName(s) + " for " + Progress.format(v));
+    }
+
+    // ---- collections (collections.js) and the display cases they're saved in -----------
+    // every downloaded set's cards (to build the collections from), read when first needed
+    property var allCards: null
+    function loadAllCards() {
+        var out = {};
+        Object.keys(sets).forEach(id => {
+            var text = host.readText(cacheRoot + "/" + id + "/cards.json");
+            if (!text) return;
+            try { out[id] = JSON.parse(text).cards || []; } catch (e) {}
+        });
+        allCards = out;
+    }
+    readonly property var collectionDefs: allCards ? Collections.build(allCards, sets) : []
+    readonly property var collectionById: {
+        var m = {};
+        collectionDefs.forEach(d => m[d.id] = d);
+        return m;
+    }
+    // saved sets: id -> { title, kind, style, set, slabs: [slab id], gem, avg, savedAt }
+    readonly property var savedSets: collection.sets || ({})
+    readonly property var lockedSlabs: {   // slab id -> the saved set it's in
+        var m = {};
+        Object.keys(savedSets).forEach(id => (savedSets[id].slabs || []).forEach(s => m[s] = id));
+        return m;
+    }
+    // the slabs not in a display case, by card key, best first (Collections.fill)
+    readonly property var freeSlabs: {
+        var m = {};
+        Object.keys(slabsByKey).forEach(k => {
+            var free = slabsByKey[k].filter(s => !lockedSlabs[s.slabId]);
+            if (free.length) m[k] = free;
+        });
+        return m;
+    }
+
+    // a slab in a display case can't go on its own; says so
+    function inCase(col, slabId) {
+        var sets = col.sets || {};
+        var id = Object.keys(sets).filter(k => (sets[k].slabs || []).indexOf(slabId) >= 0)[0];
+        if (id) toast("That slab is in the " + sets[id].title + " display case: break the set first (the vault's Sets tab).");
+        return !!id;
+    }
+
+    // a saved set's slabs (localCard'd, with slabId; null for one that's gone, sold on another computer)
+    function savedSlabs(id) {
+        var g = collection.graded || {};
+        return ((savedSets[id] || {}).slabs || []).map(s => g[s] ? Object.assign({ slabId: s }, localCard(g[s])) : null);
+    }
+    // what a saved set is worth: its slabs, plus the set bonus
+    function savedWorth(id) {
+        var bonus = Progress.setBonus((savedSets[id] || {}).gem);
+        return Math.round(savedSlabs(id).reduce((n, s) => n + (s ? slabValue(s) : 0), 0) * (1 + bonus));
+    }
+
+    // put a complete collection in a display case: its best free slabs, locked in
+    function saveCollectionSet(defId) {
+        var def = collectionById[defId];
+        if (!def || offTheRecord || savedSets[defId]) return;
+        var f = Collections.fill(def, freeSlabs);
+        if (!f.complete) return;
+        var r = Collections.rating(f.slabs), col = readCollection();
+        if (f.slabs.some(s => !(col.graded || {})[s.slabId])) return;   // changed under us; try again
+        col.sets = col.sets || {};
+        col.sets[defId] = { title: def.title, kind: def.kind, style: def.style, set: def.set || "",
+                            slabs: f.slabs.map(s => s.slabId), gem: r.gem, avg: Math.round(r.avg * 100) / 100,
+                            savedAt: new Date().toISOString() };
+        writeCollection(col);
+        var worth = f.slabs.reduce((n, s) => n + Progress.slabValue(s, markets[s.set]), 0);
+        var rewarded = false;
+        prog(p => {
+            var poster = Progress.rewardSet(p, defId, def.title, def.slots.length, worth, r.gem);
+            rewarded = !!poster;
+            return poster ? [poster] : [];
+        });
+        refreshValue();
+        if (r.gem) flashAnim.restart();
+        sfx(r.gem ? "legendary" : "epic");
+        if (!rewarded) toast(def.title + " is back in its display case.");
+    }
+
+    // take a set out of its case: the slabs are free again, the bonus goes
+    function breakCollectionSet(id) {
+        var col = readCollection();
+        if (!col.sets || !col.sets[id] || offTheRecord) return;
+        var title = col.sets[id].title;
+        delete col.sets[id];
+        writeCollection(col);
+        refreshValue();
+        sfx("tear");
+        toast("Took " + title + " out of its display case: its slabs are loose again.");
+    }
+
+    // sell a saved set whole, bonus and all
+    function sellCollectionSet(id) {
+        var col = readCollection(), saved = (col.sets || {})[id];
+        if (!saved || offTheRecord) return;
+        var v = savedWorth(id), n = 0;
+        (saved.slabs || []).forEach(s => { if (col.graded && col.graded[s]) { delete col.graded[s]; n++; } });
+        delete col.sets[id];
+        writeCollection(col);
+        prog(p => {
+            Progress.earn(p, v, "sell");
+            return Progress.record(p, { type: "sell", count: n, value: v });
+        });
+        refreshValue();
+        refreshRegistry();
+        sfx("coin");
+        toast("Sold the " + saved.title + " set (" + n + " slabs) for " + Progress.format(v));
     }
 
     // sealed products: kind "box" | "case"; older sets gain value faster
@@ -818,6 +929,7 @@ Item {
             return;
         }
         saveSettings({ set: id });
+        if (afterDownload && allCards) loadAllCards();   // its collections join the rest
         loadMarket();
         loadAllMarkets();   // slabs and cards from other sets are priced from theirs
         if (mode === "box") startBox();

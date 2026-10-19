@@ -24,7 +24,7 @@ Boosters EB-01 to EB-03 and the Premium Boosters PRB-01 / PRB-02.
 | Y | sync: sign in to your sync server (or create an account) to share your saves between computers |
 | M | sound on / off (remembered) |
 | P | the Port: ship and crew, card shop, sealed products, cosmetics (← → switch tabs) |
-| G | the Vault: your graded slabs (filter by set and grade), cards out for grading, the set registry |
+| G | the Vault: your graded slabs (filter by set and grade), sets and their display cases, cards out for grading, the set registry |
 | F | in the binder: filters (rarity, card type, colour, owned / missing / duplicates / graded); there's also a search box and sorting by rarity, number, value or copies |
 | C | box mode: buy the rest of the case (15% off) |
 | U | Mac: check for an update, or install the one that's out |
@@ -55,6 +55,7 @@ The app is split into a platform-independent part (`app/`) and a thin host.
   `OPTCG_MUTE=1` starts muted
 - `app/Pack.qml`, `app/PackFace.qml`: the booster wrapper (official photo, or the drawn fallback) and the tear animation
 - `app/BoxView.qml`: box mode (the sealed display box, the grid of 24 packs, the box summary)
+- `app/collections.js`, `app/SetsView.qml`, `app/DisplayCase.qml`: the collections to complete with graded cards, the vault's Sets tab, and the display cases saved sets go in
 - `app/Binder.qml`: the collection view (owned cards first with counts, missing ones faded)
 - `app/Card.qml`, `app/CardBack.qml`: the flipping, tilting card (Leaders get the red back), plus the drawn fallback back
 - `app/tiers.js`: rarity tiers, pack layouts and case budgets per product family, and the pack / case generators
@@ -165,6 +166,16 @@ there are wanted posters for them
   - **Crack** a slab open (free) to grade the card again: it comes back raw in its condition, a level
     worse 25% of the time. Slabs from before conditions come back Pristine / Clean / Decent for a
     10 / 9 / 8, and unchecked, with no wear, for a 7 or lower.
+  - **Sets** (the Vault's Sets tab): collections to complete with graded cards, any grade. Per set:
+    its SPs (EB-03's nine heroines...), Manga Rares, Alt Art Leaders, Secret Rares and the master set
+    (every card). Themes: the Straw Hat Crew, the Four Emperors and the Admirals (an alt art or better
+    of each), Wanted Posters, Treasure Rares, Gold & Silver SPs. Character master sets (every chase
+    version of Luffy, Zoro, Nami, Sanji, Robin, Shanks, Ace, Law, Yamato, Boa Hancock), and every Manga
+    Rare. A card's English or Japanese printing fills its slot. Save a complete one and its slabs go
+    in a display case (frame and velvet by kind; gold for a Gem Set, every slab a 10): they're locked
+    there, the set is worth 25% more than its slabs (50% for a Gem Set), and the first time you save
+    it you get 10% of its value (20% for a Gem Set) and a wanted poster. Break the set to get the slabs
+    back (the bonus goes), or sell it whole.
 - **Sealed products.** Buy boxes and cases and hold them: they gain value every week (older sets
   faster, up to about 2.3× a year) and count toward your collection's value. Sell them for what
   they're worth, or open them: their boxes wait, prepaid, in that set's box mode.

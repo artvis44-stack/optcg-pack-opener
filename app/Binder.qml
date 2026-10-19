@@ -644,7 +644,8 @@ Item {
             }
         }
         Repeater {   // sell a slab at its graded price, the most valuable first
-            model: parent.slabs.slice().sort((a, b) => binder.stage.slabValue(b) - binder.stage.slabValue(a)).slice(0, 3)
+            model: parent.slabs.filter(s => !binder.stage.lockedSlabs[s.slabId])   // not ones in a display case
+                               .sort((a, b) => binder.stage.slabValue(b) - binder.stage.slabValue(a)).slice(0, 3)
             PillButton {
                 required property var modelData
                 text: "Sell the graded " + (modelData.diamond ? "◆" : "") + modelData.grade

@@ -589,12 +589,41 @@ function bountyOf(id) {
     return t ? t.bounty : 0;
 }
 
-// set: "" = everything (the overall bounty), else just that set's posters
+// set: "" = everything (the overall bounty, saved sets too), else just that set's posters
 function totalBounty(p, set) {
-    return Object.keys(p.achievements).reduce(function (sum, id) {
+    var posters = Object.keys(p.achievements).reduce(function (sum, id) {
         if (set && id.indexOf(set + ":") !== 0) return sum;
         return sum + bountyOf(id);
     }, 0);
+    if (set) return posters;
+    var c = p.collections || {};
+    return Object.keys(c).reduce(function (sum, id) { return sum + (c[id].bounty || 0); }, posters);
+}
+
+// ---- collections: sets of slabs saved in a display case (collections.js) ----------
+// A saved set's slabs are locked in its case and it's worth more than they are;
+// the first time a collection is saved you get a reward and a bounty, and again
+// (the difference) the first time it's saved as a Gem Set (every slab a 10).
+var SET_BONUS = 0.25, GEM_SET_BONUS = 0.5;     // worth this much over its slabs
+var SET_REWARD = 0.1, GEM_SET_REWARD = 0.2;    // once, a share of what the slabs are worth
+var SET_REWARD_MIN = 2000;
+var SET_BOUNTY_PER_SLOT = 2e7;                 // on the wanted board; twice that for a Gem Set
+
+function setBonus(gem) { return gem ? GEM_SET_BONUS : SET_BONUS; }
+
+// pay a saved collection's reward if it hasn't had it (or not as a Gem Set yet);
+// worth: what its slabs are worth. Returns the wanted poster to show, or null.
+function rewardSet(p, id, title, slots, worth, gem) {
+    p.collections = p.collections || {};
+    var had = p.collections[id];
+    if (had && (had.gem || !gem)) return null;
+    var bounty = SET_BOUNTY_PER_SLOT * slots * (gem ? 2 : 1);
+    var reward = Math.max(SET_REWARD_MIN, Math.round(worth * (gem ? GEM_SET_REWARD : SET_REWARD) / 10) * 10);
+    var pay = Math.max(0, reward - (had ? had.reward || 0 : 0));
+    if (pay) earn(p, pay, "sets");
+    p.collections[id] = { day: dayOf(Date.now()), bounty: bounty, reward: Math.max(reward, had ? had.reward || 0 : 0), gem: !!gem };
+    return { kind: "achievement", a: { title: title, text: gem ? "Saved as a Gem Set: every slab a 10" : "Saved in a display case",
+                                       bounty: bounty - (had ? had.bounty || 0 : 0), reward: pay } };
 }
 
 // a locked poster's progress, as text ("" when it has none)
@@ -629,6 +658,7 @@ function fresh(now) {
                  spent: 0, bought: 0, boughtValue: 0, graded: 0, gem10: 0, sealedOpened: 0,
                  seasonsDone: 0, weeklyDone: 0 },
         achievements: {},              // id -> date unlocked
+        collections: {},               // saved collection id -> { day, bounty, reward, gem } (rewarded once)
         bounties: { day: "", list: [] },
         // the Port
         ship: { level: 0 },
@@ -806,7 +836,7 @@ function earn(p, amount, source) {
 // (the wanted board shows it; it's how the economy gets balanced)
 
 var EARNINGS = [["income", "Passive income"], ["sell", "Selling cards"], ["posters", "Wanted posters"],
-                ["setPosters", "Set wanted posters"], ["bounties", "Daily bounties"], ["streak", "Daily streak"],
+                ["setPosters", "Set wanted posters"], ["sets", "Saved sets"], ["bounties", "Daily bounties"], ["streak", "Daily streak"],
                 ["focus", "Focus sessions"], ["sealed", "Selling sealed"], ["season", "Season rewards"], ["other", "Other"]];
 var SPENDING = [["packs", "Packs"], ["boxes", "Boxes"], ["cases", "Cases"], ["shop", "Card shop"], ["grading", "Grading"],
                 ["sealed", "Sealed products"], ["ship", "Ship"], ["crew", "Crew"], ["cosmetics", "Cosmetics"], ["other", "Other"]];
@@ -1047,13 +1077,15 @@ function cardValue(card, market) {
 // (or the given collection's cards) and the market prices cached in
 // market/<set>.json (base values without them).
 // graded: the collection's graded slabs (read with the cards when cards isn't given).
-function collectionValue(host, dataDir, cards, graded) {
+// saved: the collection's saved sets ({ id: { slabs: [slab id], gem } }), whose bonus counts too
+function collectionValue(host, dataDir, cards, graded, saved) {
     var markets = {}, out = { total: 0, bySet: {} };
     if (!cards) {
         try {
             var col = JSON.parse(host.readText(dataDir + "/collection.json") || "{}");
             cards = col.cards || {};
             graded = col.graded || {};
+            saved = col.sets || {};
         } catch (e) { cards = {}; }
     }
     var market = function (set) {
@@ -1074,6 +1106,13 @@ function collectionValue(host, dataDir, cards, graded) {
     Object.keys(graded || {}).forEach(function (id) {
         var g = graded[id];
         add(g.set, slabValue(g, market(g.set)));
+    });
+    Object.keys(saved || {}).forEach(function (id) {
+        var bonus = setBonus(saved[id].gem);
+        (saved[id].slabs || []).forEach(function (sid) {
+            var g = (graded || {})[sid];
+            if (g) add(g.set, slabValue(g, market(g.set)) * bonus);
+        });
     });
     return out;
 }
