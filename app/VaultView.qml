@@ -40,7 +40,7 @@ Item {
 
     readonly property var allSlabs: {
         var g = (stage && stage.collection.graded) || {};
-        return Object.keys(g).map(id => Object.assign({ slabId: id }, g[id]))
+        return Object.keys(g).map(id => Object.assign({ slabId: id }, stage.localCard(g[id])))
                      .sort((a, b) => b.grade - a.grade || Tiers.tierOf(b).rank - Tiers.tierOf(a).rank
                                      || (b.gradedAt || 0) - (a.gradedAt || 0));
     }
@@ -237,7 +237,7 @@ Item {
                     Card {
                         x: 12; y: 8
                         width: 57
-                        card: modelData.card
+                        card: vault.stage.localCard(modelData.card)
                         faceUp: true
                         time: vault.stage ? vault.stage.t : 0
                     }
