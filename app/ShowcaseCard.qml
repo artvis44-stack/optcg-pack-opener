@@ -243,6 +243,14 @@ Item {
     }
 
     function announce(events) {
+        // a burst of posters (a box opened, a set finished) is one notification, not a pile of them
+        const posters = events.filter(e => e.kind === "achievement");
+        if (posters.length > 2) {
+            const reward = posters.reduce((n, e) => n + (e.a.reward || 0), 0);
+            host.notify(posters.length + " wanted posters", posters.slice(0, 3).map(e => e.a.title).join(", ") + ", ..."
+                        + (reward ? "  ·  +" + Progress.format(reward) : ""));
+            events = events.filter(e => e.kind !== "achievement");
+        }
         events.forEach(e => {
             if (e.kind === "streak")
                 host.notify("Day " + e.count + " streak", "+" + Progress.format(e.reward) + (e.freePack ? " and a free pack" : ""));

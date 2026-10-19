@@ -28,6 +28,7 @@ Boosters EB-01 to EB-03 and the Premium Boosters PRB-01 / PRB-02.
 | F | in the binder: filters (rarity, card type, colour, owned / missing / duplicates / graded); there's also a search box and sorting by rarity, number, value or copies |
 | C | box mode: buy the rest of the case (15% off) |
 | Esc / right-click | close |
+| click a wanted poster / banner | dismiss it (right-click, or "Clear all", dismisses the rest too) |
 
 ## Files
 
@@ -64,7 +65,8 @@ The app is split into a platform-independent part (`app/`) and a thin host.
   couple of minutes after you log in and every 6 hours after, the pack opener 20 seconds after it
   opens; so picking a set is instant. Only one runs at a time, and a set is never downloaded twice
   at once (picking one that's downloading just waits for it). All sets together are about 2 GB. It also fetches the
-  pack and box photos (Bandai's for OP-17, TCGplayer's for the rest, background removed), the
+  pack and box photos (Bandai's for OP-17, TCGplayer's for the rest, background removed; the
+  Japanese sets get the Japanese products, Bandai Japan's shots and PriceCharting's), the
   set's booster DON!! cards (TCGplayer scans) and the blue deck, red Leader and DON!! card backs
   (`assets/back*.png`, from the official rule-manual PDF). Needs `poppler` and `imagemagick` for
   the photos and backs; without them the widget falls back to drawn versions. If optcgapi is

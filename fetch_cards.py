@@ -240,17 +240,55 @@ def download(card, cache):
     return card
 
 
+def cut_out(src, out):
+    """A product photo on white -> the product alone: flood the background away from the
+    corners, then keep everything inside the product's convex outline, so a white box
+    (OP-05's) doesn't lose the edges the flood ran into."""
+    flood = out + ".flood.png"
+    hull_mask = out + ".hull.png"
+    try:
+        magick(src, "-bordercolor", "white", "-border", "1", "-fuzz", "6%", "-fill", "none",
+               "-floodfill", "+0+0", "white", "-shave", "1x1", flood)
+        hull = subprocess.run(["magick", flood, "-alpha", "extract", "-threshold", "50%", "-background", "black",
+                               "-fuzz", "0", "-format", "%[convex-hull]", "info:"],
+                              check=True, capture_output=True, text=True).stdout.strip()
+        if hull.count(",") < 3:
+            raise ValueError("no outline")
+        w, h = image_size(src)
+        magick("-size", f"{w}x{h}", "xc:black", "-fill", "white", "-stroke", "white",
+               "-draw", "polygon " + hull, hull_mask)
+        magick(src, hull_mask, "-alpha", "off", "-compose", "CopyOpacity", "-composite", "-trim", "+repage", out)
+    except (subprocess.CalledProcessError, ValueError):
+        magick(flood if os.path.exists(flood) else src, "-trim", "+repage", out)
+    finally:
+        for f in (flood, hull_mask):
+            if os.path.exists(f):
+                os.remove(f)
+
+
 def fetch_product_images(set_id, info, cache):
-    """Sealed pack and box photos -> <set>/pack.png, <set>/box.png"""
+    """Sealed pack and box photos -> <set>/pack.png, <set>/box.png. A photo URL in sets.json
+    (packPhoto / boxPhoto: the Japanese products) beats Bandai's English shots, which beat
+    TCGplayer's; <name>.src remembers which one is on disk, so a new one replaces it."""
     for name, official, tcg in (("pack", "product_pack", info.get("pack")), ("box", "product_booster", info.get("box"))):
         dest = os.path.join(cache, name + ".png")
-        if os.path.exists(dest) or not (tcg or "official" in info):
+        photo = info.get(name + "Photo")
+        if photo:
+            url = photo
+        elif "official" in info:
+            url = OFFICIAL_URL.format(info["official"], official)
+        elif tcg:
+            url = TCGPLAYER_IMG.format(tcg)
+        else:
             continue
+        src_file = os.path.join(cache, name + ".src")
+        had = open(src_file).read().strip() if os.path.exists(src_file) else None
+        if os.path.exists(dest) and (had == url or (had is None and not photo)):
+            continue
+        # Bandai's own shots are cut out already; the rest are photos on white
+        studio = url.startswith(("https://en.onepiece-cardgame.com/", "https://www.onepiece-cardgame.com/"))
         try:
-            if "official" in info:
-                data, studio = fetch(OFFICIAL_URL.format(info["official"], official)), True
-            else:
-                data, studio = fetch(TCGPLAYER_IMG.format(tcg)), False
+            data = fetch(url)
         except Exception as e:
             print(f"no {name} image for {set_id} ({e}); using the drawn one")
             continue
@@ -265,12 +303,12 @@ def fetch_product_images(set_id, info, cache):
         elif studio:
             magick(raw, "-trim", "+repage", out)
         else:
-            # product photo on white: flood the background away from the corners
-            magick(raw, "-bordercolor", "white", "-border", "1", "-fuzz", "6%", "-fill", "none",
-                   "-floodfill", "+0+0", "white", "-shave", "1x1", "-trim", "+repage", out)
+            cut_out(raw, out)
         if os.path.exists(raw):
             os.remove(raw)
         os.replace(out, dest)
+        with open(src_file, "w") as f:
+            f.write(url + "\n")
         print(name, "image ->", dest)
 
 

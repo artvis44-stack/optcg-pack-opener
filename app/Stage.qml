@@ -213,6 +213,16 @@ Item {
             : ck.kind === "graded" && ck.slab.grade >= 9 ? "epic" : "chime");
         celebrationTimer.restart();
     }
+    // a click dismisses the one on screen; "clear all" (or a right click) the whole queue
+    function clearCelebrations() {
+        celebrations = [];
+        celebrationTimer.stop();
+        nextCelebration();
+    }
+    function skipCelebration() {
+        celebrationTimer.stop();
+        nextCelebration();
+    }
     Timer {
         id: celebrationTimer
         interval: 3800
@@ -1694,6 +1704,23 @@ Item {
         Behavior on opacity { NumberAnimation { duration: 220 } }
         scale: c ? 1 : 0.85
         Behavior on scale { NumberAnimation { duration: 260; easing.type: Easing.OutBack } }
+
+        MouseArea {
+            anchors.fill: parent
+            enabled: !!celebration.c
+            acceptedButtons: Qt.LeftButton | Qt.RightButton
+            cursorShape: Qt.PointingHandCursor
+            onClicked: mouse => mouse.button === Qt.RightButton ? stage.clearCelebrations() : stage.skipCelebration()
+        }
+        PillButton {
+            anchors.horizontalCenter: parent.horizontalCenter
+            anchors.top: parent.bottom
+            anchors.topMargin: 10
+            visible: !!celebration.c && stage.celebrations.length > 0
+            text: "Clear all  (" + stage.celebrations.length + " more)"
+            fontSize: 12
+            onClicked: stage.clearCelebrations()
+        }
 
         Rectangle {   // behind the slab reveal, so what's on screen doesn't show through the case
             visible: slabReveal.visible
