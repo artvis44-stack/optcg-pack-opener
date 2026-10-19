@@ -153,9 +153,9 @@ var BACKDROPS = [
     { id: "default",   name: "Night Sea",      price: 0,       base: "#05070d", glow: "#18324a80" },
     { id: "pm-vol1",   name: "Official Playmat · Limited Edition Vol.1", price: 80000, base: "#05070d", glow: "#00000000",
       playmat: { tcg: 542494, page: "https://en.onepiece-cardgame.com/products/other/playmat003.php" } },
-    { id: "pm-vol2",   name: "Official Playmat · Limited Edition Vol.2", price: 120000, base: "#05070d", glow: "#00000000",
+    { id: "pm-vol2",   name: "Official Playmat · Limited Edition Vol.2 (the Four Emperors)", price: 120000, base: "#05070d", glow: "#00000000",
       playmat: { file: "pictures/playmats/pm-vol2.jpg" } },
-    { id: "pm-vol3",   name: "Official Playmat · Limited Edition Vol.3 (the Four Emperors)", price: 200000, base: "#05070d", glow: "#00000000",
+    { id: "pm-vol3",   name: "Official Playmat · Limited Edition Vol.3", price: 200000, base: "#05070d", glow: "#00000000",
       playmat: { file: "pictures/playmats/pm-vol3.jpg" } },
     { id: "pm-vol4",   name: "Official Playmat · Limited Edition Vol.4 (Roronoa Zoro)", price: 300000, base: "#05070d", glow: "#00000000",
       playmat: { tcg: 657220 } },
@@ -1185,6 +1185,13 @@ function ownsCosmetic(p, id) {
 }
 
 // buy (if needed) and wear it; kind: "backdrop" | "slab"
+// the playmats to download ahead of time ([[id, tcgplayer id, page]], for
+// fetch_cards.py background); the ones that come with the app aren't
+function playmatDownloads() {
+    return BACKDROPS.filter(function (b) { return b.playmat && !b.playmat.file; })
+        .map(function (b) { return [b.id, String(b.playmat.tcg || ""), b.playmat.page || ""]; });
+}
+
 function equipCosmetic(p, kind, id) {
     if (kind === "backdrop" && id.indexOf("season-") === 0) {   // earned in a season, never sold
         if (!ownsCosmetic(p, id)) return false;
