@@ -605,7 +605,8 @@ Item {
             onClicked: binder.sellCount = sellRow.have - 1
         }
         PillButton {
-            text: (sellRow.n === sellRow.have ? (sellRow.have === 1 ? "Sell your only copy" : "Sell every copy") : "Sell " + sellRow.n)
+            readonly property string raw: binder.inspected && (binder.stage.slabsByKey[binder.stage.cardKey(binder.inspected)] || []).length ? " raw" : ""
+            text: (sellRow.n === sellRow.have ? (sellRow.have === 1 ? "Sell your only" + raw + " copy" : "Sell every" + raw + " copy") : "Sell " + sellRow.n + raw)
                   + " (+" + Progress.format(sellRow.n * (binder.inspected ? binder.stage.sellPrice(binder.inspected) : 0)) + ")"
             accent: sellRow.n === sellRow.have ? "#ff8a7a" : "#7fd1b9"
             onClicked: {
@@ -642,6 +643,21 @@ Item {
                 binder.stage.toggleVault();
             }
         }
+        Repeater {   // sell a slab at its graded price, the most valuable first
+            model: parent.slabs.slice().sort((a, b) => binder.stage.slabValue(b) - binder.stage.slabValue(a)).slice(0, 3)
+            PillButton {
+                required property var modelData
+                text: "Sell the graded " + (modelData.diamond ? "◆" : "") + modelData.grade
+                      + " (+" + Progress.format(binder.stage.slabValue(modelData)) + ")"
+                accent: modelData.diamond ? "#7ae8ff" : "#7fd1b9"
+                onClicked: {
+                    var c = binder.inspected, id = modelData.slabId;
+                    binder.keepScroll(() => binder.stage.sellSlab(id));
+                    var k = binder.stage.cardKey(c);
+                    if (!binder.stage.collection.cards[k] && !(binder.stage.slabsByKey[k] || []).length) binder.inspected = null;
+                }
+            }
+        }
     }
 
     Card {
@@ -666,7 +682,8 @@ Item {
         text: c ? Tiers.displayName(c) + "  ·  " + c.id + "  ·  " + Tiers.tierOf(c).label
                   + (owned ? "  ·  ×" + owned.count + "  ·  first pulled " + (owned.first || "").slice(0, 10) : "")
                   + (owned && owned.cond ? "  ·  " + Progress.CONDITIONS.filter(x => conds[x.id] > 0).map(x => x.name + " " + conds[x.id]).join(", ") : "")
-                  + (slabs.length ? "  ·  " + slabs.length + " graded" : "") : ""
+                  + "  ·  " + Progress.format(binder.stage.cardValue(c)) + " raw"
+                  + (slabs.length ? "  ·  " + slabs.length + " graded, best " + Progress.format(Math.max.apply(null, slabs.map(s => binder.stage.slabValue(s)))) : "") : ""
         color: c ? Tiers.tierOf(c).color : "white"
         style: Text.Outline; styleColor: "#000000"
         font { pixelSize: 20; weight: Font.Bold }

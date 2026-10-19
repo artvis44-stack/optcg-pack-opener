@@ -797,6 +797,7 @@ Item {
         }
         saveSettings({ set: id });
         loadMarket();
+        loadAllMarkets();   // slabs and cards from other sets are priced from theirs
         if (mode === "box") startBox();
         else newPack();
     }
@@ -846,6 +847,7 @@ Item {
                    || phase === "board" || phase === "port" || phase === "binder") {
             reloadProgress();
             collectGrading();
+            loadAllMarkets();
             vaultReturn = phase === "board" ? boardReturn : phase === "port" ? portReturn : phase;
             phase = "vault";
         }
