@@ -17,7 +17,10 @@
 var PACK_PRICE = { main: 500, extra: 500, premium: 800 };   // ฿, for a set without a market price
 var BOX_DISCOUNT = 0.95;           // a box against its packs bought one by one
 var CASE_DISCOUNT = 0.85;          // on the boxes left in the case
-var USD_TO_BERRY = 100;            // $1 market value = 100 ฿, for cards and sealed product alike
+var USD_TO_BERRY = 100;            // selling: $1 market value = 100 ฿
+var SEALED_BASE = 10000;           // ฿ for a box at retail value ($120)...
+var SEALED_REF_USD = 120;
+var SEALED_CURVE = 0.5;            // ...and √ of how far its market price is above that (10× retail = ~3× the berries)
 var JPY_PER_USD = 152;             // Japanese prices are in yen
 var JP_CARD_PRICE = 0.5;           // a Japanese single against the same English one (no public JP price list)
 var INCOME_PER_MINUTE = 4;         // while you're at the computer, plus more the more your collection is worth
@@ -40,13 +43,14 @@ var BASE_VALUE = {
 };
 
 // Sealed prices follow the real market for a sealed box of the set (sets.json
-// "boxUsd" or "boxJpy"), so a long-gone set's box costs what it does today;
-// a pack is a 24th (or so) of that, a little dearer one at a time.
+// "boxUsd" or "boxJpy"), so a long-gone set's box costs more, but gently: it's
+// for fun, so the price grows with the square root of the market price. A pack
+// is a 24th (or so) of the box, a little dearer one at a time.
 // cfg: Tiers.setConfig(the set); p (optional): the player, for crew discounts;
 // set (optional): the set id, for the week's featured set
 function marketBox(cfg) {
-    if (cfg.boxUsd) return cfg.boxUsd * USD_TO_BERRY;
-    if (cfg.boxJpy) return cfg.boxJpy / JPY_PER_USD * USD_TO_BERRY;
+    var usd = cfg.boxUsd || (cfg.boxJpy ? cfg.boxJpy / JPY_PER_USD : 0);
+    if (usd) return SEALED_BASE * Math.pow(usd / SEALED_REF_USD, SEALED_CURVE);
     return (PACK_PRICE[cfg.family] || PACK_PRICE.main) * cfg.packsPerBox * BOX_DISCOUNT;
 }
 

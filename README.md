@@ -83,10 +83,13 @@ English product's, marked JP.
 
 ## Progression: berries, bounties and focus
 
-Packs and boxes cost berries (฿) at today's market price of the sealed product ($1 = 100 ฿, ¥152 =
-$1): a box of the newest sets ~฿25,000–30,000, long-gone ones far more (OP-05 ฿95,000, OP-01
-฿140,000), Japanese boxes ฿6,000–28,000. A pack is a 24th of the box plus 5%, the rest of a case
-15% off. You earn them by:
+Packs and boxes cost berries (฿), following today's market price of the sealed product, but
+gently (it's for fun): a box at retail value ($120) is ฿10,000, and the price grows with the
+square root of how far the market is above that, so a box worth 10× retail costs ~3×. The newest
+English boxes are ~฿14,000–16,000, long-gone ones more (OP-05 ฿28,100, OP-01 ฿34,200), Japanese
+boxes ฿7,000–15,000. A pack is a 24th of the box plus 5% (฿600–1,500, Japanese ฿300–700), the
+rest of a case 15% off. The knobs are `SEALED_BASE` / `SEALED_CURVE` in `app/progress.js`. You
+earn them by:
 
 - **being at your computer**: while you're active (idle time doesn't count; Hyprland's idle
   detection on Linux, the system idle timer on macOS) you earn 4 ฿ a minute plus 2 × √(collection
