@@ -33,5 +33,6 @@ Window {
     function board() { stage.toggleBoard(); }
     function binderAll() { stage.toggleAllSets(); }
     function sellBulk() { stage.sell(stage.bulkDuplicates); }
+    function testDiamond() { stage.testDiamond(); }
     function snapshot(path) { stage.grabToImage(r => r.saveToFile(String(path))); }
 }

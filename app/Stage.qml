@@ -263,6 +263,15 @@ Item {
         }
         celebrationTimer.restart();
     }
+    // try the Diamond Label reveal on this set's best card; only shown, nothing saved
+    function testDiamond() {
+        if (!db || !db.cards.length) return;
+        var c = db.cards.slice().sort((a, b) => Tiers.tierOf(b).rank - Tiers.tierOf(a).rank)[0];
+        celebrations = [{ kind: "graded", slab: Object.assign({}, c, { set: setId, key: cardKey(c), grade: 10, diamond: true }) }]
+                       .concat(currentCelebration ? [currentCelebration] : [], celebrations);   // now, ahead of the rest
+        celebrationTimer.stop();
+        nextCelebration();
+    }
     readonly property bool diamondShowing: !!currentCelebration && currentCelebration.kind === "graded" && !!currentCelebration.slab.diamond
     SequentialAnimation {
         id: diamondSounds
