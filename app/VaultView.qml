@@ -5,7 +5,7 @@ import "progress.js" as Progress
 // The Vault (G): your graded cards. Tabs (← →): your slabs (filter by set and
 // grade; click one to see it big, sell it or put it on the desktop), what's out
 // for grading, and the set registry (best grade of each card, Gem Mint progress).
-// Cards are sent for grading from the binder: click a card you own, "Grade a copy".
+// Cards are sent for grading from the binder: click a card you own, "Grade / pre-grade".
 Item {
     id: vault
 
@@ -201,7 +201,7 @@ Item {
         width: Math.min(560, vault.width * 0.8)
         horizontalAlignment: Text.AlignHCenter
         text: vault.allSlabs.length ? "No slabs match these filters."
-              : "No graded cards yet. Open the binder (B), click a card you own and choose \"Grade a copy\". "
+              : "No graded cards yet. Open the binder (B), click a card you own and choose \"Grade / pre-grade\". "
                 + "It comes back in a slab with a grade from 1 to 10."
     }
 
@@ -224,7 +224,7 @@ Item {
             Note {
                 width: parent.width
                 visible: !vault.orders.length
-                text: "Nothing out for grading. Send a card from the binder (B): click a card you own, \"Grade a copy\"."
+                text: "Nothing out for grading. Send a card from the binder (B): click a card you own, \"Grade / pre-grade\"."
             }
             Repeater {
                 model: vault.orders
@@ -374,16 +374,22 @@ Item {
         visible: !!vault.inspected
         anchors.horizontalCenter: parent.horizontalCenter
         y: Math.max(20, (vault.height - height) / 2 - 30)
-        width: Math.min(380, (vault.height - 160) / 1.62)
+        width: Math.min(380, (vault.height - 210) / 1.62)
         card: vault.inspected
         labelStyle: Progress.slabStyle(vault.p)
         time: vault.stage ? vault.stage.t : 0
         onClicked: vault.inspected = null
     }
+    property bool confirmCrack: false
+    onInspectedChanged: confirmCrack = false
     Row {
+        id: slabActions
         visible: !!vault.inspected
         anchors { horizontalCenter: parent.horizontalCenter; top: big.bottom; topMargin: 16 }
         spacing: 12
+        readonly property var s: vault.inspected
+        readonly property real chance: s ? Progress.reviewChance(s) : 0
+        readonly property int reviewFee: s ? Progress.reviewFee(vault.stage.slabValue(s)) : 0
         PillButton {
             text: vault.inspected ? "Sell (+" + Progress.format(vault.stage.slabValue(vault.inspected)) + ")" : ""
             accent: "#7fd1b9"
@@ -396,6 +402,50 @@ Item {
             text: "Show on desktop"
             onClicked: vault.stage.showcase(vault.inspected)
         }
+        PillButton {   // up a grade or stays, never down; once per slab
+            visible: !!slabActions.s && !vault.stage.offTheRecord && slabActions.chance > 0
+            text: "Review (" + Progress.format(slabActions.reviewFee) + ", " + Math.round(slabActions.chance * 100) + "% it goes up to "
+                  + (slabActions.s ? slabActions.s.grade + 1 : "") + ")"
+            accent: "#c8a0ff"
+            enabledLook: vault.p.berries >= slabActions.reviewFee
+            onClicked: {
+                var id = slabActions.s.slabId;
+                vault.stage.reviewSlab(id);
+                vault.inspected = vault.allSlabs.filter(x => x.slabId === id)[0] || null;
+            }
+        }
+        PillButton {   // back to a raw copy in the binder, to grade again
+            visible: !!slabActions.s && !vault.stage.offTheRecord
+            text: vault.confirmCrack ? "Crack it open? Yes" : "Crack it open"
+            accent: "#ff8a7a"
+            onClicked: {
+                if (!vault.confirmCrack) {
+                    vault.confirmCrack = true;
+                    return;
+                }
+                vault.stage.crackSlab(slabActions.s.slabId);
+                vault.inspected = null;
+            }
+        }
+    }
+    Text {   // what cracking or a review would do
+        visible: !!slabActions.s
+        anchors { horizontalCenter: parent.horizontalCenter; top: slabActions.bottom; topMargin: 10 }
+        width: Math.min(760, vault.width - 40)
+        horizontalAlignment: Text.AlignHCenter
+        wrapMode: Text.WordWrap
+        readonly property var s: slabActions.s
+        readonly property var cond: s ? Progress.CONDITION[s.cond] : null
+        text: !s ? ""
+              : (cond ? "Graded from a " + cond.name + " copy." : s.cond === "unchecked" ? "Graded from an unchecked copy." : "Graded before conditions.")
+                + (s.reviewed ? "  Reviewed already." : s.grade >= 10 ? "" : "  A review lifts it a grade or leaves it, never lower.")
+                + "  Cracking it puts the card back in the binder raw"
+                + (cond ? " (" + cond.name + ", or a level worse " + Math.round(Progress.CRACK_WEAR * 100) + "% of the time)"
+                   : s.cond === "unchecked" || s.grade <= 7 ? " (unchecked, a fresh chance)"
+                   : " (" + (s.grade >= 10 ? "Pristine" : s.grade === 9 ? "Clean" : "Decent") + ", or a level worse " + Math.round(Progress.CRACK_WEAR * 100) + "% of the time)")
+                + ", to grade again."
+        color: "#9aa0ad"
+        font.pixelSize: 13
     }
 
     Text {

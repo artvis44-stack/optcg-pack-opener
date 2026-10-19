@@ -146,12 +146,25 @@ there are wanted posters for them
   daily bounty, Luffy (Gear 5) god packs twice as likely.
 - **Card shop.** Eight deals a day from your downloaded sets at market price + 10% (once each), and
   any card can be ordered from the binder (click it) at + 50%.
-- **Grading.** In the binder, click a card you own, "Grade a copy…": pick a service (Value 24 h,
-  Standard 6 h, Express 30 min; the fee grows with the card's value), the odds are shown. It comes
-  back in a slab with a grade from 1 to 10 (8% get a 10): a 10 is worth 4× the card, a 9 1.6×, an
-  8 1.1×, lower less. Slabs live in the Vault (G): real-looking slabs with your label style, filters
-  by set and grade, sell them or put them on your desktop. Graded cards still count as owned in the
-  binder, with a grade badge.
+- **Grading.** In the binder, click a card you own, "Grade / pre-grade…": pick a copy and a service
+  (Value 24 h, Standard 6 h, Express 30 min, Elite 3 days; the fee grows with the card's value), the
+  odds are shown. It comes back in a slab with a grade from 1 to 10: a 10 is worth 4× the card, a 9
+  1.6×, an 8 1.1×, lower less. Slabs live in the Vault (G): real-looking slabs with your label style,
+  filters by set and grade, sell them or put them on your desktop. Graded cards still count as owned
+  in the binder, with a grade badge.
+  - **Condition.** Every copy starts unchecked (8% get a 10, like before). A pre-grade (2% of the
+    card's value, at least ฿100) shows one copy's condition: Pristine (10% of copies, 30% get a 10),
+    Clean (30%, 11%), Decent (35%, 4%), Worn (18%, 1%) or Damaged (7%, none). Selling takes the
+    unchecked copies first, then the worst.
+  - **Prep** (12%, at least ฿500) moves a copy a condition up; 5% of the time it slips a level down.
+  - **Elite** (35%, at least ฿20,000) grades the card twice and keeps the better grade: a Pristine
+    copy gets a 10 about half the time.
+  - **Review** (in the Vault; 20% of the slab's value, at least ฿2,000): the grade goes up one or
+    stays, never down, once per slab. The chance depends on the copy's condition (Pristine 35%,
+    Clean 15%, Decent 6%, Worn 2%; 12% for unchecked copies and slabs from before conditions).
+  - **Crack** a slab open (free) to grade the card again: it comes back raw in its condition, a level
+    worse 25% of the time. Slabs from before conditions come back Pristine / Clean / Decent for a
+    10 / 9 / 8, and unchecked, with no wear, for a 7 or lower.
 - **Sealed products.** Buy boxes and cases and hold them: they gain value every week (older sets
   faster, up to about 2.3× a year) and count toward your collection's value. Sell them for what
   they're worth, or open them: their boxes wait, prepaid, in that set's box mode.

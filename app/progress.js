@@ -125,13 +125,160 @@ var CREW = [
 // Send a card off; it comes back in a slab with a grade from 1 to 10 that
 // multiplies what it's worth. The grade is rolled when you send it.
 
+// bestOf: graded that many times, the best grade kept (Elite)
 var GRADING = [
-    { id: "value",    name: "Value",    hours: 24,  base: 300,  pct: 0.05 },
-    { id: "standard", name: "Standard", hours: 6,   base: 1000, pct: 0.1 },
-    { id: "express",  name: "Express",  hours: 0.5, base: 5000, pct: 0.2 }
+    { id: "value",    name: "Value",    hours: 24,  base: 300,   pct: 0.05 },
+    { id: "standard", name: "Standard", hours: 6,   base: 1000,  pct: 0.1 },
+    { id: "express",  name: "Express",  hours: 0.5, base: 5000,  pct: 0.2 },
+    { id: "elite",    name: "Elite",    hours: 72,  base: 20000, pct: 0.35, bestOf: 2 }
 ];
 var GRADE_ODDS = [[10, 0.08], [9, 0.34], [8, 0.3], [7, 0.15], [6, 0.07], [5, 0.03], [4, 0.015], [3, 0.008], [2, 0.004], [1, 0.003]];
 var GRADE_MULT = { 10: 4, 9: 1.6, 8: 1.1, 7: 0.9, 6: 0.75, 5: 0.6, 4: 0.5, 3: 0.45, 2: 0.4, 1: 0.35 };
+// A raw copy's condition sets its grading odds. Copies start unchecked (graded
+// like GRADE_ODDS, which is what the conditions average out to); a pre-grade
+// reveals one copy's condition, prep moves one up a level. In the collection a
+// card entry keeps counts per condition, entry.cond = { clean: 1, ... }; the
+// copies not in there are unchecked. share: how many copies are in that
+// condition; review: the chance a review lifts its slab a grade.
+var CONDITIONS = [
+    { id: "pristine", name: "Pristine", share: 0.10, review: 0.35, color: "#ffd700",
+      odds: [[10, 0.30], [9, 0.50], [8, 0.15], [7, 0.05]] },
+    { id: "clean",    name: "Clean",    share: 0.30, review: 0.15, color: "#7fd1b9",
+      odds: [[10, 0.11], [9, 0.52], [8, 0.27], [7, 0.08], [6, 0.02]] },
+    { id: "decent",   name: "Decent",   share: 0.35, review: 0.06, color: "#7fa8ff",
+      odds: [[10, 0.04], [9, 0.31], [8, 0.38], [7, 0.18], [6, 0.07], [5, 0.02]] },
+    { id: "worn",     name: "Worn",     share: 0.18, review: 0.02, color: "#c8a070",
+      odds: [[10, 0.01], [9, 0.10], [8, 0.30], [7, 0.30], [6, 0.16], [5, 0.08], [4, 0.04], [3, 0.01]] },
+    { id: "damaged",  name: "Damaged",  share: 0.07, review: 0,    color: "#ff8a7a",
+      odds: [[9, 0.02], [8, 0.10], [7, 0.18], [6, 0.25], [5, 0.20], [4, 0.12], [3, 0.07], [2, 0.04], [1, 0.02]] }
+];
+var CONDITION = {};
+CONDITIONS.forEach(function (c, i) { c.rank = i; CONDITION[c.id] = c; });
+var PREP_SLIP = 0.05;            // prep goes wrong: a level down instead of up
+var CRACK_WEAR = 0.25;           // cracking a slab: the card can come out a level worse
+var REVIEW_LEGACY = 0.12;        // slabs of unchecked copies, and ones graded before conditions
+
+function preGradeFee(value) { return Math.round(Math.max(100, 0.02 * value) / 10) * 10; }
+function prepFee(value) { return Math.round(Math.max(500, 0.12 * value) / 10) * 10; }
+function reviewFee(slabWorth) { return Math.round(Math.max(2000, 0.2 * slabWorth) / 10) * 10; }
+
+// a card entry's copies by condition, with "unchecked" for the rest. Copies
+// that left (sold, graded, a sync on another computer) come out of the
+// unchecked ones first, then the worst.
+function conditions(entry) {
+    var out = { unchecked: 0 }, n = entry ? entry.count || 0 : 0, cond = (entry && entry.cond) || {};
+    CONDITIONS.forEach(function (c) { out[c.id] = Math.max(0, Math.floor(cond[c.id] || 0)); });
+    var checked = CONDITIONS.reduce(function (a, c) { return a + out[c.id]; }, 0);
+    for (var i = CONDITIONS.length - 1; i >= 0 && checked > n; i--) {
+        var drop = Math.min(out[CONDITIONS[i].id], checked - n);
+        out[CONDITIONS[i].id] -= drop;
+        checked -= drop;
+    }
+    out.unchecked = n - checked;
+    return out;
+}
+
+// write conditions() back onto the entry (only what's not unchecked)
+function setConditions(entry, counts) {
+    var cond = {};
+    CONDITIONS.forEach(function (c) { if (counts[c.id] > 0) cond[c.id] = counts[c.id]; });
+    if (Object.keys(cond).length) entry.cond = cond;
+    else delete entry.cond;
+}
+
+// take one copy of a condition ("unchecked" or an id) off the entry; false if there's none
+function takeCopy(entry, condId) {
+    var counts = conditions(entry);
+    if (!(counts[condId] > 0)) return false;
+    counts[condId]--;
+    entry.count--;
+    setConditions(entry, counts);
+    return true;
+}
+
+// put a copy of a condition (null: unchecked) on the entry
+function addCopy(entry, condId) {
+    var counts = conditions(entry);
+    entry.count = (entry.count || 0) + 1;
+    if (condId && CONDITION[condId]) counts[condId]++;
+    setConditions(entry, counts);
+}
+
+function rollCondition() {
+    var r = Math.random(), acc = 0;
+    for (var i = 0; i < CONDITIONS.length; i++) {
+        acc += CONDITIONS[i].share;
+        if (r < acc) return CONDITIONS[i].id;
+    }
+    return "decent";
+}
+
+// pre-grade: an unchecked copy gets its condition; returns it ("" if none to check)
+function preGrade(entry) {
+    var counts = conditions(entry);
+    if (counts.unchecked <= 0) return "";
+    var c = rollCondition();
+    counts[c]++;
+    setConditions(entry, counts);
+    return c;
+}
+
+// prep a copy of condition condId: { to, slipped } (null if it can't be)
+function prep(entry, condId) {
+    var counts = conditions(entry), c = CONDITION[condId];
+    if (!c || c.rank === 0 || !(counts[condId] > 0)) return null;
+    var slipped = Math.random() < PREP_SLIP;
+    var to = slipped ? CONDITIONS[Math.min(CONDITIONS.length - 1, c.rank + 1)].id : CONDITIONS[c.rank - 1].id;
+    counts[condId]--;
+    counts[to]++;
+    setConditions(entry, counts);
+    return { to: to, slipped: slipped && to !== condId };
+}
+
+// the grade odds of a copy (condition id, or unchecked)
+function gradeOdds(condId) {
+    return CONDITION[condId] ? CONDITION[condId].odds : GRADE_ODDS;
+}
+
+// best of `tries` gradings
+function bestOfOdds(odds, tries) {
+    if (!(tries > 1)) return odds;
+    var below = 0, out = [];
+    odds.slice().sort(function (a, b) { return a[0] - b[0]; }).forEach(function (g) {
+        var upTo = below + g[1];
+        out.push([g[0], Math.pow(upTo, tries) - Math.pow(below, tries)]);
+        below = upTo;
+    });
+    return out.sort(function (a, b) { return b[0] - a[0]; });
+}
+
+// the chance of each grade for a copy sent to a service: [[grade, p], ...] best first
+function serviceOdds(condId, serviceId) {
+    var g = GRADING.filter(function (x) { return x.id === serviceId; })[0] || GRADING[0];
+    return bestOfOdds(gradeOdds(condId), g.bestOf || 1);
+}
+
+// crack a slab: the condition the raw copy comes back in (null: unchecked).
+// Slabs from before conditions: a 10 / 9 / 8 comes back Pristine / Clean / Decent;
+// 7 or lower comes back unchecked, a fresh chance, and never with wear.
+function crackCondition(slab) {
+    if (slab.cond === "unchecked") return null;   // sent without a pre-grade: still unknown
+    var c = CONDITION[slab.cond];
+    if (!slab.cond) {
+        if (slab.grade <= 7) return null;
+        c = CONDITION[slab.grade >= 10 ? "pristine" : slab.grade === 9 ? "clean" : "decent"];
+    }
+    if (!c) return null;
+    if (Math.random() < CRACK_WEAR) c = CONDITIONS[Math.min(CONDITIONS.length - 1, c.rank + 1)];
+    return c.id;
+}
+
+// the chance a review lifts a slab a grade (0 if it can't be reviewed)
+function reviewChance(slab) {
+    if (!slab || slab.reviewed || slab.grade >= 10) return 0;
+    return CONDITION[slab.cond] ? CONDITION[slab.cond].review : REVIEW_LEGACY;
+}
+
 var GRADE_NAME = { 10: "GEM MINT", 9: "MINT", 8: "NM-MT", 7: "NEAR MINT", 6: "EX-MT", 5: "EXCELLENT",
                    4: "VG-EX", 3: "VERY GOOD", 2: "GOOD", 1: "POOR" };
 
@@ -745,6 +892,8 @@ function record(p, ev) {
     } else if (ev.type === "graded") {
         s.graded++;
         if (ev.grade === 10) s.gem10++;
+    } else if (ev.type === "reviewed") {   // a review lifted a slab: a new 10 counts, it's not another grading
+        if (ev.grade === 10) s.gem10++;
     } else if (ev.type === "registry") {
         // ev.bySet: { set: { gem, graded, total, registry } } from the collection's slabs
         Object.keys(s.bySet).forEach(function (k) { s.bySet[k].gem = 0; s.bySet[k].graded = 0; s.bySet[k].registry = 0; });
@@ -1043,13 +1192,15 @@ function gradingFee(serviceId, value, p) {
     return Math.round(Math.max(g.base, g.pct * value) / 10) * 10;
 }
 
-function rollGrade() {
+// odds: [[grade, p], ...] (GRADE_ODDS without)
+function rollGrade(odds) {
+    odds = odds || GRADE_ODDS;
     var r = Math.random(), acc = 0;
-    for (var i = 0; i < GRADE_ODDS.length; i++) {
-        acc += GRADE_ODDS[i][1];
-        if (r < acc) return GRADE_ODDS[i][0];
+    for (var i = 0; i < odds.length; i++) {
+        acc += odds[i][1];
+        if (r < acc) return odds[i][0];
     }
-    return 8;
+    return odds[odds.length - 1][0];
 }
 
 // a slab: { set, key, id, name, tier, image, grade, ... }
@@ -1058,14 +1209,14 @@ function slabValue(slab, market) {
 }
 
 // send one copy of a card off (the caller takes it out of the collection);
-// card: { id, name, tier, set, image, key }, value: what it's worth raw
+// card: { id, name, tier, set, image, key, cond }, value: what it's worth raw
 function sendToGrading(p, card, serviceId, value, now) {
     var g = GRADING.filter(function (x) { return x.id === serviceId; })[0];
     var fee = gradingFee(serviceId, value, p);
     if (!g || !spend(p, fee, "grading")) return null;
     var id = now.toString(36) + Math.floor(Math.random() * 1e6).toString(36);
     var hours = g.hours * (eventIs(p, "grading") ? 0.5 : 1);
-    p.grading[id] = { card: card, service: g.id, fee: fee, grade: rollGrade(),
+    p.grading[id] = { card: card, service: g.id, fee: fee, grade: rollGrade(serviceOdds(card.cond, g.id)),
                       sentAt: now, readyAt: now + hours * 3600 * 1000 };
     return id;
 }

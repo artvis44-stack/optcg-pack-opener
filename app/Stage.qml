@@ -449,18 +449,19 @@ Item {
         return true;
     }
 
-    // send one copy off for grading
-    function gradeCard(c, service) {
+    // send one copy off for grading; cond: which copy ("unchecked" or a Progress.CONDITIONS id)
+    function gradeCard(c, service, cond) {
         if (offTheRecord) return false;
+        cond = cond || "unchecked";
         var key = cardKey(c), col = readCollection(), e = col.cards[key];
-        if (!e) return false;
-        var card = { id: c.id, name: c.name, tier: c.tier, set: c.set || setId, image: c.image, key: key };
+        if (!e || !(Progress.conditions(e)[cond] > 0)) return false;
+        var card = { id: c.id, name: c.name, tier: c.tier, set: c.set || setId, image: c.image, key: key, cond: cond };
         var id = prog(p => Progress.sendToGrading(p, card, service, cardValue(c), Date.now()));
         if (!id) {
             toast("Not enough berries: grading it costs " + Progress.format(Progress.gradingFee(service, cardValue(c), progress)) + ".");
             return false;
         }
-        e.count--;
+        Progress.takeCopy(e, cond);
         if (e.count <= 0) delete col.cards[key];
         writeCollection(col);
         refreshValue();
@@ -468,6 +469,88 @@ Item {
         var g = Progress.GRADING.filter(x => x.id === service)[0];
         toast("Sent " + Tiers.displayName(c) + " for grading: back in " + (g.hours < 1 ? g.hours * 60 + " minutes" : g.hours + " hours"));
         return true;
+    }
+
+    // pre-grade: look one unchecked copy over; returns its condition ("" if it didn't happen)
+    function preGradeCard(c) {
+        if (offTheRecord) return "";
+        var key = cardKey(c), col = readCollection(), e = col.cards[key];
+        if (!e || Progress.conditions(e).unchecked <= 0) return "";
+        var fee = Progress.preGradeFee(cardValue(c));
+        if (prog(p => Progress.spend(p, fee, "grading")) !== true) {
+            toast("Not enough berries: a pre-grade costs " + Progress.format(fee) + ".");
+            return "";
+        }
+        var cond = Progress.preGrade(e);
+        writeCollection(col);
+        sfx("flip");
+        toast(Tiers.displayName(c) + ": this copy is " + Progress.CONDITION[cond].name + "  ·  "
+              + Math.round(Progress.serviceOdds(cond, "value")[0][1] * 100) + "% chance of a 10");
+        return cond;
+    }
+
+    // prep a copy of condition cond: a level up, or (Progress.PREP_SLIP) a level down
+    function prepCard(c, cond) {
+        if (offTheRecord) return false;
+        var key = cardKey(c), col = readCollection(), e = col.cards[key];
+        if (!e || !(Progress.conditions(e)[cond] > 0) || Progress.CONDITION[cond].rank === 0) return false;
+        var fee = Progress.prepFee(cardValue(c));
+        if (prog(p => Progress.spend(p, fee, "grading")) !== true) {
+            toast("Not enough berries: prep costs " + Progress.format(fee) + ".");
+            return false;
+        }
+        var r = Progress.prep(e, cond);
+        writeCollection(col);
+        sfx(r.slipped ? "flip" : "chime");
+        toast(r.slipped ? "The prep went wrong: that copy is " + Progress.CONDITION[r.to].name + " now."
+                        : "Prepped: that copy is " + Progress.CONDITION[r.to].name + " now.");
+        return true;
+    }
+
+    // crack a slab open: the card goes back in the binder, raw (Progress.crackCondition)
+    function crackSlab(id) {
+        var col = readCollection(), s = (col.graded || {})[id];
+        if (!s || offTheRecord) return;
+        var cond = Progress.crackCondition(s);
+        delete col.graded[id];
+        var key = s.key || (s.set + ":" + String(s.image).split("/").pop());
+        var e = col.cards[key];
+        if (!e) e = col.cards[key] = { id: s.id, name: s.name, tier: s.tier, count: 0, first: new Date().toISOString() };
+        Progress.addCopy(e, cond);
+        writeCollection(col);
+        refreshValue();
+        refreshRegistry();
+        sfx("tear");
+        var was = Progress.CONDITION[s.cond];
+        toast("Cracked the " + s.grade + " " + Tiers.displayName(s) + ": it's back in the binder, "
+              + (!cond ? "unchecked" : Progress.CONDITION[cond].name
+                 + (was && was.id !== cond ? " (it got a little worn coming out)" : "")) + ".");
+    }
+
+    // review: a slab's grade goes up one, or stays (Progress.reviewChance); once per slab
+    function reviewSlab(id) {
+        var col = readCollection(), s = (col.graded || {})[id];
+        if (!s || offTheRecord) return;
+        var chance = Progress.reviewChance(s);
+        if (chance <= 0) return;
+        var fee = Progress.reviewFee(slabValue(s));
+        if (prog(p => Progress.spend(p, fee, "grading")) !== true) {
+            toast("Not enough berries: a review costs " + Progress.format(fee) + ".");
+            return;
+        }
+        var up = Math.random() < chance;
+        s.reviewed = true;
+        if (up) s.grade++;
+        writeCollection(col);
+        refreshValue();
+        if (up) {
+            prog(p => Progress.record(p, { type: "reviewed", grade: s.grade }));
+            refreshRegistry();
+            celebrate([{ kind: "graded", slab: Object.assign({ slabId: id }, s) }]);
+        } else {
+            sfx("flip");
+            toast("The review kept it at " + s.grade + ".");
+        }
     }
 
     // graded cards that are back go into the collection, each celebrated

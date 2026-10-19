@@ -96,6 +96,18 @@ function mergeCollection(b, l, r) {
         var firsts = [lc[k], rc[k]].filter(function (x) { return x && x.first; }).map(function (x) { return x.first; }).sort();
         if (firsts.length) e.first = firsts[0];
         e.count = count;
+        // copies by condition (Progress.conditions) add up the same way; any
+        // more than the count are trimmed when the app reads them
+        var cond = {};
+        [bc[k], lc[k], rc[k]].forEach(function (x) { Object.keys((x && x.cond) || {}).forEach(function (c) { cond[c] = 0; }); });
+        Object.keys(cond).forEach(function (c) {
+            var get = function (x) { return (x && x.cond && x.cond[c]) || 0; };
+            var n = get(rc[k]) + get(lc[k]) - get(bc[k]);
+            if (n > 0) cond[c] = n;
+            else delete cond[c];
+        });
+        if (Object.keys(cond).length) e.cond = cond;
+        else delete e.cond;
         cards[k] = e;
     });
     out.cards = cards;
