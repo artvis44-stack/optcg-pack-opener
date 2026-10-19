@@ -230,11 +230,22 @@ Item {
                     width: gridScreen.tileW
                     height: gridScreen.tileH + gridScreen.labelH
 
-                    // drop in, staggered, when the box is opened
-                    opacity: 0
-                    Component.onCompleted: dropIn.start()
+                    // drop in, staggered, when the grid is first shown. The tiles are built while the
+                    // sealed box (or a closed overlay) still hides the grid, and a fade run there stalls
+                    // half way, leaving packs see-through; so start it on show and finish it on hide.
+                    property bool dropped: false
+                    function showGrid() {
+                        if (gridScreen.visible && !dropped) { dropped = true; dropIn.restart(); }
+                        else if (!gridScreen.visible && dropIn.running) dropIn.complete();
+                    }
+                    Component.onCompleted: showGrid()
+                    Connections {
+                        target: gridScreen
+                        function onVisibleChanged() { tile.showGrid() }
+                    }
                     SequentialAnimation {
                         id: dropIn
+                        PropertyAction { target: tile; property: "opacity"; value: 0 }
                         PauseAnimation { duration: tile.index * 25 }
                         NumberAnimation { target: tile; property: "opacity"; to: 1; duration: 250 }
                     }

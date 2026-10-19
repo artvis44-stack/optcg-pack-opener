@@ -167,18 +167,24 @@ Item {
         if (!card || card.type === "DON!!" || !setId) return;   // DON!! cards aren't priced there
         if (priceHistory.length && priceHistory[priceHistory.length - 1].d === today()) return;
         var forKey = key;
-        var xhr = new XMLHttpRequest();
-        xhr.onreadystatechange = function () {
-            if (xhr.readyState !== XMLHttpRequest.DONE || xhr.status !== 200 || forKey !== show.key) return;
-            try {
-                var list = JSON.parse(xhr.responseText);
-                var m = list.find(c => c.card_image_id === card.id && c.card_name === card.name)
-                        || list.find(c => c.card_image_id === card.id);
-                if (m && m.market_price !== null && m.market_price !== undefined) recordPrice(Number(m.market_price));
-            } catch (e) {}
-        };
-        xhr.open("GET", "https://optcgapi.com/api/sets/" + setId + "/");
-        xhr.send();
+        // a Japanese card: the same printing's English price, scaled (see Stage.loadMarket)
+        var info = sets[setId] || {};
+        var jp = info.lang === "jp";
+        (jp ? info.en || [] : [setId]).forEach(src => {
+            var xhr = new XMLHttpRequest();
+            xhr.onreadystatechange = function () {
+                if (xhr.readyState !== XMLHttpRequest.DONE || xhr.status !== 200 || forKey !== show.key) return;
+                try {
+                    var list = JSON.parse(xhr.responseText);
+                    var m = list.find(c => c.card_image_id === card.id && c.card_name === card.name)
+                            || list.find(c => c.card_image_id === card.id);
+                    if (m && m.market_price !== null && m.market_price !== undefined)
+                        recordPrice(Number(m.market_price) * (jp ? Progress.JP_CARD_PRICE : 1));
+                } catch (e) {}
+            };
+            xhr.open("GET", "https://optcgapi.com/api/sets/" + src + "/");
+            xhr.send();
+        });
     }
 
     readonly property real price: priceHistory.length ? priceHistory[priceHistory.length - 1].p : -1

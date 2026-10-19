@@ -1,7 +1,8 @@
 import QtQuick
 
-// Pick a set: every booster in sets.json, release order. Sets that aren't
-// downloaded yet download when picked; their pack photos are fetched up front.
+// Pick a set: every booster in sets.json, release order, English and Japanese
+// on their own tabs. Sets that aren't downloaded yet download when picked;
+// their pack photos are fetched up front.
 Item {
     id: picker
 
@@ -9,9 +10,11 @@ Item {
     property var have: ({})        // set id -> downloaded?
     property bool previewsFetched: false
     property bool reloading: false
+    property string lang: "en"     // the tab: "en" | "jp"
 
     onVisibleChanged: {
         if (!visible) return;
+        lang = (stage.sets[stage.setId] || {}).lang || "en";
         var h = {};
         Object.keys(stage.sets).forEach(id => h[id] = stage.downloaded(id));
         have = h;
@@ -56,9 +59,39 @@ Item {
         }
         Text {
             anchors.horizontalCenter: parent.horizontalCenter
-            text: "Odds: documented = set-specific case data · estimated = era defaults + set facts · rough = nothing published"
+            text: picker.lang === "jp"
+                  ? "Japanese boosters: 6-card packs, 1-2 hits a box · odds are Japanese community tallies · prices in ¥ at today's market"
+                  : "Odds: documented = set-specific case data · estimated = era defaults + set facts · rough = nothing published"
             color: "#9aa0ad"
             font.pixelSize: 13
+        }
+        Row {
+            anchors.horizontalCenter: parent.horizontalCenter
+            spacing: 10
+            Repeater {
+                model: [{ id: "en", label: "English" }, { id: "jp", label: "Japanese  日本語" }]
+                Rectangle {
+                    required property var modelData
+                    readonly property bool on: picker.lang === modelData.id
+                    width: tabText.implicitWidth + 36
+                    height: 32
+                    radius: 16
+                    color: on ? "#ffd56b" : "#1a1f2b"
+                    border.color: on ? "#ffd56b" : "#3a4152"
+                    Text {
+                        id: tabText
+                        anchors.centerIn: parent
+                        text: parent.modelData.label
+                        color: parent.on ? "#14171f" : "#d8dbe2"
+                        font { pixelSize: 14; weight: Font.Black }
+                    }
+                    MouseArea {
+                        anchors.fill: parent
+                        cursorShape: Qt.PointingHandCursor
+                        onClicked: picker.lang = parent.modelData.id
+                    }
+                }
+            }
         }
     }
 
@@ -73,10 +106,10 @@ Item {
         }
         width: cols * cellWidth
         cellWidth: tileW + 20
-        cellHeight: tileW / 0.62 + 74
+        cellHeight: tileW / 0.62 + 88
         clip: true
         boundsBehavior: Flickable.StopAtBounds
-        model: picker.stage ? Object.keys(picker.stage.sets) : []
+        model: picker.stage ? Object.keys(picker.stage.sets).filter(id => (picker.stage.sets[id].lang || "en") === picker.lang) : []
 
         delegate: Item {
             id: tile
@@ -120,6 +153,18 @@ Item {
                     color: "#7a8090"
                     font { pixelSize: 18; weight: Font.Black }
                 }
+                Rectangle {   // Japanese product: the pack photo is the English one's
+                    visible: tile.info.lang === "jp"
+                    anchors { right: parent.right; top: parent.top; margins: 4 }
+                    width: 30; height: 20; radius: 4
+                    color: "#d0021b"
+                    Text {
+                        anchors.centerIn: parent
+                        text: "JP"
+                        color: "white"
+                        font { pixelSize: 11; weight: Font.Black }
+                    }
+                }
             }
 
             Column {
@@ -142,6 +187,15 @@ Item {
                     text: tile.info.name
                     color: "#b8bcc6"
                     font.pixelSize: 11
+                }
+                Text {
+                    width: parent.width
+                    horizontalAlignment: Text.AlignHCenter
+                    elide: Text.ElideRight
+                    visible: !!tile.info.nameJp
+                    text: tile.info.nameJp || ""
+                    color: "#8a8fa0"
+                    font.pixelSize: 10
                 }
                 Text {
                     width: parent.width
