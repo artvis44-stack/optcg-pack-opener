@@ -302,6 +302,22 @@ Item {
             show.loadCollection();
         }
     }
+    // Downloads happen here, in the background, so the pack opener never waits:
+    // card backs, pack photos, playmats and every set (fetch_cards.py background;
+    // it skips what's already there, and only one runs at a time)
+    function downloadInBackground() {
+        host.run([host.env("OPTCG_PYTHON") || "python3", "-I", "-u", host.appPath("fetch_cards.py"),
+                  "background", JSON.stringify(Progress.playmatDownloads())], null, null);
+    }
+    Timer {   // a couple of minutes after you log in, then every 6 hours for new sets
+        interval: 2 * 60 * 1000
+        running: true
+        repeat: true
+        onTriggered: {
+            interval = 6 * 3600 * 1000;
+            show.downloadInBackground();
+        }
+    }
     Timer {   // the price, about once a day
         interval: 3600 * 1000
         running: true

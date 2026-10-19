@@ -57,8 +57,13 @@ The app is split into a platform-independent part (`app/`) and a thin host.
 - `app/Card.qml`, `app/CardBack.qml`: the flipping, tilting card (Leaders get the red back), plus the drawn fallback back
 - `app/tiers.js`: rarity tiers, pack layouts and case budgets per product family, and the pack / case generators
 - `app/shaders/*.frag`: the holo foil, pack foil and god-ray shaders. Run `./build-shaders.sh` after editing them.
-- `fetch_cards.py SET | all | list | previews`: downloads a set's data and images from optcgapi.com into
-  `~/.cache/optcg/<SET>/` (the app runs it itself when you pick a new set). It also fetches the
+- `fetch_cards.py SET | all | list | previews | background`: downloads a set's data and images from
+  optcgapi.com into `~/.cache/optcg/<SET>/`. You don't need to run it: `background` fetches
+  everything that's missing (card backs, every set's pack photos, the playmats, then every set,
+  newest first, English then Japanese, at low priority), and the desktop companion runs it a
+  couple of minutes after you log in and every 6 hours after, the pack opener 20 seconds after it
+  opens; so picking a set is instant. Only one runs at a time, and a set is never downloaded twice
+  at once (picking one that's downloading just waits for it). All sets together are about 2 GB. It also fetches the
   pack and box photos (Bandai's for OP-17, TCGplayer's for the rest, background removed), the
   set's booster DON!! cards (TCGplayer scans) and the blue deck, red Leader and DON!! card backs
   (`assets/back*.png`, from the official rule-manual PDF). Needs `poppler` and `imagemagick` for

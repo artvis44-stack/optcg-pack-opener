@@ -1185,6 +1185,13 @@ function ownsCosmetic(p, id) {
 }
 
 // buy (if needed) and wear it; kind: "backdrop" | "slab"
+// the playmats to download ahead of time ([[id, tcgplayer id, page]], for
+// fetch_cards.py background); the ones that come with the app aren't
+function playmatDownloads() {
+    return BACKDROPS.filter(function (b) { return b.playmat && !b.playmat.file; })
+        .map(function (b) { return [b.id, String(b.playmat.tcg || ""), b.playmat.page || ""]; });
+}
+
 function equipCosmetic(p, kind, id) {
     if (kind === "backdrop" && id.indexOf("season-") === 0) {   // earned in a season, never sold
         if (!ownsCosmetic(p, id)) return false;

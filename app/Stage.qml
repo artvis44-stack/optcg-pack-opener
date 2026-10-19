@@ -158,6 +158,16 @@ Item {
             } catch (e) {}
         }
         loadSet(setId);
+        backgroundDownload.start();
+    }
+
+    // the rest downloads in the background, so it's there when you want it (the
+    // desktop companion does this too; fetch_cards.py runs one at a time)
+    Timer {
+        id: backgroundDownload
+        interval: 20 * 1000
+        onTriggered: stage.host.run([stage.python, "-I", "-u", stage.fetchScript, "background",
+                                     JSON.stringify(Progress.playmatDownloads())], null, null)
     }
 
     // ---- progression ----------------------------------------------------------------

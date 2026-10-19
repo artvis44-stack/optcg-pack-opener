@@ -5,6 +5,11 @@ Usage: fetch_cards.py [SET_ID]   one set (default OP-17), e.g. OP-05, EB-01, PRB
        fetch_cards.py all        every set in app/sets.json (~40 MB each)
        fetch_cards.py list       the known sets and whether they're downloaded
        fetch_cards.py previews   just the pack/box photos of every set (for the set picker)
+       fetch_cards.py background [PLAYMATS_JSON]
+                                 everything still missing, quietly: card backs, pack photos,
+                                 the playmats ([[id, tcgplayer id, page], ...]), then every
+                                 set newest first (English, then Japanese). The desktop
+                                 companion runs this, so picking a set is instant.
 
 Writes $XDG_CACHE_HOME/optcg/<SET_ID>/cards.json, one image per card, and the
 set's pack/box photos; the card backs (shared by all sets) go in assets/.
@@ -15,6 +20,7 @@ failing that, the official page itself; English names and rarities come from
 the matching English set where it has the card. Card art belongs to Bandai / Eiichiro Oda --
 this is a personal cache, don't redistribute it.
 """
+import fcntl
 import glob
 import json
 import os
@@ -248,19 +254,23 @@ def fetch_product_images(set_id, info, cache):
         except Exception as e:
             print(f"no {name} image for {set_id} ({e}); using the drawn one")
             continue
-        raw = os.path.join(cache, name + ".src")
+        # this process's own temp files (the set picker and the background download
+        # can both be at it), swapped in whole
+        raw = os.path.join(cache, f"{name}.{os.getpid()}.src")
+        out = os.path.join(cache, f"{name}.{os.getpid()}.png")
         with open(raw, "wb") as f:
             f.write(data)
         if not shutil.which("magick"):
-            os.replace(raw, dest)   # Qt sniffs the format; untrimmed is fine
+            os.replace(raw, out)   # Qt sniffs the format; untrimmed is fine
         elif studio:
-            magick(raw, "-trim", "+repage", dest)
+            magick(raw, "-trim", "+repage", out)
         else:
             # product photo on white: flood the background away from the corners
             magick(raw, "-bordercolor", "white", "-border", "1", "-fuzz", "6%", "-fill", "none",
-                   "-floodfill", "+0+0", "white", "-shave", "1x1", "-trim", "+repage", dest)
+                   "-floodfill", "+0+0", "white", "-shave", "1x1", "-trim", "+repage", out)
         if os.path.exists(raw):
             os.remove(raw)
+        os.replace(out, dest)
         print(name, "image ->", dest)
 
 
@@ -336,12 +346,37 @@ def fetch_card_backs():
         print(("card back -> " if os.path.exists(path) else "couldn't find card back for ") + path)
 
 
+def lock(path, wait_message=None):
+    """An exclusive lock on path (held until the process exits or the file is
+    closed); waits for whoever holds it, saying so. None if wait_message is
+    None and it's taken."""
+    f = open(path, "w")
+    try:
+        fcntl.flock(f, fcntl.LOCK_EX | fcntl.LOCK_NB)
+    except BlockingIOError:
+        if wait_message is None:
+            f.close()
+            return None
+        print(wait_message, flush=True)
+        fcntl.flock(f, fcntl.LOCK_EX)
+    return f
+
+
 def fetch_set(set_id):
     if set_id not in SETS:
         sys.exit(f"unknown set {set_id}; known: {', '.join(SETS)}")
     info = SETS[set_id]
     cache = os.path.join(ROOT, set_id)
     os.makedirs(cache, exist_ok=True)
+    # one download of a set at a time: the pack opener's waits for the background one
+    held = lock(os.path.join(cache, ".lock"), f"{set_id} is downloading in the background, nearly there...")
+    try:
+        fetch_set_locked(set_id, info, cache)
+    finally:
+        held.close()
+
+
+def fetch_set_locked(set_id, info, cache):
     fetch_product_images(set_id, info, cache)
     fetch_card_backs()
     out_path = os.path.join(cache, "cards.json")
@@ -444,16 +479,60 @@ def fetch_playmat(mat_id, tcg, page):
         except Exception as e:
             print(f"{mat_id}: {src} failed ({e})", flush=True)
             continue
-        with open(dest + ".part", "wb") as f:
+        part = f"{dest}.{os.getpid()}.part"   # the pack opener may be fetching it too
+        with open(part, "wb") as f:
             f.write(data)
-        os.replace(dest + ".part", dest)
+        os.replace(part, dest)
         print("playmat ->", dest)
         return
     print(f"{mat_id}: no picture found")
 
 
+def background(playmats):
+    """Download whatever's missing, gently, newest sets first; skips (exits)
+    if another background run is going."""
+    os.makedirs(ROOT, exist_ok=True)
+    held = lock(os.path.join(ROOT, ".background.lock"))
+    if not held:
+        print("another background download is running")
+        return
+    try:
+        os.nice(10)
+    except OSError:
+        pass
+    try:
+        fetch_card_backs()
+    except Exception as e:
+        print(f"card backs: {e}", flush=True)
+    for set_id, info in SETS.items():
+        cache = os.path.join(ROOT, set_id)
+        os.makedirs(cache, exist_ok=True)
+        try:
+            fetch_product_images(set_id, info, cache)
+        except Exception as e:
+            print(f"{set_id} photos: {e}", flush=True)
+    for mat in playmats:
+        try:
+            fetch_playmat(*[str(x or "") for x in mat[:3]])
+        except (Exception, SystemExit) as e:
+            print(f"playmat {mat}: {e}", flush=True)
+    en = [s for s, i in SETS.items() if i.get("lang") != "jp"]
+    jp = [s for s, i in SETS.items() if i.get("lang") == "jp"]
+    for set_id in en[::-1] + jp[::-1]:
+        if os.path.exists(os.path.join(ROOT, set_id, "cards.json")):
+            continue
+        try:
+            fetch_set(set_id)
+        except (Exception, SystemExit) as e:   # one set failing shouldn't stop the rest
+            print(f"{set_id}: {e}", flush=True)
+    print("background downloads done", flush=True)
+
+
 def main():
     arg = sys.argv[1] if len(sys.argv) > 1 else "OP-17"
+    if arg == "background":
+        background(json.loads(sys.argv[2]) if len(sys.argv) > 2 else [])
+        return
     if arg == "--playmat":   # --playmat <id> <tcgplayer id or ""> <official page or "">
         fetch_playmat(sys.argv[2], sys.argv[3] if len(sys.argv) > 3 else "", sys.argv[4] if len(sys.argv) > 4 else "")
         return
