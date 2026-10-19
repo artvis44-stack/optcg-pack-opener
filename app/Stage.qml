@@ -161,6 +161,48 @@ Item {
         backgroundDownload.start();
     }
 
+    // ---- updates (the Mac app: mac/update.py, which a LaunchAgent also runs every few hours) ----
+    readonly property bool canUpdate: Qt.platform.os === "osx"
+    property string updateState: ""     // "" | checking | upToDate | available | updating | updated | failed
+    property string updateHave: ""
+    property string updateLatest: ""
+    function checkForUpdate() {
+        if (!canUpdate || updateState === "checking" || updateState === "updating" || updateState === "updated") return;
+        updateState = "checking";
+        var answer = null;
+        host.run([python, "-I", "-u", host.appPath("mac/update.py"), "--check"],
+                 line => { try { answer = JSON.parse(line); } catch (e) {} },
+                 code => {
+                     if (!answer || answer.error) {
+                         updateState = "failed";
+                         return;
+                     }
+                     updateHave = answer.have;
+                     updateLatest = answer.latest;
+                     updateState = answer.newer ? "available" : "upToDate";
+                 });
+    }
+    // U / the top bar: check, or install what's out
+    function updateButton() {
+        if (!canUpdate) return;
+        if (updateState !== "available") {
+            checkForUpdate();
+            return;
+        }
+        updateState = "updating";
+        toast("Updating to " + updateLatest + "...");
+        host.run([python, "-I", "-u", host.appPath("mac/update.py")], null, code => {
+            updateState = code === 0 ? "updated" : "failed";
+            toast(code === 0 ? "Updated to " + updateLatest + ". Close the pack opener and open it again to use it."
+                             : "The update didn't work; it'll try again by itself in a few hours.");
+        });
+    }
+    Timer {   // see if there's one a little after opening
+        running: stage.canUpdate
+        interval: 5 * 1000
+        onTriggered: stage.checkForUpdate()
+    }
+
     // the rest downloads in the background, so it's there when you want it (the
     // desktop companion does this too; fetch_cards.py runs one at a time)
     Timer {
@@ -1162,6 +1204,9 @@ Item {
         case Qt.Key_M:
             toggleMute();
             break;
+        case Qt.Key_U:
+            updateButton();
+            break;
         case Qt.Key_P:
             togglePort();
             break;
@@ -1655,6 +1700,25 @@ Item {
                 anchors.fill: parent
                 cursorShape: Qt.PointingHandCursor
                 onClicked: stage.toggleMute()
+            }
+        }
+        Text {
+            visible: stage.canUpdate
+            anchors.baseline: parent.children[1].baseline
+            readonly property string s: stage.updateState
+            text: s === "available" ? "update to " + stage.updateLatest + "  (U)"
+                  : s === "checking" ? "checking for updates..."
+                  : s === "updating" ? "updating to " + stage.updateLatest + "..."
+                  : s === "updated" ? "updated to " + stage.updateLatest + ": reopen to use it"
+                  : s === "failed" ? "update failed: try again  (U)"
+                  : s === "upToDate" ? stage.updateHave + ", up to date  (U)"
+                  : "check for updates  (U)"
+            color: s === "available" ? "#ffd56b" : s === "updated" ? "#7fd1b9" : s === "failed" ? "#ff9a7a" : "#7a8090"
+            font { pixelSize: 14; weight: Font.Bold }
+            MouseArea {
+                anchors.fill: parent
+                cursorShape: Qt.PointingHandCursor
+                onClicked: stage.updateButton()
             }
         }
     }

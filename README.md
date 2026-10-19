@@ -27,6 +27,7 @@ Boosters EB-01 to EB-03 and the Premium Boosters PRB-01 / PRB-02.
 | G | the Vault: your graded slabs (filter by set and grade), cards out for grading, the set registry |
 | F | in the binder: filters (rarity, card type, colour, owned / missing / duplicates / graded); there's also a search box and sorting by rarity, number, value or copies |
 | C | box mode: buy the rest of the case (15% off) |
+| U | Mac: check for an update, or install the one that's out |
 | Esc / right-click | close |
 | click a wanted poster / banner | dismiss it (right-click, or "Clear all", dismisses the rest too) |
 
@@ -242,8 +243,10 @@ and `~/Library/Application Support/optcg`.
 **Updates install themselves:** `install.sh` adds a login item that runs `mac/update.py` at login
 and every 6 hours. It checks the latest GitHub release, downloads its `optcg.bundle`, fast-forwards
 the checkout, refreshes the Python packages if needed, restarts the desktop showcase and shows a
-notification (log: `~/Library/Logs/optcg-update.log`). Double-click `mac/Update OPTCG.command` in
-Finder to check right away. If the repo is private, put a GitHub token in
+notification (log: `~/Library/Logs/optcg-update.log`). To update right away, use the button at the
+end of the pack opener's top bar (or press U): it checks a few seconds after the opener opens, says
+"update to vX (U)" when there's one, installs it, and the next time you open the pack opener it's
+the new version. Double-click `mac/Update OPTCG.command` in Finder works too. If the repo is private, put a GitHub token in
 `~/Library/Application Support/optcg/github-token`.
 
 Publishing a release from here: `tools/release.sh v1.3.0 "what changed"`.
