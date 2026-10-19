@@ -426,14 +426,19 @@ Item {
 
     // a pack's worth of cards went into the binder
     function recordPackProgress(cards) {
-        if (offTheRecord) return;
+        recordPacksProgress([cards]);
+    }
+    // packs' worth (each already in the binder), in one go: one progress update for all of them
+    function recordPacksProgress(packs) {
+        if (offTheRecord || !packs.length) return;
         var have = ownedKeys();
         var owned = Object.keys(have).filter(k => k.indexOf(setId + ":") === 0).length;
         // how much of each tier group (every Leader, every SR...) you own, and which tiers the set has
         var sp = Progress.setProgress(setId, db.cards, have);
-        prog(p => Progress.record(p, { type: "pack", set: setId, tiers: cards.map(c => c.tier), god: Tiers.isGodPack(cards),
-                                       completion: setTotal ? owned / setTotal : 0,
-                                       groups: sp.groups, present: sp.present }));
+        prog(p => packs.reduce((done, cards) => done.concat(
+            Progress.record(p, { type: "pack", set: setId, tiers: cards.map(c => c.tier), god: Tiers.isGodPack(cards),
+                                 completion: setTotal ? owned / setTotal : 0,
+                                 groups: sp.groups, present: sp.present }) || []), []));
     }
 
     // the box (and maybe the case) is done
@@ -1013,15 +1018,11 @@ Item {
 
     function openAllRemaining() {
         if (phase !== "boxGrid") return;
-        var opened = boxOpened.slice();
-        boxPacks.forEach((p, i) => {
-            if (!opened[i]) {
-                recordCards(p);
-                recordPackProgress(p);
-            }
-            opened[i] = true;
-        });
-        boxOpened = opened;
+        // all of them at once: one collection write and one progress update, not one per pack
+        var opened = boxOpened.slice(), packs = boxPacks.filter((p, i) => !opened[i]);
+        recordCards([].concat.apply([], packs), packs.length);
+        recordPacksProgress(packs);
+        boxOpened = opened.map(() => true);
         saveCase();
         recordBoxDone();
         phase = "boxSummary";
@@ -1166,7 +1167,8 @@ Item {
         }
     }
 
-    function recordCards(cards) {
+    // packs: how many packs these cards came from (1 unless given)
+    function recordCards(cards, packs) {
         if (offTheRecord) return;   // forced pulls / sandbox don't go in the binder
         var col = readCollection();
         cards.forEach(c => {
@@ -1174,7 +1176,7 @@ Item {
             if (e) e.count++;
             else col.cards[cardKey(c)] = { id: c.id, name: c.name, tier: c.tier, count: 1, first: new Date().toISOString() };
         });
-        col.packs = (col.packs || 0) + 1;
+        col.packs = (col.packs || 0) + (packs === undefined ? 1 : packs);
         writeCollection(col);
     }
 
