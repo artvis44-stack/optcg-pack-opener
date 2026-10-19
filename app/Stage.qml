@@ -847,9 +847,14 @@ Item {
         }
     }
 
-    function chooseSet(id) {
+    // kind: "pack" (from the shop counter) | "box" (from the shelf); left out, the mode stays
+    function chooseSet(id, kind) {
+        var switching = !!kind && kind !== mode;
+        if (kind) mode = kind;
         if (id === setId && db && db.set === id) {
-            phase = pickerReturn;
+            if (!switching) phase = pickerReturn;
+            else if (mode === "box") startBox();
+            else newPack();
             return;
         }
         db = null;

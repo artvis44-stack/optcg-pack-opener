@@ -14,7 +14,7 @@ Boosters EB-01 to EB-03 and the Premium Boosters PRB-01 / PRB-02.
 | Click a card (summary) | inspect it (move the mouse to tilt it) |
 | R | open another pack (summary) |
 | X | switch between single packs and box mode |
-| S | choose a set (sets not downloaded yet are fetched in the app, ~40 MB each) |
+| S | the card shop: pick a box off the shelf (box mode) or a single pack from the counter (sets not downloaded yet are fetched in the app, ~40 MB each) |
 | A | box: open all remaining packs |
 | B | binder: your collection (from the sealed pack or the summary) |
 | O | binder: show owned only / the whole set |
@@ -45,7 +45,7 @@ The app is split into a platform-independent part (`app/`) and a thin host.
   the market price of a sealed box (`boxUsd`, or `boxJpy` for Japanese sets; October 2026:
   TCGplayer / eBay medians for English, Japanese shop and resale prices). Japanese sets (`-JP`,
   `"lang": "jp"`) also name their Bandai card-list series and their English counterparts (`en`).
-- `app/SetPicker.qml`: the set picker (English and Japanese tabs)
+- `app/SetPicker.qml`: the card shop where you pick a set: boxes on the shelves, single packs on the counter (English and Japanese tabs)
 - `app/Stage.qml`: the flow (pack → reveal → summary, box mode), layout and effects
 - `app/PortView.qml`: the Port (ship, crew, shop, grading, sealed, cosmetics; the rules are in `app/progress.js`)
 - `app/Sounds.qml`, `app/sounds/`: sound effects (tearing, card flips, a charge-up before big hits, chimes
