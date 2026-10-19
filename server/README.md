@@ -56,6 +56,24 @@ Only you? Create your account, then set `OPTCG_SYNC_REGISTRATION=closed` in
 the unit (`sudo systemctl edit --full optcg-sync`) so nobody else can. Or set
 `OPTCG_SYNC_INVITE=<a long random code>` and give it to the people you want.
 
+## Alongside a website whose proxy runs in Docker
+
+If ports 80/443 already belong to a reverse-proxy container (Nginx Proxy
+Manager, Traefik, nginx-proxy, a Caddy or nginx container...), skip the
+install above and run the server as a container on the proxy's network:
+
+```sh
+docker ps                                    # find the proxy container
+docker inspect <proxy> --format '{{range $k, $v := .NetworkSettings.Networks}}{{$k}} {{end}}'
+cd server && PROXY_NETWORK=<that network> docker compose up -d --build
+```
+
+Then point `sync.example.com` (a DNS A record to the VPS) at
+`http://optcg-sync:8787` in your proxy, with HTTPS on and uploads of up to
+6 MB allowed. The database lives in the `optcg-sync-data` volume. Change
+`OPTCG_SYNC_REGISTRATION` in `compose.yml` and `docker compose up -d` again to
+close sign-ups; update with `git pull && docker compose up -d --build`.
+
 ## Use it
 
 In the pack opener press **Y**: enter `https://sync.example.com`, a username,

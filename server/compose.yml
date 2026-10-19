@@ -1,0 +1,28 @@
+# Runs the sync server next to a website that already has a reverse proxy in
+# Docker. It joins the proxy's network (no ports published), and the proxy
+# forwards your sync hostname to http://optcg-sync:8787.
+#
+#   PROXY_NETWORK=<your proxy's network> docker compose up -d --build
+#
+# Find the network with:
+#   docker inspect <proxy container> --format '{{range $k, $v := .NetworkSettings.Networks}}{{$k}} {{end}}'
+
+services:
+  optcg-sync:
+    build: .
+    container_name: optcg-sync
+    restart: unless-stopped
+    environment:
+      OPTCG_SYNC_REGISTRATION: open      # set to closed once everyone has an account
+    volumes:
+      - optcg-sync-data:/data
+    networks:
+      - proxy
+
+volumes:
+  optcg-sync-data:
+
+networks:
+  proxy:
+    external: true
+    name: ${PROXY_NETWORK:-proxy}
