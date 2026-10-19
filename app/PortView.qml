@@ -413,8 +413,8 @@ Item {
                         required property string modelData
                         readonly property var info: port.stage.sets[modelData] || {}
                         readonly property var c: Tiers.setConfig(info)
-                        readonly property int box: Progress.boxPrice(c.family, c.packsPerBox, port.p, modelData)
-                        readonly property int wholeCase: Progress.casePrice(c.family, c.packsPerBox, c.boxes, port.p, modelData)
+                        readonly property int box: Progress.boxPrice(c, port.p, modelData)
+                        readonly property int wholeCase: Progress.casePrice(c, c.boxes, port.p, modelData)
                         width: content.width
                         height: 46
                         Text {

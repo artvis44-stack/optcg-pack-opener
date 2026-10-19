@@ -6,6 +6,7 @@
   "confidence": "estimated",
   "pack": 450085,
   "box": 450086,
+  "boxUsd": 1400,
   "dons": [],
   "case": {
    "SEC": 4
@@ -19,6 +20,7 @@
   "confidence": "estimated",
   "pack": 455865,
   "box": 455866,
+  "boxUsd": 556,
   "dons": [],
   "note": "Box toppers 1 per box."
  },
@@ -29,6 +31,7 @@
   "confidence": "estimated",
   "pack": 477175,
   "box": 477176,
+  "boxUsd": 554,
   "dons": []
  },
  "OP-04": {
@@ -38,6 +41,7 @@
   "confidence": "estimated",
   "pack": 485832,
   "box": 485833,
+  "boxUsd": 496,
   "dons": []
  },
  "OP-05": {
@@ -47,6 +51,7 @@
   "confidence": "estimated",
   "pack": 498733,
   "box": 498734,
+  "boxUsd": 950,
   "dons": [
    [
     529792,
@@ -66,6 +71,7 @@
   "confidence": "estimated",
   "pack": 515077,
   "box": 515080,
+  "boxUsd": 381,
   "dons": []
  },
  "OP-07": {
@@ -75,6 +81,7 @@
   "confidence": "estimated",
   "pack": 532104,
   "box": 532106,
+  "boxUsd": 277,
   "dons": [
    [
     555894,
@@ -90,6 +97,7 @@
   "confidence": "rough",
   "pack": 521160,
   "box": 521161,
+  "boxUsd": 875,
   "dons": []
  },
  "OP-08": {
@@ -99,6 +107,7 @@
   "confidence": "estimated",
   "pack": 542502,
   "box": 542504,
+  "boxUsd": 253,
   "dons": [
    [
     577568,
@@ -114,6 +123,7 @@
   "confidence": "estimated",
   "pack": 563833,
   "box": 563834,
+  "boxUsd": 617,
   "dons": [
    [
     604246,
@@ -133,6 +143,7 @@
   "confidence": "estimated",
   "pack": 586670,
   "box": 586671,
+  "boxUsd": 250,
   "dons": [
    [
     624357,
@@ -148,6 +159,7 @@
   "confidence": "estimated",
   "pack": 620179,
   "box": 620180,
+  "boxUsd": 566,
   "dons": [
    [
     636742,
@@ -163,6 +175,7 @@
   "confidence": "rough",
   "pack": 594068,
   "box": 594069,
+  "boxUsd": 818,
   "dons": []
  },
  "OP-12": {
@@ -172,6 +185,7 @@
   "confidence": "estimated",
   "pack": 628345,
   "box": 628346,
+  "boxUsd": 290,
   "dons": [
    [
     646574,
@@ -188,6 +202,7 @@
   "confidence": "rough",
   "pack": 545398,
   "box": 545399,
+  "boxUsd": 915,
   "dons": [
    [
     593820,
@@ -484,6 +499,7 @@
   "confidence": "rough",
   "pack": 628451,
   "box": 628452,
+  "boxUsd": 378,
   "dons": [
    [
     655513,
@@ -780,6 +796,7 @@
   "confidence": "estimated",
   "pack": 628351,
   "box": 628352,
+  "boxUsd": 439,
   "dons": [
    [
     660744,
@@ -803,6 +820,7 @@
   "confidence": "estimated",
   "pack": 666577,
   "box": 665598,
+  "boxUsd": 270,
   "dons": [
    [
     672188,
@@ -834,6 +852,7 @@
   "confidence": "rough",
   "pack": 666727,
   "box": 666891,
+  "boxUsd": 324,
   "dons": [
    [
     677566,
@@ -879,6 +898,7 @@
   "confidence": "documented",
   "pack": 682056,
   "box": 682057,
+  "boxUsd": 256,
   "dons": [
    [
     686650,
@@ -910,6 +930,7 @@
   "confidence": "documented",
   "pack": 689341,
   "box": 689336,
+  "boxUsd": 226,
   "dons": [
    [
     698313,
@@ -942,6 +963,7 @@
   "confidence": "documented",
   "pack": 704756,
   "box": 704752,
+  "boxUsd": 307,
   "dons": [
    [
     712747,

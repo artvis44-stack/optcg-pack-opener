@@ -266,15 +266,15 @@ Item {
         host.writeText(collectionPath, collectionText);
     }
 
-    readonly property int packCost: Progress.packPrice(cfg.family, progress, setId)
-    readonly property int boxCost: Progress.boxPrice(cfg.family, cfg.packsPerBox, progress, setId)
+    readonly property int packCost: Progress.packPrice(cfg, progress, setId)
+    readonly property int boxCost: Progress.boxPrice(cfg, progress, setId)
     // caseState is changed in place, so these depend on caseRev (bumped by saveCase) to stay current
     property int caseRev: 0
     readonly property int boxesLeftToBuy: { caseRev; return boxesLeft(); }
     readonly property int prepaidBoxes: { caseRev; return caseState ? caseState.prepaid || 0 : 0; }
     readonly property bool boxPaidNow: { caseRev; return !!(caseState && caseState.boxPaid); }
     // C: the rest of this case, or once that's paid for, another whole case (its boxes carry over)
-    readonly property int caseCost: Progress.casePrice(cfg.family, cfg.packsPerBox, boxesLeftToBuy > 0 ? boxesLeftToBuy : cfg.boxes, progress, setId)
+    readonly property int caseCost: Progress.casePrice(cfg, boxesLeftToBuy > 0 ? boxesLeftToBuy : cfg.boxes, progress, setId)
 
     // boxes of this case not paid for yet (the open one counts once it's paid)
     function boxesLeft() {
@@ -312,7 +312,7 @@ Item {
         if (offTheRecord || !inBoxScreen || !caseState) return;
         // worked out now, not from a binding: pressing C fast must not pay twice for the same boxes
         var rest = boxesLeft(), n = rest > 0 ? rest : cfg.boxes;
-        var cost = Progress.casePrice(cfg.family, cfg.packsPerBox, n, progress, setId);
+        var cost = Progress.casePrice(cfg, n, progress, setId);
         if (!prog(p => Progress.pay(p, cost, false, "cases"))) {
             toast("Not enough berries: " + (rest > 0 ? "the rest of this case (" + n + " boxes)" : "another case (" + n + " boxes)")
                   + " is " + Progress.format(cost) + ".");
@@ -470,8 +470,8 @@ Item {
         if (offTheRecord) return;
         var info = sets[set] || {}, c = Tiers.setConfig(info), ids = Object.keys(sets);
         var boxes = kind === "case" ? c.boxes : 1;
-        var price = kind === "case" ? Progress.casePrice(c.family, c.packsPerBox, c.boxes, progress, set)
-                                    : Progress.boxPrice(c.family, c.packsPerBox, progress, set);
+        var price = kind === "case" ? Progress.casePrice(c, c.boxes, progress, set)
+                                    : Progress.boxPrice(c, progress, set);
         var age = ids.length > 1 ? (ids.length - 1 - ids.indexOf(set)) / (ids.length - 1) : 0;
         if (!prog(p => Progress.buySealed(p, set, info.name || set, kind, boxes, price, age))) {
             toast("Not enough berries: that's " + Progress.format(price) + ".");

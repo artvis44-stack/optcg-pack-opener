@@ -79,18 +79,51 @@ var FAMILIES = {
     }
 };
 
+// Japanese boosters (sets.json "lang": "jp"): the same cards (Japanese text),
+// a different product. Packs are 6 cards: commons, an uncommon, and one slot
+// that's a Rare or better in about half the packs (an Uncommon otherwise).
+// A box has ~3-4 SRs, 4 Leaders and only 1-2 hits: the box patterns the JP
+// community tallies are "2 parallels" 25%, "1 parallel" 42%, "1 SEC" 33%,
+// so every box has one. A case (carton) is 12 boxes; premium boosters are
+// 10 packs of 10 a box. No box toppers, no DON!! cards in these packs. All
+// community estimates (toreca-begin, note.com tallies, torecamap): Bandai
+// publishes none.
+var FAMILIES_JP = {
+    main: {
+        packsPerBox: 24, boxes: 12,
+        slots: ["C", "C", "C", "C", "UC", "HIT"],
+        srPerBox: 3.5, leadersPerBox: 4, donPerBox: 0, rPerBox: 7.5, hitsPerBox: [1, 2],
+        fixed:   { AA: 8, SEC: 4, L_AA: 2, SEC_AA: 1, SP: 1 },
+        lottery: { TR: 0.75, MANGA: 0.1, SUPER: 0.1, SUPER_L: 0.1, SP_GOLD: 0.05, PANDA: 0 }
+    },
+    extra: {
+        packsPerBox: 24, boxes: 12,
+        slots: ["C", "C", "C", "C", "C", "HIT"],
+        srPerBox: 3, leadersPerBox: 2, donPerBox: 0, rPerBox: 9, hitsPerBox: [1, 2],
+        fixed:   { AA: 8, SEC: 3, L_AA: 1, SEC_AA: 1, SP: 1 },
+        lottery: { MANGA: 0.1, TR: 0.3 }
+    },
+    premium: {
+        packsPerBox: 10, boxes: 10,
+        slots: ["C", "C", "C", "UC", "UC", "UC", "R", "FOIL", "RARE", "HIT"],
+        srPerBox: 3.5, leadersPerBox: 0, donPerBox: 0, hitsPerBox: [2, 4],
+        fixed:   { AA: 20, TEX: 6, SEC: 10, SEC_AA: 3, L_AA: 2 },
+        lottery: { SP: 1, MANGA: 0.5 }
+    }
+};
+
 // The full config for a set: its family's defaults with the set's overrides
 // (from sets.json) merged in.
 function setConfig(setInfo) {
     var family = (setInfo && setInfo.family) || "main";
-    var fam = FAMILIES[family];
+    var fam = (setInfo && setInfo.lang === "jp" ? FAMILIES_JP : FAMILIES)[family];
     var cfg = {
         family: family,
         era: (setInfo && setInfo.era) || "random",
         packsPerBox: fam.packsPerBox, boxes: fam.boxes, slots: fam.slots,
         fixed: Object.assign({}, fam.fixed), lottery: Object.assign({}, fam.lottery)
     };
-    ["srPerBox", "leadersPerBox", "donPerBox", "goldDonPerBox", "donFront", "hitsPerBox"].forEach(function (k) {
+    ["srPerBox", "leadersPerBox", "donPerBox", "goldDonPerBox", "donFront", "hitsPerBox", "rPerBox", "packsPerBox", "boxes", "slots"].forEach(function (k) {
         cfg[k] = setInfo && setInfo[k] !== undefined ? setInfo[k] : fam[k];
     });
     var over = (setInfo && setInfo.case) || {};
@@ -99,6 +132,9 @@ function setConfig(setInfo) {
         else cfg.lottery[t] = over[t];
     });
     cfg.packsPerCase = cfg.packsPerBox * cfg.boxes;
+    cfg.lang = (setInfo && setInfo.lang) || "en";
+    cfg.boxUsd = setInfo && setInfo.boxUsd;   // the market price of a sealed box (Progress.boxPrice)
+    cfg.boxJpy = setInfo && setInfo.boxJpy;
     return cfg;
 }
 
@@ -175,10 +211,19 @@ function buildPack(byTier, cfg, spec) {
     if (spec.don) slots.splice(lastC--, 1);           // the DON!! takes a common's place...
     if (spec.leader) slots[lastC] = spec.leader;      // ...and a Leader replaces another
     slots.forEach(function (s) {
-        add(s === "RARE" ? (spec.rare || "R") : s === "HIT" ? (spec.hit || "R") : s);
+        add(s === "RARE" ? (spec.rare || "R") : s === "HIT" ? hitOrRare(byTier, cfg, spec.hit) : s);
     });
     if (spec.don && !cfg.donFront) add(spec.don);     // ...at the very back
     return out;
+}
+
+// The hit slot without a hit: a Rare. Japanese packs have only rPerBox Rares
+// a box there, so the rest of those packs get an Uncommon instead.
+function hitOrRare(byTier, cfg, hit) {
+    if (hit && hit !== "R") return hit;
+    if (cfg.rPerBox === undefined || !byTier.UC) return "R";
+    var open = cfg.packsPerBox - cfg.srPerBox - (cfg.hitsPerBox ? (cfg.hitsPerBox[0] + cfg.hitsPerBox[1]) / 2 : 1);
+    return Math.random() < cfg.rPerBox / Math.max(1, open) ? "R" : "UC";
 }
 
 // srScale / premiumScale: how much likelier a hit is in a pack that may hold

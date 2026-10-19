@@ -14,10 +14,11 @@
 
 // ---- the economy -----------------------------------------------------------------
 
-var PACK_PRICE = { main: 500, extra: 500, premium: 800 };   // ฿ (an English pack is ~$5)
-var BOX_DISCOUNT = 0.95;
+var PACK_PRICE = { main: 500, extra: 500, premium: 800 };   // ฿, for a set without a market price
+var BOX_DISCOUNT = 0.95;           // a box against its packs bought one by one
 var CASE_DISCOUNT = 0.85;          // on the boxes left in the case
-var USD_TO_BERRY = 100;            // selling: $1 market value = 100 ฿
+var USD_TO_BERRY = 100;            // $1 market value = 100 ฿, for cards and sealed product alike
+var JPY_PER_USD = 152;             // Japanese prices are in yen
 var INCOME_PER_MINUTE = 4;         // while you're at the computer, plus more the more your collection is worth
 var INCOME_VALUE_SCALE = 2;        // + 2 × √(collection value / 1,000) ฿ a minute
 var INCOME_CAP_MINUTES = 500;      // a day's income is capped at this many minutes' worth
@@ -37,18 +38,29 @@ var BASE_VALUE = {
     SUPER: 100000
 };
 
-// p (optional): the player, for crew discounts; set (optional): the set, for the week's featured set
-function packPrice(family, p, set) {
-    return Math.round((PACK_PRICE[family] || PACK_PRICE.main) * (p && hasCrew(p, "sanji") ? 0.9 : 1) * featuredDiscount(p, set));
+// Sealed prices follow the real market for a sealed box of the set (sets.json
+// "boxUsd" or "boxJpy"), so a long-gone set's box costs what it does today;
+// a pack is a 24th (or so) of that, a little dearer one at a time.
+// cfg: Tiers.setConfig(the set); p (optional): the player, for crew discounts;
+// set (optional): the set id, for the week's featured set
+function marketBox(cfg) {
+    if (cfg.boxUsd) return cfg.boxUsd * USD_TO_BERRY;
+    if (cfg.boxJpy) return cfg.boxJpy / JPY_PER_USD * USD_TO_BERRY;
+    return (PACK_PRICE[cfg.family] || PACK_PRICE.main) * cfg.packsPerBox * BOX_DISCOUNT;
 }
 
-function boxPrice(family, packsPerBox, p, set) {
-    var full = (PACK_PRICE[family] || PACK_PRICE.main) * packsPerBox * BOX_DISCOUNT;
-    return Math.round(full * (p && hasCrew(p, "franky") ? 0.9 : 1) * featuredDiscount(p, set) / 100) * 100;
+function packPrice(cfg, p, set) {
+    var base = marketBox(cfg) / BOX_DISCOUNT / cfg.packsPerBox;
+    var step = base < 1000 ? 10 : 50;
+    return Math.round(base * (p && hasCrew(p, "sanji") ? 0.9 : 1) * featuredDiscount(p, set) / step) * step;
 }
 
-function casePrice(family, packsPerBox, boxesLeft, p, set) {
-    return Math.round(boxPrice(family, packsPerBox, p, set) * boxesLeft * CASE_DISCOUNT / 100) * 100;
+function boxPrice(cfg, p, set) {
+    return Math.round(marketBox(cfg) * (p && hasCrew(p, "franky") ? 0.9 : 1) * featuredDiscount(p, set) / 100) * 100;
+}
+
+function casePrice(cfg, boxesLeft, p, set) {
+    return Math.round(boxPrice(cfg, p, set) * boxesLeft * CASE_DISCOUNT / 100) * 100;
 }
 
 function featuredDiscount(p, set) {
