@@ -889,6 +889,13 @@ Item {
         return (c.set || setId) + ":" + c.image.split("/").pop();
     }
 
+    // a card with its picture in this device's cache: slabs and grading orders
+    // synced from another device carry that device's path
+    function localCard(c) {
+        var k = c.key || cardKey(c), cut = k.indexOf(":");
+        return Object.assign({}, c, { image: cacheRoot + "/" + k.slice(0, cut) + "/" + k.slice(cut + 1) });
+    }
+
     // ---- the whole collection, across sets (the binder's "All sets" view) --------------
 
     // every owned printing as a card: { id, name, tier, type, image, set }, plus its count
@@ -896,7 +903,7 @@ Item {
     readonly property var slabsByKey: {
         var out = {}, g = collection.graded || {};
         Object.keys(g).forEach(id => {
-            var s = Object.assign({ slabId: id }, g[id]);
+            var s = Object.assign({ slabId: id }, localCard(g[id]));
             var k = s.key || (s.set + ":" + (s.image || "").split("/").pop());
             (out[k] = out[k] || []).push(s);
         });
@@ -1687,7 +1694,7 @@ Item {
             }
             Slab {
                 width: 240
-                card: slabReveal.visible ? celebration.c.slab : null
+                card: slabReveal.visible ? stage.localCard(celebration.c.slab) : null
                 labelStyle: Progress.slabStyle(stage.progress)
                 time: stage.t
                 hoverTilt: false
