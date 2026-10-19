@@ -1169,15 +1169,17 @@ Item {
 
     // ---- backdrop -------------------------------------------------------
 
-    // the backdrop is a cosmetic (the Port); playmats are downloaded the first time they're needed
+    // the backdrop is a cosmetic (the Port); playmats are downloaded the first time they're
+    // needed, except the ones that come with the app (playmat.file, in app/)
     readonly property var backdrop: Progress.backdrop(progress)
     property int playmatVersion: 0          // bumped when a playmat picture arrives
     property var playmatTried: ({})
     function playmatUrl(item) {
+        if (item && item.playmat && item.playmat.file) return Qt.resolvedUrl(item.playmat.file);
         return item && item.playmat ? "file://" + cacheRoot + "/playmats/" + item.id + ".img?v=" + playmatVersion : "";
     }
     function fetchPlaymat(item) {
-        if (!item || !item.playmat || playmatTried[item.id]) return;
+        if (!item || !item.playmat || item.playmat.file || playmatTried[item.id]) return;
         playmatTried[item.id] = true;
         host.run([python, "-I", "-u", fetchScript, "--playmat", item.id, String(item.playmat.tcg || ""), item.playmat.page || ""],
                  null, code => playmatVersion++);
