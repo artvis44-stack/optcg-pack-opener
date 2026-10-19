@@ -39,8 +39,11 @@ The app is split into a platform-independent part (`app/`) and a thin host.
   `run()`, `appPath()`, `startShowcase()`. A port (e.g. macOS with PySide6) provides these and the windows.
 - `showcase.qml`: the desktop showcase window (Linux); `app/ShowcaseCard.qml` is the shared card
 - `app/sets.json`: every booster set: product family (main / extra / premium), hit-mapping era,
-  TCGplayer ids of its pack/box photos and DON!! cards, and the per-set rates the research found.
-- `app/SetPicker.qml`: the set picker
+  TCGplayer ids of its pack/box photos and DON!! cards, the per-set rates the research found, and
+  the market price of a sealed box (`boxUsd`, or `boxJpy` for Japanese sets; October 2026:
+  TCGplayer / eBay medians for English, Japanese shop and resale prices). Japanese sets (`-JP`,
+  `"lang": "jp"`) also name their Bandai card-list series and their English counterparts (`en`).
+- `app/SetPicker.qml`: the set picker (English and Japanese tabs)
 - `app/Stage.qml`: the flow (pack → reveal → summary, box mode), layout and effects
 - `app/PortView.qml`: the Port (ship, crew, shop, grading, sealed, cosmetics; the rules are in `app/progress.js`)
 - `app/Sounds.qml`, `app/sounds/`: sound effects (tearing, card flips, a charge-up before big hits, chimes
@@ -60,13 +63,30 @@ The app is split into a platform-independent part (`app/`) and a thin host.
   set's booster DON!! cards (TCGplayer scans) and the blue deck, red Leader and DON!! card backs
   (`assets/back*.png`, from the official rule-manual PDF). Needs `poppler` and `imagemagick` for
   the photos and backs; without them the widget falls back to drawn versions. If optcgapi is
-  unreachable, the cached card list is reused.
+  unreachable, the cached card list is reused. Japanese sets come from Bandai's Japanese card
+  list (via the [punk-records](https://github.com/buhbbl/punk-records) scrape, or the official
+  page when that doesn't have the set yet), with Japanese card images; names and rarities come
+  from the English set where it has the same printing (otherwise the Japanese name is kept).
+
+## Japanese sets
+
+Every Japanese booster up to OP-17 (OP-01–OP-17, EB-01–EB-04, PRB-01/02), on the picker's
+Japanese tab. They open like the real product: 6-card packs (4 commons, an uncommon and an
+"R or better" slot), 24 a box, 12 boxes a case, with ~3.5 SRs and 4 Leaders a box and just
+1–2 hits (every box has an alt art or a SEC: 2 alt arts 25%, 1 alt art 42%, a SEC 33%); a
+case has ~4 SECs, 8 alt arts, 2 Leader parallels and an SP, a manga rare 1 case in 10. Premium
+boosters are 10 packs of 10. No DON!! cards or box toppers. Bandai publishes no odds, so these
+are the Japanese community's box tallies. Japanese cards are valued at half their English
+counterpart's market price (there's no public Japanese price list); the pack photos are the
+English product's, marked JP.
 - `open-pack.sh [box]`: the toggle launcher (fetches data on the first run)
 
 ## Progression: berries, bounties and focus
 
-Packs and boxes cost berries (฿): 500 a pack (800 for premium boosters), a box 5% off, the rest
-of a case 15% off. You earn them by:
+Packs and boxes cost berries (฿) at today's market price of the sealed product ($1 = 100 ฿, ¥152 =
+$1): a box of the newest sets ~฿25,000–30,000, long-gone ones far more (OP-05 ฿95,000, OP-01
+฿140,000), Japanese boxes ฿6,000–28,000. A pack is a 24th of the box plus 5%, the rest of a case
+15% off. You earn them by:
 
 - **being at your computer**: while you're active (idle time doesn't count; Hyprland's idle
   detection on Linux, the system idle timer on macOS) you earn 4 ฿ a minute plus 2 × √(collection

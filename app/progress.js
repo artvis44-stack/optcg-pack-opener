@@ -19,6 +19,7 @@ var BOX_DISCOUNT = 0.95;           // a box against its packs bought one by one
 var CASE_DISCOUNT = 0.85;          // on the boxes left in the case
 var USD_TO_BERRY = 100;            // $1 market value = 100 ฿, for cards and sealed product alike
 var JPY_PER_USD = 152;             // Japanese prices are in yen
+var JP_CARD_PRICE = 0.5;           // a Japanese single against the same English one (no public JP price list)
 var INCOME_PER_MINUTE = 4;         // while you're at the computer, plus more the more your collection is worth
 var INCOME_VALUE_SCALE = 2;        // + 2 × √(collection value / 1,000) ฿ a minute
 var INCOME_CAP_MINUTES = 500;      // a day's income is capped at this many minutes' worth

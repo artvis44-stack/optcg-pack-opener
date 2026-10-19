@@ -9,7 +9,10 @@ Usage: fetch_cards.py [SET_ID]   one set (default OP-17), e.g. OP-05, EB-01, PRB
 Writes $XDG_CACHE_HOME/optcg/<SET_ID>/cards.json, one image per card, and the
 set's pack/box photos; the card backs (shared by all sets) go in assets/.
 Card data comes from the community API at optcgapi.com, product and DON!!
-photos from Bandai / TCGplayer. Card art belongs to Bandai / Eiichiro Oda --
+photos from Bandai / TCGplayer. Japanese sets (sets.json "lang": "jp") come
+from Bandai's Japanese card list, through the punk-records scrape of it or,
+failing that, the official page itself; English names and rarities come from
+the matching English set where it has the card. Card art belongs to Bandai / Eiichiro Oda --
 this is a personal cache, don't redistribute it.
 """
 import glob
@@ -31,6 +34,11 @@ OFFICIAL_URL = "https://en.onepiece-cardgame.com/products/boosters/{}/images/oth
 RULES_PDF = "https://en.onepiece-cardgame.com/pdf/rule_manual.pdf"
 # TCGplayer product photos: sealed packs/boxes and DON!! cards (ids in app/sets.json)
 TCGPLAYER_IMG = "https://tcgplayer-cdn.tcgplayer.com/product/{}_in_1000x1000.jpg"
+# Japanese card lists: the punk-records scrape (JSON), else Bandai's own page;
+# a set's "series" id in sets.json picks it (550101 = OP-01)
+JP_DATA = "https://raw.githubusercontent.com/buhbbl/punk-records/HEAD/japanese/data/{}.json"
+JP_CARDLIST = "https://www.onepiece-cardgame.com/cardlist/?series={}"
+JP_SITE = "https://www.onepiece-cardgame.com/cardlist/"
 UA = {"User-Agent": "Mozilla/5.0 (optcg-pack-widget/1.0)"}
 
 HERE = os.path.dirname(os.path.realpath(__file__))
@@ -80,6 +88,118 @@ def tier_of(card):
     return rarity
 
 
+# punk-records rarity names, and the official list's short ones
+JP_RARITY = {"Leader": "L", "Common": "C", "Uncommon": "UC", "Rare": "R", "SuperRare": "SR",
+             "SecretRare": "SEC", "TreasureRare": "TR", "Special": "SP", "Promo": "R",
+             "L": "L", "C": "C", "UC": "UC", "R": "R", "SR": "SR", "SEC": "SEC", "TR": "TR",
+             "SPカード": "SP", "SP": "SP", "P": "R"}
+JP_COLOR = {"赤": "Red", "緑": "Green", "青": "Blue", "紫": "Purple", "黒": "Black", "黄": "Yellow"}
+# the tag an English name gets for a tier (Tiers.displayName strips it again)
+TIER_TAG = {"AA": "Parallel", "L_AA": "Parallel", "SEC_AA": "Parallel", "MANGA": "Manga",
+            "SUPER": "Super Alternate Art", "SUPER_L": "Super Alternate Art", "SP": "SP", "TR": "TR"}
+
+
+def jp_tier(card_id, rarity, premium=False):
+    """Pull tier of a Japanese printing from its rarity and its parallel number
+    (OP01-120_p2): the first parallel is the alternate art, later ones of an
+    SR / SEC the rarer treatments (manga, super parallel). Premium boosters
+    are reprints that are nearly all parallels, so there an SR's is just one."""
+    m = re.search(r"_p(\d+)$", card_id)
+    if rarity in ("SP", "TR") or not m:
+        return rarity
+    if rarity == "L":
+        return "L_AA"
+    if rarity == "SEC":
+        return "SEC_AA" if m.group(1) == "1" else "MANGA"
+    if rarity == "SR" and m.group(1) != "1" and not premium:
+        return "SUPER"
+    return "AA"
+
+
+def jp_card_list(series):
+    """[{id, rarity, type, color, name, url}] of a Japanese set, from the
+    punk-records JSON, else parsed off Bandai's card list page."""
+    try:
+        raw = json.loads(fetch(JP_DATA.format(series)))
+        out = [{"id": c["id"], "rarity": JP_RARITY.get(c.get("rarity"), "C"),
+                "type": c.get("category") or "", "color": " ".join(c.get("colors") or []),
+                "name": c.get("name") or c["id"],
+                "url": (c.get("img_full_url") or "").split("?")[0]} for c in raw]
+        if out:
+            return out
+    except Exception as e:
+        print(f"punk-records has no {series} ({e}); reading Bandai's card list", flush=True)
+    return parse_jp_cardlist(fetch(JP_CARDLIST.format(series)).decode("utf-8", "replace"))
+
+
+def parse_jp_cardlist(html):
+    out = []
+    for block in re.findall(r'<dl class="modalCol" id="([^"]+)">(.*?)</dl>', html, re.S):
+        card_id, body = block
+        info = re.search(r'<div class="infoCol">\s*<span>([^<]*)</span>\s*\|\s*<span>([^<]*)</span>\s*\|\s*<span>([^<]*)</span>', body)
+        img = re.search(r'data-src="([^"]+)"', body)
+        name = re.search(r'<div class="cardName">([^<]*)</div>', body)
+        color = re.search(r'<div class="color"><h3>[^<]*</h3>([^<]*)</div>', body)
+        if not (info and img):
+            continue
+        out.append({"id": card_id, "rarity": JP_RARITY.get(info.group(2).strip(), "C"),
+                    "type": info.group(3).strip().title(),
+                    "color": " ".join(JP_COLOR.get(c, c) for c in (color.group(1) if color else "").strip().split("/") if c),
+                    "name": name.group(1).strip() if name else card_id,
+                    "url": urllib.parse.urljoin(JP_SITE, img.group(1)).split("?")[0]})
+    return out
+
+
+def english_cards(en_sets):
+    """The English printings, for names and tiers: {image id: card}. The
+    set's English counterparts (sets.json "en") come from the local download
+    if there is one, else optcgapi; any other English set you've downloaded
+    helps too (the SPs reprint older sets' cards)."""
+    out = {}
+    local = [s for s, i in SETS.items() if i.get("lang") != "jp" and s not in en_sets
+             and os.path.exists(os.path.join(ROOT, s, "cards.json"))]
+    for en in list(en_sets) + local:
+        try:
+            with open(os.path.join(ROOT, en, "cards.json")) as f:
+                cards = json.load(f)["cards"]
+        except Exception:
+            if en in local:
+                continue
+            try:
+                cards = [{"id": c["card_image_id"], "name": c["card_name"], "tier": tier_of(c)}
+                         for c in json.loads(fetch(API.format(en)))]
+            except Exception as e:
+                print(f"no English names from {en} ({e})", flush=True)
+                continue
+        for c in cards:
+            if c.get("tier") and c.get("type") != "DON!!":
+                out.setdefault(c["id"], c)
+    return out
+
+
+def jp_cards(set_id, info):
+    """A Japanese set's cards (still to download) in the cards.json format."""
+    en = english_cards(info.get("en", []))
+    base_names = {}
+    for cid, c in en.items():
+        if "_p" not in cid:
+            base_names.setdefault(cid, re.sub(r"\s*\([^)]*\)", "", c["name"]).strip())
+    cards, seen = [], set()
+    for c in jp_card_list(info["series"]):
+        if c["id"] in seen or not c["url"]:
+            continue
+        seen.add(c["id"])
+        match = en.get(c["id"])
+        tier = match["tier"] if match else jp_tier(c["id"], c["rarity"], info.get("family") == "premium")
+        base = base_names.get(c["id"].split("_")[0])
+        name = match["name"] if match else \
+            (base + (f" ({TIER_TAG[tier]})" if tier in TIER_TAG and "_p" in c["id"] else "")) if base else c["name"]
+        cards.append({"id": c["id"], "name": name, "nameJp": c["name"], "rarity": c["rarity"], "tier": tier,
+                      "color": c["color"], "type": c["type"],
+                      "url": c["url"]})
+    return cards
+
+
 def fetch(url):
     with urllib.request.urlopen(urllib.request.Request(url, headers=UA), timeout=30) as r:
         return r.read()
@@ -116,9 +236,9 @@ def download(card, cache):
 
 def fetch_product_images(set_id, info, cache):
     """Sealed pack and box photos -> <set>/pack.png, <set>/box.png"""
-    for name, official, tcg in (("pack", "product_pack", info["pack"]), ("box", "product_booster", info["box"])):
+    for name, official, tcg in (("pack", "product_pack", info.get("pack")), ("box", "product_booster", info.get("box"))):
         dest = os.path.join(cache, name + ".png")
-        if os.path.exists(dest):
+        if os.path.exists(dest) or not (tcg or "official" in info):
             continue
         try:
             if "official" in info:
@@ -225,6 +345,11 @@ def fetch_set(set_id):
     fetch_product_images(set_id, info, cache)
     fetch_card_backs()
     out_path = os.path.join(cache, "cards.json")
+    if info.get("lang") == "jp":
+        cards = jp_cards(set_id, info)
+        if not cards:
+            sys.exit(f"no cards found for {set_id}")
+        return save_set(set_id, info, cache, cards)
     try:
         raw = json.loads(fetch(API.format(set_id)))
     except Exception as e:
@@ -257,7 +382,12 @@ def fetch_set(set_id):
             "type": c.get("card_type") or "",
             "url": c["card_image"],
         })
+    save_set(set_id, info, cache, cards)
 
+
+def save_set(set_id, info, cache, cards):
+    """Download the cards' images and write <set>/cards.json."""
+    out_path = os.path.join(cache, "cards.json")
     print(f"{set_id}: {len(cards)} cards, downloading images to {cache}", flush=True)
     with ThreadPoolExecutor(max_workers=8) as pool:
         done = []

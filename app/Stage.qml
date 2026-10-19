@@ -468,7 +468,8 @@ Item {
     // sealed products: kind "box" | "case"; older sets gain value faster
     function buySealed(set, kind) {
         if (offTheRecord) return;
-        var info = sets[set] || {}, c = Tiers.setConfig(info), ids = Object.keys(sets);
+        var info = sets[set] || {}, c = Tiers.setConfig(info);
+        var ids = Object.keys(sets).filter(id => (sets[id].lang || "en") === (info.lang || "en"));   // release order
         var boxes = kind === "case" ? c.boxes : 1;
         var price = kind === "case" ? Progress.casePrice(c, c.boxes, progress, set)
                                     : Progress.boxPrice(c, progress, set);
@@ -527,28 +528,38 @@ Item {
         markets = m;
     }
 
-    // market prices for a set (default: the current one), cached per day in market/<set>.json
+    // market prices for a set (default: the current one), cached per day in market/<set>.json.
+    // There's no public price list for Japanese cards: a Japanese set's come from its
+    // English counterparts' (the same printing, so the same id and English name), scaled
+    // by Progress.JP_CARD_PRICE.
     function loadMarket(id) {
         id = id || setId;
         var path = dataDir + "/market/" + id + ".json", cached = null;
         try { cached = JSON.parse(host.readText(path) || "null"); } catch (e) {}
         if (cached) setMarket(id, cached.prices);
         if (cached && cached.day === Progress.dayOf(Date.now())) return;
-        var xhr = new XMLHttpRequest();
-        xhr.onreadystatechange = function () {
-            if (xhr.readyState !== XMLHttpRequest.DONE || xhr.status !== 200) return;
-            try {
-                var prices = {};
-                JSON.parse(xhr.responseText).forEach(c => {
-                    if (c.market_price !== null && c.market_price !== undefined) prices[c.card_image_id + "|" + c.card_name] = Number(c.market_price);
-                });
+        var info = sets[id] || {};
+        var sources = info.lang === "jp" ? (info.en || []) : [id];
+        var scale = info.lang === "jp" ? Progress.JP_CARD_PRICE : 1;
+        var prices = {}, left = sources.length;
+        sources.forEach(src => {
+            var xhr = new XMLHttpRequest();
+            xhr.onreadystatechange = function () {
+                if (xhr.readyState !== XMLHttpRequest.DONE) return;
+                try {
+                    if (xhr.status === 200) JSON.parse(xhr.responseText).forEach(c => {
+                        if (c.market_price !== null && c.market_price !== undefined)
+                            prices[c.card_image_id + "|" + c.card_name] = Number(c.market_price) * scale;
+                    });
+                } catch (e) {}
+                if (--left > 0 || !Object.keys(prices).length) return;   // all in, and something came back
                 host.writeText(path, JSON.stringify({ day: Progress.dayOf(Date.now()), prices: prices }));
                 stage.setMarket(id, prices);
                 if (!stage.offTheRecord) stage.refreshValue();
-            } catch (e) {}
-        };
-        xhr.open("GET", "https://optcgapi.com/api/sets/" + id + "/");
-        xhr.send();
+            };
+            xhr.open("GET", "https://optcgapi.com/api/sets/" + src + "/");
+            xhr.send();
+        });
     }
 
     // sell `count` copies of these cards: [{ card, count }]; returns ฿ earned
