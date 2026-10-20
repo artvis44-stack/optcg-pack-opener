@@ -149,9 +149,10 @@ there are wanted posters for them
 - **Ship and crew.** Upgrade from a rowboat to the Going Merry and the Thousand Sunny (each about 5×
   the last, up to ฿60M): more passive income, free packs faster and more of them. Recruit the
   Straw Hats, each with a perk: Zoro doubles focus berries, Nami +25% income, Usopp better hit odds
-  in single packs, Sanji cheaper packs, Chopper saves a streak that missed one day, Robin tells you
-  how good a sealed pack is (the pack waiting in each set is saved until you open it, so closing the
-  app or switching sets doesn't deal a new one), Franky cheaper boxes and cases, Brook +10% when selling, Jinbe a fourth
+  in single packs, Sanji cheaper packs, Chopper saves a streak that missed one day, Robin knows
+  the vintage market (her notes, from the Port or at the card show, price every vintage card and
+  sealed product, raw and graded; at the show she says what a vintage listing is worth if it's
+  genuine, and what she makes of the price), Franky cheaper boxes and cases, Brook +10% when selling, Jinbe a fourth
   daily bounty, Luffy (Gear 5) god packs twice as likely.
 - **Card shop.** Eight deals a day from your downloaded sets at market price + 10% (once each), random
   each day; they can be cards you already have, and each deal says how many you own. You can't

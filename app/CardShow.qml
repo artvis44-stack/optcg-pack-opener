@@ -12,6 +12,8 @@ import "progress.js" as Progress
 // Click something to pick it up: check it (the loupe, the light, the back... a few
 // checks a visit, Progress.checkListing), ask the vendor about it, haggle once, buy.
 // You find out who was who when you leave (Esc), and the recap shows what you really got.
+// With Nico Robin aboard, her notes (vintage prices) come along, and she says what a vintage
+// listing would be worth if it's genuine (Stage.robinWorth).
 Item {
     id: show
 
@@ -24,6 +26,8 @@ Item {
     property string inspected: ""        // the listing in your hands
     property bool confirmLeave: false
     property var visited: ({})           // stalls you've walked up to this visit
+    property bool notes: false           // Robin's notes, open
+    readonly property bool robin: Progress.hasCrew(p, "robin")
 
     readonly property var stall: stallId ? stock.filter(t => t.id === stallId)[0] || null : null
     readonly property var listing: inspected ? Progress.showListing(p, inspected) : null
@@ -32,6 +36,7 @@ Item {
 
     function back() {
         if (recap) stage.closeShow();
+        else if (notes) notes = false;
         else if (inspected) inspected = "";
         else if (stallId) stallId = "";
         else if (!confirmLeave) confirmLeave = true;
@@ -53,7 +58,7 @@ Item {
         visited = v;
     }
 
-    onVisibleChanged: if (visible) { inspected = ""; stallId = ""; confirmLeave = false; }
+    onVisibleChanged: if (visible) { inspected = ""; stallId = ""; confirmLeave = false; notes = false; }
 
     // a listing as a card the Card / Slab components draw (a fake looks a little off: how
     // much, and which of a slab's checks show it, come with it)
@@ -76,6 +81,19 @@ Item {
     }
 
     function bought(id) { return !!(s.bought || {})[id]; }
+
+    // Robin on a listing's price: what a genuine one's worth, and what she makes of the ask
+    function robinText(x, worth) {
+        var r = Progress.showPrice(p, x) / worth;
+        var what = x.sealed ? "Sealed and genuine, that goes for about " : x.grade ? "A genuine one in a " + x.grade + " slab goes for about "
+                 : "A genuine copy goes for about ";
+        return "Robin: \"" + what + Progress.format(worth) + ". "
+               + (r < Progress.SHOW_STEAL ? "At this price it's a steal... if it's real. Too cheap is a warning too."
+                  : r < 0.95 ? "That's under market. Worth a closer look."
+                  : r <= 1.1 ? "That's a fair price."
+                  : r <= 1.35 ? "A bit high. Try haggling."
+                  : "Far too much. Don't pay that.") + "\"";
+    }
 
     // a stall's look: its tablecloth, from its name (the same every visit)
     readonly property var cloths: ["#7a2230", "#24507a", "#2f6b46", "#6b4a8a", "#8a5a24", "#2c6a6e", "#7a6a22", "#4a4f5c", "#8a3a5e"]
@@ -204,6 +222,13 @@ Item {
                 fontSize: 13
                 accent: "#ffd56b"
                 onClicked: show.stallId = ""
+            }
+            PillButton {
+                visible: show.robin
+                text: "Robin's notes"
+                fontSize: 13
+                accent: "#c8a0ff"
+                onClicked: show.notes = true
             }
             PillButton {
                 text: show.confirmLeave ? "Leave? You can't come back until the next show. Yes, leave" : "Leave the show"
@@ -501,6 +526,15 @@ Item {
                         color: "#ffd56b"
                         font { pixelSize: 22; weight: Font.Black }
                     }
+                    Text {   // Robin knows the vintage market
+                        readonly property int worth: show.robin && info.lst && !info.sold ? show.stage.robinWorth(info.lst) : 0
+                        width: parent.width
+                        visible: worth > 0
+                        wrapMode: Text.WordWrap
+                        text: worth > 0 ? show.robinText(info.lst, worth) : ""
+                        color: "#c8a0ff"
+                        font { pixelSize: 14; italic: true; weight: Font.Bold }
+                    }
 
                     // the checks: each one a look at one thing about it
                     Text {
@@ -729,5 +763,12 @@ Item {
               : "Click a stall to walk over   ·   Esc: leave the show"
         color: "#9aa0ad"
         font.pixelSize: 14
+    }
+
+    RobinNotes {   // Robin's notes, over everything
+        anchors.fill: parent
+        visible: show.notes
+        stage: show.stage
+        onClose: show.notes = false
     }
 }

@@ -125,7 +125,7 @@ var CREW = [
     { id: "usopp",   name: "Usopp",         card: "Usopp",            price: 40000,   perk: "Single packs: hits 15% likelier" },
     { id: "sanji",   name: "Sanji",         card: "Sanji",            price: 60000,   perk: "Packs cost 10% less" },
     { id: "chopper", name: "Tony Tony Chopper", card: "Tony Tony.Chopper", price: 80000, perk: "Missing a single day doesn't break your streak" },
-    { id: "robin",   name: "Nico Robin",    card: "Nico Robin",       price: 120000,  perk: "Reads a sealed pack: tells you how good it is" },
+    { id: "robin",   name: "Nico Robin",    card: "Nico Robin",       price: 120000,  perk: "Knows the old games: her notes price every vintage card, and at the show she tells you what one is worth" },
     { id: "franky",  name: "Franky",        card: "Franky",           price: 200000,  perk: "Boxes and cases cost 10% less" },
     { id: "brook",   name: "Brook",         card: "Brook",            price: 300000,  perk: "Cards sell for 10% more" },
     { id: "jinbe",   name: "Jinbe",         card: "Jinbe",            price: 500000,  perk: "A fourth daily bounty" },
@@ -355,7 +355,8 @@ var DIAMOND_LABEL = { id: "diamond", name: "Diamond Label", top: "#f4fdff", bott
 // Every Saturday (and SHOW_EXTRA_DAYS) a card show is in town: a hall of vendor stalls
 // (CardShow.qml: a floor plan you walk around, then each stall's table), one visit a
 // show. Once you're in, the app shows no prices (no binder, vault, port or wanted board
-// until you leave): you have to know the market. Vendors are honest, bargain tables,
+// until you leave): you have to know the market. Nico Robin (crew) knows the vintage
+// market: her notes, and her word on what a vintage listing is worth if it's genuine. Vendors are honest, bargain tables,
 // premium dealers, vintage specialists or scammers; which is which you only know for
 // sure after you leave.
 //
