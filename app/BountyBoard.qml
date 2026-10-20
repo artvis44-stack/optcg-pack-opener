@@ -110,11 +110,20 @@ Item {
     }
 
     // ---- today's bounties ------------------------------------------------------------
-    Column {
-        id: daily
+    // scrolls: the bounties and the whole ledger don't fit on a short screen
+    Flickable {
+        id: dailyView
         x: board.width * 0.05
         y: header.y + header.height + 36
-        width: Math.min(420, board.width * 0.28)
+        width: Math.min(460, Math.max(360, board.width * 0.3))
+        height: board.height - y - 44
+        contentHeight: daily.height + 20
+        clip: true
+        boundsBehavior: Flickable.StopAtBounds
+
+    Column {
+        id: daily
+        width: dailyView.width
         spacing: 14
 
         Text {
@@ -215,7 +224,7 @@ Item {
                 Text {
                     required property string modelData
                     required property int index
-                    width: index === 0 ? daily.width - 3 * 70 - 30 : 70
+                    width: index === 0 ? daily.width - 3 * 76 - 30 : 76
                     horizontalAlignment: index === 0 ? Text.AlignLeft : Text.AlignRight
                     text: modelData
                     color: "#7a8090"
@@ -230,7 +239,7 @@ Item {
                     readonly property int col: index % 4
                     readonly property bool total: row[2] === ""
                     readonly property real value: col ? ledger.amount(col - 1, row) : 0
-                    width: col === 0 ? daily.width - 3 * 70 - 30 : 70
+                    width: col === 0 ? daily.width - 3 * 76 - 30 : 76
                     horizontalAlignment: col === 0 ? Text.AlignLeft : Text.AlignRight
                     elide: Text.ElideRight
                     text: col === 0 ? (total ? row[0] : "   " + row[0]) : ledger.short(value)
@@ -250,15 +259,27 @@ Item {
             font.pixelSize: 11
         }
     }
+    }
+
+    Rectangle {   // the left column scrolls: where you are in it
+        visible: dailyView.contentHeight > dailyView.height
+        x: dailyView.x + dailyView.width + 6
+        y: dailyView.y + dailyView.visibleArea.yPosition * dailyView.height
+        width: 5
+        height: Math.max(30, dailyView.visibleArea.heightRatio * dailyView.height)
+        radius: 2.5
+        color: "#ffd56b"
+        opacity: 0.5
+    }
 
     // ---- the season: this week's event and bounties, the month's goals and rewards ----
     Flickable {
         id: season
         visible: board.seasonTab
         anchors {
-            left: daily.right; leftMargin: board.width * 0.04
+            left: dailyView.right; leftMargin: board.width * 0.04
             right: parent.right; rightMargin: board.width * 0.04
-            top: daily.top
+            top: dailyView.top
             bottom: parent.bottom; bottomMargin: 44
         }
         contentHeight: seasonCol.height + 20
@@ -460,9 +481,9 @@ Item {
         id: posters
         visible: !board.seasonTab
         anchors {
-            left: daily.right; leftMargin: board.width * 0.04
+            left: dailyView.right; leftMargin: board.width * 0.04
             right: parent.right; rightMargin: board.width * 0.04
-            top: daily.top
+            top: dailyView.top
             bottom: parent.bottom; bottomMargin: 44
         }
         cellWidth: Math.floor(width / Math.max(1, Math.floor(width / 190)))

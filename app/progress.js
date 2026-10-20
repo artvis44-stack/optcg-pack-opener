@@ -125,7 +125,7 @@ var CREW = [
     { id: "usopp",   name: "Usopp",         card: "Usopp",            price: 40000,   perk: "Single packs: hits 15% likelier" },
     { id: "sanji",   name: "Sanji",         card: "Sanji",            price: 60000,   perk: "Packs cost 10% less" },
     { id: "chopper", name: "Tony Tony Chopper", card: "Tony Tony.Chopper", price: 80000, perk: "Missing a single day doesn't break your streak" },
-    { id: "robin",   name: "Nico Robin",    card: "Nico Robin",       price: 120000,  perk: "Knows the old games: her notes price every vintage card, and at the show she tells you what one is worth" },
+    { id: "robin",   name: "Nico Robin",    card: "Nico Robin",       price: 120000,  perk: "Knows the old games: her notes price every vintage card and sealed product" },
     { id: "franky",  name: "Franky",        card: "Franky",           price: 200000,  perk: "Boxes and cases cost 10% less" },
     { id: "brook",   name: "Brook",         card: "Brook",            price: 300000,  perk: "Cards sell for 10% more" },
     { id: "jinbe",   name: "Jinbe",         card: "Jinbe",            price: 500000,  perk: "A fourth daily bounty" },
@@ -351,12 +351,12 @@ var SLABS = [
 // a Diamond Label slab wears this whatever label you chose; it can't be bought
 var DIAMOND_LABEL = { id: "diamond", name: "Diamond Label", top: "#f4fdff", bottom: "#bfe9ff", text: "#0b2a44", sub: "#2f6f9a" };
 
-// ---- the card show: once a week ---------------------------------------------------
-// Every Saturday (and SHOW_EXTRA_DAYS) a card show is in town: a hall of vendor stalls
+// ---- the card show: every day ---------------------------------------------------
+// Every day a card show is in town: a hall of vendor stalls
 // (CardShow.qml: a floor plan you walk around, then each stall's table), one visit a
 // show. Once you're in, the app shows no prices (no binder, vault, port or wanted board
 // until you leave): you have to know the market. Nico Robin (crew) knows the vintage
-// market: her notes, and her word on what a vintage listing is worth if it's genuine. Vendors are honest, bargain tables,
+// market: her notes come along (she won't appraise a listing for you). Vendors are honest, bargain tables,
 // premium dealers, vintage specialists or scammers; which is which you only know for
 // sure after you leave.
 //
@@ -385,8 +385,6 @@ var DIAMOND_LABEL = { id: "diamond", name: "Diamond Label", top: "#f4fdff", bott
 // value like the others) and opens a pack at a time. A scammer's is resealed: searched,
 // its rare and foil swapped out (Tiers.makeVintagePack).
 
-var SHOW_WEEKDAY = 6;                       // Saturday
-var SHOW_EXTRA_DAYS = ["2026-10-20"];       // the first show, on a Tuesday
 var SHOW_CHECK_BUDGET = 20;                 // checks a visit (one look at one thing about one listing)
 var SHOW_STEAL = 0.75;                      // under this share of market: a steal (the Sharp Eye poster)
 var SHOW_HAGGLE = [0.05, 0.1, 0.2];         // the offers you can make: this much off
@@ -611,13 +609,12 @@ function isGrail(x) {
 // what a raw card is said to be, by its real condition
 var SHOW_CLAIM = { pristine: "Pack fresh", clean: "Near mint", decent: "Lightly played", worn: "Played", damaged: "Damaged" };
 
-// the show's day ("2026-10-24"), or "" when there's none today
+// the show's day ("2026-10-24"): there's one every day
 function showDay(now) {
-    var d = new Date(now), day = dayOf(now);
-    return d.getDay() === SHOW_WEEKDAY || SHOW_EXTRA_DAYS.indexOf(day) >= 0 ? day : "";
+    return dayOf(now);
 }
 
-// the next show you can go to: today's if you haven't been, else the next one ("2026-10-24")
+// the next show you can go to: today's if you haven't been, else tomorrow's ("2026-10-24")
 function nextShowDay(p, now) {
     for (var i = 0; i < 8; i++) {
         var day = showDay(now + i * 86400 * 1000);
