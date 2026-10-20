@@ -551,14 +551,6 @@ Item {
             visible: !!parent.entry
             onClicked: binder.stage.showcase(binder.inspected)
         }
-        PillButton {   // the card shop: order any card, at a markup
-            visible: !!binder.inspected && !binder.stage.offTheRecord
-            readonly property int price: binder.inspected ? Math.round(binder.stage.cardValue(binder.inspected) * Progress.ORDER_MARKUP) : 0
-            text: "Buy one (" + Progress.format(price) + ")"
-            accent: "#ffd56b"
-            enabledLook: binder.stage.progress.berries >= price
-            onClicked: binder.keepScroll(() => binder.stage.buyCard(binder.inspected, price, false))
-        }
     }
 
     Row {   // sell: how many copies

@@ -57,6 +57,7 @@ Item {
                                        // | board (the wanted board: bounties and achievements)
                                        // | sync (the sync account screen) | port (ship, crew, shop, sealed, cosmetics)
                                        // | vault (graded slabs, grading orders, the set registry)
+                                       // | show (the weekly card show: no prices anywhere until you leave)
     property string boardReturn: "pack"
     property string mode: host.env("OPTCG_MODE") === "box" ? "box" : "pack"
     readonly property bool inBoxScreen: phase === "boxSealed" || phase === "boxGrid" || phase === "boxSummary"
@@ -159,6 +160,10 @@ Item {
             } catch (e) {}
         }
         loadSet(setId);
+        if (atShow) {   // you closed the app at the show: you're still there
+            showReturn = "pack";
+            phase = "show";
+        }
         backgroundDownload.start();
     }
 
@@ -354,8 +359,42 @@ Item {
         host.writeText(collectionPath, collectionText);
     }
 
-    readonly property int packCost: Progress.packPrice(cfg, progress, setId)
-    readonly property int boxCost: Progress.boxPrice(cfg, progress, setId)
+    // what a card of each tier of a set is worth on average, ฿: { tier: ฿ } (Progress.boxPrice
+    // prices boxes and packs from it). From the set's cards and its market prices (loaded, or
+    // the cached file); null for a set that isn't downloaded (base values then)
+    property var tierValueCache: ({})
+    function tierValues(id) {
+        var m = markets[id];   // a dependency: prices change when the market comes in
+        var cached = tierValueCache[id];
+        if (cached && cached.m === m && cached.v) return cached.v;
+        var cards = id === setId && db ? db.cards : null;
+        if (!cards) {
+            try { cards = (JSON.parse(host.readText(cacheRoot + "/" + id + "/cards.json") || "null") || {}).cards || null; }
+            catch (e) { cards = null; }
+        }
+        var prices = m;
+        if (!prices) {
+            try { prices = (JSON.parse(host.readText(dataDir + "/market/" + id + ".json") || "null") || {}).prices || null; }
+            catch (e) { prices = null; }
+        }
+        var v = null;
+        if (cards && cards.length) {
+            var sum = {}, n = {}, seen = {};
+            cards.forEach(c => {
+                var k = c.image.split("/").pop();
+                if (seen[k]) return;
+                seen[k] = true;
+                sum[c.tier] = (sum[c.tier] || 0) + Progress.cardValue(c, prices);
+                n[c.tier] = (n[c.tier] || 0) + 1;
+            });
+            v = {};
+            Object.keys(sum).forEach(t => v[t] = sum[t] / n[t]);
+        }
+        tierValueCache[id] = { m: m, v: v };
+        return v;
+    }
+    readonly property int packCost: Progress.packPrice(cfg, progress, setId, tierValues(setId))
+    readonly property int boxCost: Progress.boxPrice(cfg, progress, setId, tierValues(setId))
     // caseState is changed in place, so these depend on caseRev (bumped by saveCase) to stay current
     property int caseRev: 0
     readonly property int boxesLeftToBuy: { caseRev; return boxesLeft(); }
@@ -368,7 +407,7 @@ Item {
     readonly property real godBoost: Progress.packOptions(progress, setId).godBoost || 1
     readonly property var boxOdds: db ? Tiers.boxChances(db.cards, setInfo, godBoost) : null
     // C: the rest of this case, or once that's paid for, another whole case (its boxes carry over)
-    readonly property int caseCost: Progress.casePrice(cfg, boxesLeftToBuy > 0 ? boxesLeftToBuy : cfg.boxes, progress, setId)
+    readonly property int caseCost: Progress.casePrice(cfg, boxesLeftToBuy > 0 ? boxesLeftToBuy : cfg.boxes, progress, setId, tierValues(setId))
 
     // boxes of this case not paid for yet (the open one counts once it's paid)
     function boxesLeft() {
@@ -411,7 +450,7 @@ Item {
         if (offTheRecord || !inBoxScreen || !caseState) return;
         // worked out now, not from a binding: pressing C fast must not pay twice for the same boxes
         var rest = boxesLeft(), n = rest > 0 ? rest : cfg.boxes;
-        var cost = Progress.casePrice(cfg, n, progress, setId);
+        var cost = Progress.casePrice(cfg, n, progress, setId, tierValues(setId));
         if (!prog(p => Progress.pay(p, cost, false, "cases"))) {
             toast("Not enough berries: " + (rest > 0 ? "the rest of this case (" + n + " boxes)" : "another case (" + n + " boxes)")
                   + " is " + Progress.format(cost) + ".");
@@ -745,32 +784,14 @@ Item {
         toast("Took " + title + " out of its display case: its slabs are loose again.");
     }
 
-    // sell a saved set whole, bonus and all
-    function sellCollectionSet(id) {
-        var col = readCollection(), saved = (col.sets || {})[id];
-        if (!saved || offTheRecord) return;
-        var v = savedWorth(id), n = 0;
-        (saved.slabs || []).forEach(s => { if (col.graded && col.graded[s]) { delete col.graded[s]; n++; } });
-        delete col.sets[id];
-        writeCollection(col);
-        prog(p => {
-            Progress.earn(p, v, "sell");
-            return Progress.record(p, { type: "sell", count: n, value: v });
-        });
-        refreshValue();
-        refreshRegistry();
-        sfx("coin");
-        toast("Sold the " + saved.title + " set (" + n + " slabs) for " + Progress.format(v));
-    }
-
     // sealed products: kind "box" | "case"; older sets gain value faster
     function buySealed(set, kind) {
         if (offTheRecord) return;
         var info = sets[set] || {}, c = Tiers.setConfig(info);
         var ids = Object.keys(sets).filter(id => (sets[id].lang || "en") === (info.lang || "en"));   // release order
         var boxes = kind === "case" ? c.boxes : 1;
-        var price = kind === "case" ? Progress.casePrice(c, c.boxes, progress, set)
-                                    : Progress.boxPrice(c, progress, set);
+        var price = kind === "case" ? Progress.casePrice(c, c.boxes, progress, set, tierValues(set))
+                                    : Progress.boxPrice(c, progress, set, tierValues(set));
         var age = ids.length > 1 ? (ids.length - 1 - ids.indexOf(set)) / (ids.length - 1) : 0;
         if (!prog(p => Progress.buySealed(p, set, info.name || set, kind, boxes, price, age))) {
             toast("Not enough berries: that's " + Progress.format(price) + ".");
@@ -787,6 +808,128 @@ Item {
         refreshValue();
         sfx("coin");
         toast("Sold it for " + Progress.format(v));
+    }
+
+    // ---- the card show (CardShow.qml; the rules are in progress.js) ---------------------
+    // While you're there nothing shows a price: the binder, the vault, the port, the
+    // wanted board and the shop stay shut until you leave (and the desktop showcase hides its price).
+    readonly property bool atShow: !offTheRecord && Progress.atShow(progress, Date.now())
+    property string showReturn: "pack"
+    property var showRecap: null         // what you came home with, after you leave
+
+    // say so if you're at the show (and so can't look at prices); true: you are
+    function noPeeking() {
+        if (!atShow) return false;
+        toast("You're at the card show: no looking up prices. Leave the show (Esc) first.");
+        return true;
+    }
+
+    // every card of your downloaded sets, at its market price: what the vendors stock
+    function showPool() {
+        var out = [];
+        downloadedSets().forEach(s => {
+            var cards = [], prices = markets[s.id] || null;
+            try { cards = JSON.parse(host.readText(cacheRoot + "/" + s.id + "/cards.json") || "{}").cards || []; } catch (e) {}
+            if (!prices) {
+                try { prices = (JSON.parse(host.readText(dataDir + "/market/" + s.id + ".json") || "null") || {}).prices || null; }
+                catch (e) { prices = null; }
+            }
+            var seen = {};
+            cards.forEach(c => {
+                var key = s.id + ":" + c.image.split("/").pop();
+                if (seen[key]) return;
+                seen[key] = true;
+                out.push({ key: key, value: Progress.cardValue(c, prices),
+                           card: { id: c.id, name: c.name, tier: c.tier, type: c.type, image: c.image, set: s.id } });
+            });
+        });
+        return out;
+    }
+
+    // K: walk into today's show (or back in, if you're there); says when the next one is otherwise
+    function toggleShow() {
+        if (offTheRecord) return;
+        if (phase === "show") return;   // leaving is Esc, with a question first (CardShow)
+        if (!(phase === "error" || (phase === "pack" && !cardsIn) || phase === "summary" || inBoxScreen || phase === "board" || phase === "port"))
+            return;
+        reloadProgress();
+        if (!atShow) {
+            if (!Progress.canEnterShow(progress, Date.now())) {
+                var next = Progress.nextShowDay(progress, Date.now());
+                toast(Progress.showDay(Date.now()) ? "You've been to today's card show. The next one is on " + next + "."
+                                                   : "No card show today. The next one is on " + next + " (every Saturday).");
+                return;
+            }
+            var pool = showPool();
+            if (!pool.length) {
+                toast("Download a set first (S): the vendors sell cards from the sets you have.");
+                return;
+            }
+            prog(p => { Progress.enterShow(p, Date.now(), pool); return []; });
+            sfx("chime");
+        }
+        showReturn = phase === "board" ? boardReturn : phase === "port" ? portReturn : phase;
+        showRecap = null;
+        phase = "show";
+    }
+
+    // buy a listing: it goes in the collection (a fake goes with the fakes, but you don't know that yet)
+    function buyAtShow(id) {
+        var x = prog(p => { var r = Progress.buyAtShow(p, id, Date.now()); return r ? { listing: r } : null; });
+        if (!x) {
+            var l = Progress.showListing(progress, id);
+            if (l) toast("Not enough berries: that's " + Progress.format(Progress.showPrice(progress, l)) + ".");
+            return false;
+        }
+        var it = x.listing, col = readCollection(), c = it.card;
+        var id36 = Date.now().toString(36) + Math.floor(Math.random() * 1e6).toString(36);
+        if (it.fake) {
+            col.fakes = col.fakes || {};
+            col.fakes[id36] = { card: c, key: it.key, grade: it.grade, paid: Progress.showState(progress).bought[id].price,
+                                day: Progress.showState(progress).day, vendor: (Progress.showVendor(progress, id) || {}).name || "" };
+        } else if (it.grade) {
+            col.graded = col.graded || {};
+            col.graded[id36] = Object.assign({}, c, { key: it.key, grade: it.grade, gradedAt: Date.now(), service: "show", cond: "unchecked" });
+        } else {
+            var e = col.cards[it.key];
+            if (!e) e = col.cards[it.key] = { id: c.id, name: c.name, tier: c.tier, count: 0, first: new Date().toISOString() };
+            Progress.addCopy(e, it.cond || null);
+        }
+        writeCollection(col);
+        prog(p => Progress.record(p, { type: "bought", count: 1, value: Progress.showState(p).bought[id].price }));
+        sfx("coin");
+        toast("Bought " + Tiers.displayName(c) + (it.grade ? " (graded " + it.grade + ")" : "") + " for "
+              + Progress.format(Progress.showState(progress).bought[id].price));
+        return true;
+    }
+
+    // leave the show: the visit's over until the next one; the recap shows what you really got
+    function leaveShow() {
+        var recap = null;
+        prog(p => { recap = Progress.leaveShow(p, Date.now()); return recap ? recap.done : []; });
+        refreshValue();
+        refreshRegistry();
+        showRecap = recap;
+        if (!recap) phase = showReturn;
+    }
+
+    // after the recap: back to where you were
+    function closeShow() {
+        showRecap = null;
+        phase = showReturn === "show" ? "pack" : showReturn;
+        if (phase === "pack" && db && mode !== "box") newPack();
+        stage.forceActiveFocus();
+    }
+
+    // a counterfeit from a show, gone for good
+    function destroyFake(id) {
+        var col = readCollection();
+        if (!col.fakes || !col.fakes[id]) return;
+        delete col.fakes[id];
+        if (!Object.keys(col.fakes).length) delete col.fakes;
+        writeCollection(col);
+        sfx("tear");
+        toast("Destroyed the fake. Good riddance.");
     }
 
     // open it: its boxes wait in that set's box mode
@@ -951,6 +1094,7 @@ Item {
     }
 
     function toggleBoard() {
+        if (noPeeking()) return;
         if (phase === "board") {
             phase = boardReturn;
         } else if (phase === "error" || (phase === "pack" && !cardsIn) || phase === "summary" || inBoxScreen) {
@@ -961,6 +1105,7 @@ Item {
     }
 
     function togglePort() {
+        if (noPeeking()) return;
         if (phase === "port") {
             phase = portReturn;
             stage.forceActiveFocus();
@@ -974,6 +1119,7 @@ Item {
     property string portReturn: "pack"
 
     function toggleVault() {
+        if (noPeeking()) return;
         if (phase === "vault") {
             phase = vaultReturn;
             stage.forceActiveFocus();
@@ -1000,6 +1146,7 @@ Item {
     property string syncReturn: "pack"
 
     function toggleSets() {
+        if (noPeeking()) return;
         if (phase === "sets") {
             phase = pickerReturn;
         } else if (phase === "error" || (phase === "pack" && !cardsIn) || phase === "summary" || inBoxScreen) {
@@ -1140,10 +1287,34 @@ Item {
         phase = "boxSummary";
     }
 
+    // The sealed single pack waiting in each set, saved (pending-packs.json, per computer:
+    // { set: [card key] }) until it's torn open, so closing the app, switching sets or
+    // modes and coming back brings back the same pack: Robin's reading of it holds.
+    readonly property string pendingPath: dataDir + "/pending-packs.json"
+    function readPending() {
+        try { return JSON.parse(host.readText(pendingPath) || "{}"); } catch (e) { return {}; }
+    }
+    function savePending(cards) {
+        if (offTheRecord) return;
+        var all = readPending();
+        if (cards) all[setId] = cards.map(c => cardKey(c));
+        else delete all[setId];
+        host.writeText(pendingPath, JSON.stringify(all));
+    }
+    function pendingPack() {
+        if (offTheRecord) return null;
+        var keys = readPending()[setId];
+        if (!keys || !keys.length) return null;
+        var cards = keys.map(k => cardByKey[k]);
+        return cards.every(c => c) ? cards : null;   // card data changed: deal a new one
+    }
+
     function newPack() {
         var leaders = db.cards.filter(c => c.tier === "L");
         packArt = leaders.length ? "file://" + leaders[Math.floor(Math.random() * leaders.length)].image : "";
-        pack = Tiers.makePack(db.cards, setInfo, forceHit, Progress.packOptions(progress, setId));
+        var waiting = pendingPack();
+        pack = waiting || Tiers.makePack(db.cards, setInfo, forceHit, Progress.packOptions(progress, setId));
+        if (!waiting) savePending(pack);
         packPaid = false;
         revealed = 0;
         cardsIn = false;
@@ -1231,6 +1402,12 @@ Item {
         return out;
     }
 
+    // how many copies of a card you have: { raw, graded } (slabs in display cases count)
+    function ownedCount(key) {
+        var e = collection.cards[key];
+        return { raw: e ? e.count || 0 : 0, graded: (slabsByKey[key] || []).length };
+    }
+
     // every card you have, raw or graded (for completion and the binder)
     function ownedKeys() {
         var out = Object.assign({}, collection.cards);
@@ -1267,6 +1444,7 @@ Item {
     }
 
     function recordPack() {
+        if (mode !== "box") savePending(null);   // opened: the next one is dealt fresh
         packNew = pack.map(c => !collection.cards[cardKey(c)]);
         recordCards(pack);
         recordPackProgress(pack);
@@ -1293,6 +1471,7 @@ Item {
     }
 
     function toggleBinder() {
+        if (noPeeking()) return;
         if (phase === "binder") {
             phase = binderReturn;
         } else if ((phase === "pack" && !cardsIn) || phase === "summary" || inBoxScreen) {
@@ -1403,6 +1582,7 @@ Item {
             else if (phase === "sync") toggleSync();
             else if (phase === "port") portView.back();
             else if (phase === "vault") vaultView.back();
+            else if (phase === "show") showView.back();
             else if (inBoxScreen && boxView.inspected) boxView.inspected = null;
             else if (mode === "box" && phase === "pack" && !cardsIn) backToBox();
             else if (inspectIndex >= 0) inspectIndex = -1;
@@ -1461,6 +1641,9 @@ Item {
             break;
         case Qt.Key_G:
             toggleVault();
+            break;
+        case Qt.Key_K:
+            toggleShow();
             break;
         case Qt.Key_F:
             if (phase === "binder") binderView.filtersOpen = !binderView.filtersOpen;
@@ -1796,6 +1979,7 @@ Item {
             board: "",
             port: "",
             vault: "",
+            show: "",
             sync: "",
             sets: "",
             downloading: "",
@@ -1916,6 +2100,7 @@ Item {
             visible: !stage.offTheRecord
             anchors.baseline: parent.children[1].baseline
             text: "bounty " + Progress.formatBounty(Progress.totalBounty(stage.progress)) + "   (W)   ·   port (P)   ·   vault (G)"
+                  + (Progress.canEnterShow(stage.progress, Date.now()) ? "   ·   card show today (K)" : "")
                   + (Progress.currentEvent(stage.progress) ? "   ·   this week: " + Progress.currentEvent(stage.progress).name : "")
             color: "#c8ccd6"
             font { pixelSize: 14; weight: Font.Bold }
@@ -2164,6 +2349,14 @@ Item {
         anchors.fill: parent
         z: 249
         visible: stage.phase === "vault"
+        stage: stage
+    }
+
+    CardShow {
+        id: showView
+        anchors.fill: parent
+        z: 251
+        visible: stage.phase === "show"
         stage: stage
     }
 

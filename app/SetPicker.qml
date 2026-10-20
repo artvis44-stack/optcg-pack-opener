@@ -54,10 +54,10 @@ Item {
         stage.chooseSet(id, kind);
     }
     function packPrice(id) {
-        return Progress.packPrice(Tiers.setConfig(stage.sets[id]), stage.progress, id);
+        return Progress.packPrice(Tiers.setConfig(stage.sets[id]), stage.progress, id, stage.tierValues(id));
     }
     function boxPrice(id) {
-        return Progress.boxPrice(Tiers.setConfig(stage.sets[id]), stage.progress, id);
+        return Progress.boxPrice(Tiers.setConfig(stage.sets[id]), stage.progress, id, stage.tierValues(id));
     }
     // the set (and way of opening it) on screen right now
     function isCurrent(id, kind) {

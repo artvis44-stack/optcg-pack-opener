@@ -14,6 +14,8 @@ Item {
     property bool tiltRotates: true  // false: tilt only moves the foil (e.g. inside a slab that tilts)
     property bool dropShadow: true
     readonly property var tier: card ? Tiers.tierOf(card) : Tiers.info.C
+    // a counterfeit (the card show): the foil barely shimmers and the print is a little washed out
+    readonly property bool fake: !!card && !!card.fake
     readonly property bool hovered: mouse.containsMouse
 
     signal clicked()
@@ -65,11 +67,17 @@ Item {
                 property variant source: img
                 property vector2d tilt: Qt.vector2d(root.tx, root.ty)
                 property real time: root.time
-                property real intensity: root.tier.holo
-                property real gold: root.tier.gold
+                property real intensity: root.tier.holo * (root.fake ? 0.12 : 1)
+                property real gold: root.fake ? 0 : root.tier.gold
                 property real aspect: width / Math.max(1, height)
                 property real radius: 0.035
                 fragmentShader: Qt.resolvedUrl("shaders/holo.frag.qsb")
+            }
+            Rectangle {   // a counterfeit's print: a faint yellowish wash
+                visible: root.fake
+                anchors.fill: parent
+                radius: root.width * 0.035
+                color: "#33e6d38a"
             }
         }
 

@@ -6,8 +6,9 @@ import "collections.js" as Collections
 // The vault's Sets tab: collections to complete with graded cards
 // (collections.js), and the display cases of the ones you've saved. Saving
 // locks a set's slabs in its case, pays a one-off reward (more for a Gem Set,
-// every slab a 10) and makes the set worth more than its slabs; break it to
-// get them back, or sell it whole.
+// every slab a 10) and makes the set worth more than its slabs toward your
+// passive income. A saved set is a collectable: it can't be sold, only broken
+// to get its slabs back.
 Item {
     id: view
 
@@ -16,11 +17,10 @@ Item {
     property string kind: ""               // collections: "" = every kind, else Collections.KINDS
     property bool startedOnly: true
     property string opened: ""             // the saved set shown big
-    property bool confirmSell: false
     property bool confirmBreak: false
     signal inspect(var slab)
 
-    onOpenedChanged: { confirmSell = false; confirmBreak = false; }
+    onOpenedChanged: confirmBreak = false
     onVisibleChanged: {
         if (!visible) { opened = ""; return; }
         if (stage && !stage.allCards) Qt.callLater(stage.loadAllCards);   // once; a frame to show "loading"
@@ -304,17 +304,6 @@ Item {
             spacing: 12
             PillButton {
                 visible: !view.stage.offTheRecord
-                text: view.confirmSell ? "Sell the whole set? Yes (+" + Progress.format(big.worth) + ")"
-                                       : "Sell the set (+" + Progress.format(big.worth) + ")"
-                accent: "#7fd1b9"
-                onClicked: {
-                    if (!view.confirmSell) { view.confirmSell = true; return; }
-                    view.stage.sellCollectionSet(view.opened);
-                    view.opened = "";
-                }
-            }
-            PillButton {
-                visible: !view.stage.offTheRecord
                 text: view.confirmBreak ? "Take them out? The bonus goes. Yes" : "Break the set"
                 accent: "#ff8a7a"
                 onClicked: {
@@ -331,7 +320,7 @@ Item {
         Text {
             anchors { bottom: parent.bottom; bottomMargin: 8; horizontalCenter: parent.horizontalCenter }
             text: parent.saved ? "Saved " + String(parent.saved.savedAt || "").slice(0, 10)
-                                 + "   ·   worth " + Math.round(Progress.setBonus(parent.saved.gem) * 100) + "% more than its slabs while it's in the case"
+                                 + "   ·   worth " + Math.round(Progress.setBonus(parent.saved.gem) * 100) + "% more than its slabs toward your passive income while it's in the case (it can't be sold)"
                                  + "   ·   click a slab to see it" : ""
             color: "#9aa0ad"
             font.pixelSize: 13

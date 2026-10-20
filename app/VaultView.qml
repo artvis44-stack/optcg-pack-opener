@@ -4,7 +4,8 @@ import "progress.js" as Progress
 
 // The Vault (G): your graded cards. Tabs (← →): your slabs (filter by set and
 // grade; click one to see it big, sell it or put it on the desktop), what's out
-// for grading, and the set registry (best grade of each card, Gem Mint progress).
+// for grading, the set registry (best grade of each card, Gem Mint progress), and
+// the fakes you bought at card shows (worth nothing; keep them or destroy them).
 // Cards are sent for grading from the binder: click a card you own, "Grade / pre-grade".
 Item {
     id: vault
@@ -12,6 +13,7 @@ Item {
     property Item stage
     readonly property var p: stage ? stage.progress : Progress.fresh(Date.now())
     readonly property var tabs: [["slabs", "Slabs"], ["sets", "Sets"], ["out", "Out for grading"], ["registry", "Set registry"]]
+                                .concat(fakes.length ? [["fakes", "Fakes"]] : [])
     property string tab: "slabs"
     property string setFilter: ""
     property int gradeFilter: 0          // 0: every grade, 7: 7 or lower
@@ -55,6 +57,12 @@ Item {
     readonly property var orders: Object.keys(p.grading || {}).map(id => Object.assign({ id: id }, p.grading[id]))
                                         .sort((a, b) => a.readyAt - b.readyAt)
     readonly property int gems: allSlabs.filter(s => s.grade === 10).length
+    // counterfeits bought at card shows: { fakeId, card, grade, paid, day, vendor }
+    readonly property var fakes: {
+        var f = (stage && stage.collection.fakes) || {};
+        return Object.keys(f).map(id => Object.assign({ fakeId: id }, f[id])).sort((a, b) => (b.day || "").localeCompare(a.day || ""));
+    }
+    property string confirmDestroy: ""
     readonly property real worth: allSlabs.reduce((n, s) => n + (stage ? stage.slabValue(s) : 0), 0)
 
     function timeLeft(ms) {
@@ -271,6 +279,79 @@ Item {
                                 height: parent.height
                                 radius: 4
                                 color: parent.parent.parent.back ? "#7fd1b9" : "#c8a0ff"
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    // ---- fakes: counterfeits from card shows ------------------------------------------------
+    Flickable {
+        visible: vault.tab === "fakes"
+        anchors {
+            top: header.bottom; topMargin: 20
+            bottom: parent.bottom; bottomMargin: 44
+            horizontalCenter: parent.horizontalCenter
+        }
+        width: Math.min(vault.width * 0.9, 900)
+        contentHeight: fakeCol.height
+        clip: true
+        boundsBehavior: Flickable.StopAtBounds
+        Column {
+            id: fakeCol
+            width: parent.width
+            spacing: 10
+            Note {
+                width: parent.width
+                text: "Counterfeits you bought at card shows. They're worth nothing and don't count as owned. "
+                      + "Keep them as a lesson (see how the foil doesn't shimmer?) or destroy them."
+            }
+            Repeater {
+                model: vault.fakes
+                Panel {
+                    required property var modelData
+                    width: fakeCol.width
+                    height: modelData.grade ? 150 : 104
+                    Loader {
+                        x: 12; y: 8
+                        sourceComponent: modelData.grade ? fakeSlab : fakeCard
+                        readonly property var c: Object.assign({ fake: true, grade: modelData.grade }, vault.stage.localCard(modelData.card))
+                        Component {
+                            id: fakeCard
+                            Card { width: 64; card: parent.c; faceUp: true; time: vault.stage ? vault.stage.t : 0 }
+                        }
+                        Component {
+                            id: fakeSlab
+                            Slab { width: 80; card: parent.c; time: vault.stage ? vault.stage.t : 0; hoverTilt: false }
+                        }
+                    }
+                    Column {
+                        x: modelData.grade ? 104 : 90; y: 12
+                        width: parent.width - x - 16
+                        spacing: 6
+                        Text {
+                            width: parent.width
+                            elide: Text.ElideRight
+                            text: "FAKE  ·  " + Tiers.displayName(modelData.card) + "  ·  " + modelData.card.set
+                                  + (modelData.grade ? "  ·  a fake " + modelData.grade + " slab" : "")
+                            color: "#ff8a7a"
+                            font { pixelSize: 15; weight: Font.Bold }
+                        }
+                        Text {
+                            text: "Bought at the " + modelData.day + " card show from " + modelData.vendor + " for " + Progress.format(modelData.paid || 0)
+                            color: "#9aa0ad"
+                            font.pixelSize: 13
+                        }
+                        PillButton {
+                            text: vault.confirmDestroy === modelData.fakeId ? "Destroy it? Yes" : "Destroy"
+                            fontSize: 12
+                            accent: "#ff8a7a"
+                            onClicked: {
+                                if (vault.confirmDestroy !== modelData.fakeId) { vault.confirmDestroy = modelData.fakeId; return; }
+                                vault.stage.destroyFake(modelData.fakeId);
+                                vault.confirmDestroy = "";
                             }
                         }
                     }
