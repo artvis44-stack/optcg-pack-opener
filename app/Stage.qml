@@ -36,6 +36,7 @@ Item {
     readonly property string leaderBack: "file://" + cacheRoot + "/assets/back_leader.png"
     readonly property string donBack: "file://" + cacheRoot + "/assets/back_don.png"
     readonly property string vintageBack: Qt.resolvedUrl("pictures/vintage-back.png")   // the 2005-06 CCG's back (comes with the app)
+    readonly property string hyperBack: Qt.resolvedUrl("pictures/hyperbattle-back.png")  // Hyper Battle's: a drawn stand-in
 
     readonly property string boxImage: boxProbe.status === Image.Ready ? boxProbe.source : ""
 
@@ -845,18 +846,41 @@ Item {
         return out;
     }
 
+    // the Carddass Hyper Battle cards (app/hyperbattle.json); their pictures, once fetch_cards.py
+    // has them, in the cache's HYPERBATTLE folder (Field Point cards stood upright)
+    property var hyperData: null
+    function hyperCards() {
+        if (!hyperData) {
+            try { hyperData = JSON.parse(host.readText(host.appPath("app/hyperbattle.json")) || "{}"); } catch (e) { hyperData = {}; }
+        }
+        var years = {};
+        (hyperData.sets || []).forEach(s => years[s.name] = s.year);
+        return (hyperData.cards || []).map(c => ({ id: c.id, name: c.name, tier: c.tier, rarity: c.rarity, type: c.type || "",
+                                                   origin: c.set, year: years[c.set] || 2000, refUsd: c.refUsd,
+                                                   image: cacheRoot + "/HYPERBATTLE/" + c.key + ".jpg" }));
+    }
+
+    // Hyper Battle's pictures are downloaded (fetch_cards.py writes HYPERBATTLE/cards.json last)
+    function hyperReady() {
+        return host.readText(cacheRoot + "/HYPERBATTLE/cards.json") !== "";
+    }
+
     // a set's cards: the cached cards.json (the vintage ones come with the app)
     function cardsOf(id) {
         if (id === "VINTAGE") return vintageCards();
+        if (id === "HYPERBATTLE") return hyperCards();
         try { return JSON.parse(host.readText(cacheRoot + "/" + id + "/cards.json") || "{}").cards || []; } catch (e) { return []; }
     }
 
-    // sealed vintage packs and boxes, ฿: { "<set name>": { pack, box } } (app/vintage.json "sealed", USD)
+    // sealed vintage products, ฿: { ccg: { "<set name>": { pack, box } } (app/vintage.json "sealed"),
+    // hb: [{ name, kind, set, worth, cards }] (app/hyperbattle.json "sealed") }
     function vintageSealed() {
         vintageCards();   // loads vintageData
-        var out = {}, s = vintageData.sealed || {};
-        Object.keys(s).forEach(k => out[k] = { pack: s[k].pack * Progress.USD_TO_BERRY, box: s[k].box * Progress.USD_TO_BERRY });
-        return out;
+        hyperCards();     // ...and hyperData (its products only once its pictures are in)
+        var ccg = {}, s = vintageData.sealed || {};
+        Object.keys(s).forEach(k => ccg[k] = { pack: s[k].pack * Progress.USD_TO_BERRY, box: s[k].box * Progress.USD_TO_BERRY });
+        var hb = !hyperReady() ? [] : (hyperData.sealed || []).map(x => Object.assign({}, x, { worth: x.usd * Progress.USD_TO_BERRY }));
+        return { ccg: ccg, hb: hb };
     }
 
     // every card of your downloaded sets, plus the promos and vintage cards, at its market
@@ -865,6 +889,7 @@ Item {
         var out = [];
         Object.keys(Progress.SHOW_SETS).forEach(id => { if (!markets[id]) loadMarket(id); });
         downloadedSets().concat(Object.keys(Progress.SHOW_SETS).map(id => ({ id: id }))).forEach(s => {
+            if (s.id === "HYPERBATTLE" && !hyperReady()) return;   // not until its pictures are in
             var cards = cardsOf(s.id), prices = markets[s.id] || null;
             if (!prices) {
                 try { prices = (JSON.parse(host.readText(dataDir + "/market/" + s.id + ".json") || "null") || {}).prices || null; }
@@ -994,16 +1019,33 @@ Item {
     // ---- a sealed vintage pack (from a card show), opened from the port ----------------------
     // The pack goes through the usual tear and reveal; it's taken out of the sealed product
     // when it tears (so backing out before that loses nothing). After the summary, back to the port.
-    property var vintageRip: null   // { id (the sealed product), origin, code } while one's on screen
+    // A Hyper Battle product: a vending pack (4 cards of its set), a Grand Box (one of its deck
+    // variants: the best 12 revealed, the rest of the deck straight to the binder) or a Jump Festa
+    // pack (that year's promos).
+    property var vintageRip: null   // { id (the sealed product), set, origin, code, rest } while one's on screen
     function openVintagePack(id) {
         var it = (progress.sealed || {})[id];
         if (!it || !it.vintage || offTheRecord) return;
-        var cards = vintageCards().filter(c => c.origin === it.setName).map(c => Object.assign({ set: "VINTAGE" }, c));
+        var hb = it.line === "hb", set = hb ? "HYPERBATTLE" : "VINTAGE", rest = [];
+        var all = (hb ? hyperCards() : vintageCards()).map(c => Object.assign({ set: set }, c));
+        var cards = it.cards ? all.filter(c => it.cards.indexOf(c.id) >= 0) : all.filter(c => c.origin === it.setName);
         if (!cards.length) return;
-        pack = Tiers.makeVintagePack(cards, !!it.resealed);
-        var art = cards.filter(c => c.tier === "V_GOLD" || c.tier === "V_SILVER" || c.tier === "V_SR");
+        if (!hb) {
+            pack = Tiers.makeVintagePack(cards, !!it.resealed);
+        } else if (it.kind === "grandbox") {
+            var info = (hyperData.sets || []).filter(s => s.name === it.setName)[0] || {};
+            var deck = Tiers.makeGrandBox(cards, info.deck);
+            pack = deck.show;
+            rest = deck.rest;
+        } else if (it.kind === "jfpack") {
+            pack = it.resealed ? cards.slice(0, Math.max(1, cards.length - 2)) : cards.slice();   // searched: a couple short
+        } else {
+            pack = Tiers.makeHyperPack(cards, !!it.resealed);
+        }
+        var art = cards.filter(c => Tiers.tierOf(c).rank >= 7);
         packArt = art.length ? "file://" + art[Math.floor(Math.random() * art.length)].image : "";
-        vintageRip = { id: id, origin: it.setName, code: it.setName === "The Quest Begins" ? "2005" : "2006" };
+        var year = hb ? (cards[0].year || 2000) : it.setName === "The Quest Begins" ? 2005 : 2006;
+        vintageRip = { id: id, set: set, origin: hb ? (it.name || it.setName) : it.setName, code: String(year), rest: rest };
         packPaid = true;
         revealed = 0;
         cardsIn = false;
@@ -1012,16 +1054,22 @@ Item {
         sfx("box");
     }
 
-    // torn: out of the sealed product, into the collection; counts as a pack opened (of VINTAGE)
+    // torn: out of the sealed product, into the collection (a Grand Box's whole deck); counts as
+    // a pack opened (of VINTAGE or HYPERBATTLE)
     function recordVintagePack() {
-        var id = vintageRip.id;
+        var id = vintageRip.id, set = vintageRip.set || "VINTAGE", rest = vintageRip.rest || [];
         prog(p => { Progress.openVintagePack(p, id); return []; });
         packNew = pack.map(c => !collection.cards[cardKey(c)]);
         recordCards(pack);
+        if (rest.length) {
+            recordCards(rest, 0);
+            toast("The rest of the deck, " + rest.length + " more cards, went straight into your binder.");
+        }
         if (offTheRecord) return;
-        var have = ownedKeys(), all = vintageCards();
-        var owned = Object.keys(have).filter(k => k.indexOf("VINTAGE:") === 0).length;
-        prog(p => Progress.record(p, { type: "pack", set: "VINTAGE", tiers: pack.map(c => c.tier), god: false,
+        var have = ownedKeys(), all = set === "HYPERBATTLE" ? hyperCards() : vintageCards();
+        var owned = Object.keys(have).filter(k => k.indexOf(set + ":") === 0).length;
+        var rookie = pack.concat(rest).some(c => c.set === "HYPERBATTLE" && c.id === "C01") ? 1 : 0;
+        prog(p => Progress.record(p, { type: "pack", set: set, tiers: pack.concat(rest).map(c => c.tier), god: false, rookie: rookie,
                                        completion: all.length ? owned / all.length : 0, groups: {}, present: null }));
         refreshValue();
     }
@@ -1059,9 +1107,9 @@ Item {
     function loadMarket(id) {
         id = id || setId;
         var path = dataDir + "/market/" + id + ".json", cached = null;
-        if (id === "VINTAGE") {   // no live prices for these: the app's reference prices (rewritten: the list may have changed)
+        if (id === "VINTAGE" || id === "HYPERBATTLE") {   // no live prices for these: the app's reference prices (rewritten: the list may have changed)
             var ref = {};
-            vintageCards().forEach(c => ref[c.id + "|" + c.name] = c.refUsd);
+            (id === "VINTAGE" ? vintageCards() : hyperCards()).forEach(c => ref[c.id + "|" + c.name] = c.refUsd);
             host.writeText(path, JSON.stringify({ day: Progress.dayOf(Date.now()), prices: ref }));
             setMarket(id, ref);
             return;
@@ -1933,7 +1981,8 @@ Item {
             readonly property bool chargingMe: stage.charging && index === stage.revealed
 
             card: modelData
-            backSource: Tiers.isVintage(modelData) ? stage.vintageBack
+            backSource: modelData.set === "HYPERBATTLE" ? stage.hyperBack
+                      : Tiers.isVintage(modelData) ? stage.vintageBack
                       : modelData.type === "Leader" ? stage.leaderBack
                       : modelData.type === "DON!!" ? stage.donBack : stage.deckBack
             width: stage.cw
@@ -2022,7 +2071,9 @@ Item {
         spacing: 6
         Text {
             anchors.horizontalCenter: parent.horizontalCenter
-            text: stage.db ? stage.db.set + "  ·  " + stage.db.set_name : ""
+            text: stage.vintageRip ? (stage.vintageRip.set === "HYPERBATTLE" ? "Carddass Hyper Battle" : "One Piece CCG")
+                                     + "  ·  " + stage.vintageRip.origin   // a vintage pack: its own game and product
+                  : stage.db ? stage.db.set + "  ·  " + stage.db.set_name : ""
             color: "#ffd56b"
             font { pixelSize: 28; weight: Font.Black; italic: true }
         }

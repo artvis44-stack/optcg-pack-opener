@@ -15,7 +15,8 @@
 //   long   every Manga Rare there is
 //   show   the card show's vintage cards and promos (Progress.SHOW_SETS): the
 //          2005-06 Gold Rares, Silver Rares and promos, a vintage Straw Hat crew,
-//          every P-001 Luffy, and the vintage master set
+//          every P-001 Luffy, and the vintage master set; each Carddass Hyper Battle
+//          set, its holos, gold stamps and promos, and every Hyper Battle Luffy
 
 var KINDS = [["set", "Per set"], ["theme", "Themes"], ["char", "Characters"], ["long", "Long hauls"], ["show", "Vintage & promos"]];
 
@@ -60,8 +61,17 @@ var SHOW_LISTS = [
     ["vpromo",  "The 2005 Promos", "Every vintage promo: tournament prizes and stamped cards", "vintage", "VINTAGE",
      function (c) { return c.tier === "V_PROMO"; }],
     ["p001",    "Every P-001 Luffy", "Each printing of the first promo", "promo", "PROMO",
-     function (c) { return /^P-001(_|$)/.test(c.id); }]
+     function (c) { return /^P-001(_|$)/.test(c.id); }],
+    ["hbholo",  "Hyper Battle Holos", "Every holo of Carddass Hyper Battle (1999-2002)", "vintage", "HYPERBATTLE",
+     function (c) { return c.rarity === "holo" || c.rarity === "secret"; }],
+    ["hbgold",  "Hyper Battle Gold Stamps", "The gold-stamped card of every Grand Box deck", "vintage", "HYPERBATTLE",
+     function (c) { return c.rarity === "gold"; }],
+    ["hbpromo", "Hyper Battle Promos", "The event and tournament promos, 2000-2002", "vintage", "HYPERBATTLE",
+     function (c) { return c.rarity === "promo"; }],
+    ["hbluffy", "Every Hyper Battle Luffy", "Every card of Luffy, 1999-2002", "char", "HYPERBATTLE",
+     function (c) { return c.name === "Luffy"; }]
 ];
+// each Hyper Battle set (a Stage, a Grand Box, a Compilation): every card of it
 // the vintage crew: one card of each, any rarity ([slot, the names the 2005 cards use: 4Kids' English])
 var VINTAGE_CREW = [["Luffy", ["Luffy"]], ["Zoro", ["Roronoa Zolo", "Zoro"]], ["Nami", ["Nami the Navigator", "Nami"]],
                     ["Usopp", ["Usopp"]], ["Sanji", ["Sanji"]], ["Chopper", ["Chopper"]], ["Robin", ["Ms. Sunday (Nico Robin)", "Robin"]]];
@@ -170,6 +180,15 @@ function build(cardsBySet, sets) {
         });
         if (slots.length >= 2)
             out.push({ id: "show:" + l[0], kind: "show", style: l[3], title: l[1], text: l[2], slots: slots.sort(bestFirst) });
+    });
+    var hbSets = [];
+    (cardsBySet.HYPERBATTLE || []).forEach(function (c) { if (c.origin && c.origin !== "Promotionals" && hbSets.indexOf(c.origin) < 0) hbSets.push(c.origin); });
+    hbSets.forEach(function (name) {
+        var slots = (cardsBySet.HYPERBATTLE || []).filter(function (c) { return c.origin === name; })
+            .map(function (c) { return { label: c.id + " " + c.name, keys: [cardKey("HYPERBATTLE", c)], card: c, set: "HYPERBATTLE" }; });
+        if (slots.length >= 2)
+            out.push({ id: "show:hb:" + name, kind: "show", style: "vintage", title: "Hyper Battle " + name,
+                       text: "Every card of " + name + " (Carddass Hyper Battle)", slots: slots });
     });
     var crew = VINTAGE_CREW.map(function (who) {
         var cs = (cardsBySet.VINTAGE || []).filter(function (c) { return who[1].indexOf(c.character) >= 0; })

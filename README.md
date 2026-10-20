@@ -58,15 +58,16 @@ The app is split into a platform-independent part (`app/`) and a thin host.
 - `app/BoxView.qml`: box mode (the sealed display box, the grid of 24 packs, the box summary)
 - `app/CardShow.qml`, `app/StallTable.qml`: the weekly card show (the hall map, a vendor's table, checking and haggling, the recap)
 - `app/vintage.json`, `app/DrawnFace.qml`: the 2005-06 CCG's cards (list, prices, pictures, sealed prices), and the drawn face of a card or sealed product with no picture
+- `app/hyperbattle.json`: Carddass Hyper Battle's cards, sets and sealed products (its pictures: a release asset)
 - `app/collections.js`, `app/SetsView.qml`, `app/DisplayCase.qml`: the collections to complete with graded cards, the vault's Sets tab, and the display cases saved sets go in
 - `app/Binder.qml`: the collection view (owned cards first with counts, missing ones faded)
 - `app/Card.qml`, `app/CardBack.qml`: the flipping, tilting card (Leaders get the red back), plus the drawn fallback back
 - `app/tiers.js`: rarity tiers, pack layouts and case budgets per product family, and the pack / case generators
 - `app/shaders/*.frag`: the holo foil, pack foil and god-ray shaders. Run `./build-shaders.sh` after editing them.
-- `fetch_cards.py SET | all | list | previews | background | VINTAGE | PROMO`: downloads a set's data and images from
+- `fetch_cards.py SET | all | list | previews | background | VINTAGE | PROMO | HYPERBATTLE`: downloads a set's data and images from
   optcgapi.com into `~/.cache/optcg/<SET>/`. You don't need to run it: `background` fetches
-  everything that's missing (card backs, every set's pack photos, the card show's vintage cards and
-  promos (`VINTAGE`, `PROMO`), the playmats, then every set,
+  everything that's missing (card backs, every set's pack photos, the card show's vintage cards,
+  promos and Hyper Battle cards (`VINTAGE`, `PROMO`, `HYPERBATTLE`), the playmats, then every set,
   newest first, English then Japanese, at low priority), and the desktop companion runs it a
   couple of minutes after you log in and every 6 hours after, the pack opener 20 seconds after it
   opens; so picking a set is instant. Only one runs at a time, and a set is never downloaded twice
@@ -185,6 +186,15 @@ there are wanted posters for them
   have vintage and promo lists (the Gold and Silver Rares, the 2005 promos, every P-001 Luffy, a
   vintage Straw Hat crew), and the wanted board has Vintage Collector, First Edition, Promo Hunter
   and Holy Grail.
+  - **Carddass Hyper Battle** (Japan, 1999-2002, `app/hyperbattle.json`): Bandai's first One Piece
+  card game, 813 cards over sixteen sets and the promos. A Carddass specialist (and now and then a
+  scammer) sells its singles and slabs, and its sealed products: vending packs (Stages and Grand Line
+  Compilations were only ever sold from Carddass machines, four cards for 100 yen: a holo in about one
+  pack in three), Grand Boxes (a ready-made deck built round a gold-stamped card: the best twelve
+  revealed, the rest straight to the binder) and the Jump Festa limited packs. Its pictures (one zip,
+  about 60 MB) come from the repo's `v1.16.0-hb-pictures` release, downloaded once in the background,
+  not with every update. Every set has a collection to complete, and the wanted board has Rookie (the
+  1999 Luffy, C01) and Carddass Kid (ten Hyper Battle packs).
   - You can make one offer per item (5, 10 or 20% off); scammers say yes suspiciously easily. When
   you leave, the recap shows what you paid against what it was really worth, and what kind of fake
   you got. Fakes go to the vault's Fakes tab, worth nothing: keep them or destroy them. The rules and

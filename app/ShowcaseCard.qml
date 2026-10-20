@@ -167,9 +167,9 @@ Item {
         if (!card || card.type === "DON!!" || !setId) return;   // DON!! cards aren't priced there
         if (priceHistory.length && priceHistory[priceHistory.length - 1].d === today()) return;
         var forKey = key;
-        if (setId === "VINTAGE") {   // no live prices: the reference price the pack opener saved
+        if (setId === "VINTAGE" || setId === "HYPERBATTLE") {   // no live prices: the reference price the pack opener saved
             var ref = {};
-            try { ref = JSON.parse(host.readText(dataDir + "/market/VINTAGE.json") || "{}").prices || {}; } catch (e) {}
+            try { ref = JSON.parse(host.readText(dataDir + "/market/" + setId + ".json") || "{}").prices || {}; } catch (e) {}
             if (ref[card.id + "|" + card.name] > 0) recordPrice(ref[card.id + "|" + card.name]);
             return;
         }

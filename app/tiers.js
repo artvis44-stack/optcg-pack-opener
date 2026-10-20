@@ -57,13 +57,20 @@ var info = {
     V_SILVER:{ label: "Vintage Silver Rare",    holo: 0.85, gold: 0.0, rank: 10, color: "#dfe6ee" },
     V_GOLD:  { label: "Vintage Gold Rare",      holo: 0.9,  gold: 1.0, rank: 13, color: "#ffd24a" },
     V_PROMO: { label: "Vintage Promo",          holo: 0.7,  gold: 0.5, rank: 13, color: "#ffb36b" },
+    // Carddass Hyper Battle (Japan, 1999-2002, app/hyperbattle.json)
+    V_HB:        { label: "Hyper Battle",             holo: 0.0,  gold: 0.0, rank: 2,  color: "#f0c890" },
+    V_HB_HOLO:   { label: "Hyper Battle Holo",        holo: 0.85, gold: 0.1, rank: 7,  color: "#9ad8ff" },
+    V_HB_GOLD:   { label: "Hyper Battle Gold Stamp",  holo: 0.5,  gold: 1.0, rank: 10, color: "#ffd24a" },
+    V_HB_SECRET: { label: "Hyper Battle Secret Rare", holo: 1.0,  gold: 0.6, rank: 12, color: "#ff9ad5" },
+    V_HB_PROMO:  { label: "Hyper Battle Promo",       holo: 0.5,  gold: 0.3, rank: 11, color: "#ffb36b" },
     // a sealed 2005-06 product on a show table (never a card in the collection)
     SEALED_PACK: { label: "Sealed Booster Pack", holo: 0.3, gold: 0.0, rank: 6, color: "#ffb36b" },
     SEALED_BOX:  { label: "Sealed Booster Box",  holo: 0.3, gold: 0.0, rank: 9, color: "#ffb36b" }
 };
 
 // the tiers of cards from the card show only (no packs, no set to open)
-var SHOW_ONLY_TIERS = ["PROMO", "V_C", "V_FOIL", "V_SR", "V_SILVER", "V_GOLD", "V_PROMO"];
+var SHOW_ONLY_TIERS = ["PROMO", "V_C", "V_FOIL", "V_SR", "V_SILVER", "V_GOLD", "V_PROMO",
+                       "V_HB", "V_HB_HOLO", "V_HB_GOLD", "V_HB_SECRET", "V_HB_PROMO"];
 
 function isVintage(card) {
     return !!card && String(card.tier).indexOf("V_") === 0;
@@ -601,6 +608,48 @@ function boxContents(cfg, present) {
     if (present && present.TOPPER) add("TOPPER", 1);
     Object.keys(out).forEach(function (t) { if (out[t] <= 0) delete out[t]; });
     return out;
+}
+
+// ---- Carddass Hyper Battle products ---------------------------------------------------
+//
+// Stages and Grand Line Compilations were sold only from Carddass vending machines: a
+// pack of 4 random cards for 100 yen (no boxes). Bandai published no odds; here a pack
+// holds a holo about 1 time in 3 (6 holos in a set of ~42), and the 7th Stage's secret
+// rare turns up about 1 pack in 40. A Grand Box was a ready-made deck, one of 3 variants,
+// each built round a gold-stamped card (Grand Box DX: two decks). The deck lists aren't
+// recorded, so a variant here is its gold card, a holo and a third of the set's other cards,
+// with repeats up to the deck's size. A Jump Festa pack is that year's event promos.
+// A resealed pack (a show's scammer) has had its holo swapped for a common.
+var HYPER_PACK = { cards: 4, holoOdds: 1 / 3, secretOdds: 1 / 40, show: 12 };
+
+// cards: the set's cards (app/hyperbattle.json's, with .rarity). -> [card]
+function makeHyperPack(cards, resealed) {
+    var of = function (r) { return cards.filter(function (c) { return c.rarity === r; }); };
+    var commons = of("common"), holos = of("holo"), secrets = of("secret");
+    var pack = shuffle(commons.slice()).slice(0, HYPER_PACK.cards);
+    while (pack.length < HYPER_PACK.cards && commons.length) pack.push(pick(commons));
+    var r = Math.random(), secret = secrets.length ? HYPER_PACK.secretOdds : 0;
+    if (!resealed && r < secret) pack[pack.length - 1] = pick(secrets);
+    else if (!resealed && holos.length && r < secret + HYPER_PACK.holoOdds) pack[pack.length - 1] = pick(holos);
+    return pack;
+}
+
+// a Grand Box: one of its deck variants. -> { show: [up to HYPER_PACK.show cards, best last], rest: [the rest of the deck] }
+function makeGrandBox(cards, deckSize) {
+    var golds = cards.filter(function (c) { return c.rarity === "gold"; });
+    var holos = cards.filter(function (c) { return c.rarity === "holo"; });
+    var others = cards.filter(function (c) { return c.rarity === "common"; });
+    var variants = Math.max(1, golds.length || 3), v = Math.floor(Math.random() * variants);
+    var mine = others.filter(function (c, i) { return i % variants === v; });
+    var unique = shuffle(mine.slice());
+    var deck = [];
+    if (holos.length) deck.push(holos[v % holos.length]);
+    if (golds.length) deck.push(golds[v]);
+    var size = Math.max(deck.length, deckSize || 32), k = 0;
+    while (deck.length < size && unique.length) deck.unshift(unique[k++ % unique.length]);
+    // the reveal: the deck's best few (its holo and gold card last); the rest goes straight to the binder
+    var showN = Math.min(HYPER_PACK.show, deck.length);
+    return { show: deck.slice(deck.length - showN), rest: deck.slice(0, deck.length - showN) };
 }
 
 // highest-ranked card in a pack
