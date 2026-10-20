@@ -351,7 +351,7 @@ var SLABS = [
 var DIAMOND_LABEL = { id: "diamond", name: "Diamond Label", top: "#f4fdff", bottom: "#bfe9ff", text: "#0b2a44", sub: "#2f6f9a" };
 
 // ---- the card show: once a week ---------------------------------------------------
-// Every Saturday (and SHOW_EXTRA_DAYS) a card show is in town: eight vendor tables
+// Every Saturday (and SHOW_EXTRA_DAYS) a card show is in town: thirteen vendor tables
 // of mostly chase cards, raw and graded, one visit a show. Once you're in, the app
 // shows no prices (no binder, vault, port or wanted board until you leave): you
 // have to know the market. Vendors are honest, bargain tables, premium dealers or
@@ -364,28 +364,32 @@ var DIAMOND_LABEL = { id: "diamond", name: "Diamond Label", top: "#f4fdff", bott
 
 var SHOW_WEEKDAY = 6;                       // Saturday
 var SHOW_EXTRA_DAYS = ["2026-10-20"];       // the first show, on a Tuesday
-var SHOW_LOOKS = 6;                         // close looks (the loupe) a visit
+var SHOW_LOOKS = 10;                        // close looks (the loupe) a visit
 var SHOW_STEAL = 0.75;                      // under this share of market: a steal (the Sharp Eye poster)
 var SHOW_HAGGLE = [0.05, 0.1, 0.2];         // the offers you can make: this much off
 // kind -> how many tables, listings [min, max], asking price [min, max] × market,
 // share of slabs, share of fakes, haggle: the chance each offer is taken
 var SHOW_VENDORS = {
-    honest:  { tables: 3, listings: [5, 7], price: [0.95, 1.15], slabs: 0.4,  fakes: 0,   haggle: [0.8, 0.5, 0.15] },
-    bargain: { tables: 1, listings: [4, 6], price: [0.55, 0.85], slabs: 0.15, fakes: 0,   haggle: [0.85, 0.55, 0.25] },
-    premium: { tables: 2, listings: [5, 7], price: [1.15, 1.5],  slabs: 0.75, fakes: 0,   haggle: [0.6, 0.3, 0.08] },
-    scammer: { tables: 2, listings: [5, 8], price: [0.6, 0.9],   slabs: 0.5,  fakes: 0.5, haggle: [0.95, 0.9, 0.75] }
+    honest:  { tables: 5, listings: [8, 12], price: [0.95, 1.15], slabs: 0.4,  fakes: 0,   haggle: [0.8, 0.5, 0.15] },
+    bargain: { tables: 2, listings: [6, 9],  price: [0.55, 0.85], slabs: 0.15, fakes: 0,   haggle: [0.85, 0.55, 0.25] },
+    premium: { tables: 3, listings: [8, 12], price: [1.15, 1.5],  slabs: 0.75, fakes: 0,   haggle: [0.6, 0.3, 0.08] },
+    scammer: { tables: 3, listings: [8, 12], price: [0.6, 0.9],   slabs: 0.5,  fakes: 0.5, haggle: [0.95, 0.9, 0.75] }
 };
 // [name, what the table says]; scammers' blurbs have their own tells
 var SHOW_NAMES = {
     honest:  [["Grand Line Cards", "Fair prices, everything checked."], ["Baratie Collectibles", "Family shop since the first set."],
               ["Water 7 Trading", "Graded and raw, all guaranteed."], ["Sabaody Singles", "Prices match the market, give or take."],
-              ["Alabasta TCG", "We grade what we sell."], ["Fish-Man Island Games", "Ask about anything in the case."]],
+              ["Alabasta TCG", "We grade what we sell."], ["Fish-Man Island Games", "Ask about anything in the case."],
+              ["Loguetown Hobbies", "Collectors serving collectors."], ["Skypiea Slabs & Singles", "Every card checked twice."],
+              ["Zou Trading Post", "Fair and square, every time."]],
     bargain: [["Estate sale table", "Selling a late collector's binder. Not sure what it's worth."],
-              ["Kid clearing out a binder", "Need money for a bike!"], ["Garage sale box", "Old cards, make me an offer."]],
+              ["Kid clearing out a binder", "Need money for a bike!"], ["Garage sale box", "Old cards, make me an offer."],
+              ["Moving-house sale", "Everything must go before Friday."]],
     premium: [["Mariejois Vault", "Only the best slabs. Prices to match."], ["Celestial Grails", "Investment-grade cards."],
-              ["Laugh Tale Luxe", "Gem mints, nothing less."]],
+              ["Laugh Tale Luxe", "Gem mints, nothing less."], ["Elbaf Grails", "Only the rarest. Serious buyers."]],
     scammer: [["Dressrosa Deals", "Cash only, no returns. All gem mint, trust me."], ["Jaya Card Kingz", "Best prices at the show!! Pack fresh guaranteed!!"],
-              ["Thriller Bark Treasures", "Too good to last. No refunds."], ["Big Mom's Bargains", "Everything mint. Buy two, I'll throw in a sleeve."]]
+              ["Thriller Bark Treasures", "Too good to last. No refunds."], ["Big Mom's Bargains", "Everything mint. Buy two, I'll throw in a sleeve."],
+              ["Buggy's Blowout", "Prices slashed!! Genuine 100%!! Cash only!!"]]
 };
 // how likely a chase card of each tier is to be on a table
 var SHOW_RARITY = { SR: 3, AA: 10, TEX: 5, SEC: 10, SEC_AA: 10, L_AA: 12, SP: 18, DON_GOLD: 2, TR: 12, MANGA: 10,

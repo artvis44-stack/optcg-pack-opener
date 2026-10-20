@@ -322,7 +322,7 @@ Item {
                     width: parent.width
                     readonly property string next: Progress.nextShowDay(port.p, port.now)
                     text: Progress.canEnterShow(port.p, port.now)
-                          ? "It's in town today! Eight tables of chase cards, raw and graded, at prices you'll have to judge "
+                          ? "It's in town today! Thirteen tables of chase cards, raw and graded, at prices you'll have to judge "
                             + "yourself: once you're in, nothing shows a market price. Haggle, look closely, and watch out for fakes."
                           : "Every Saturday. The next one is on " + next + "."
                 }

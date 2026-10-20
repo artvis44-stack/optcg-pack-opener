@@ -154,14 +154,14 @@ there are wanted posters for them
   each day; they can be cards you already have, and each deal says how many you own. You can't
   order cards from the binder: the shop and the card show are the only places to buy cards.
 - **The card show** (K, or the Port's card shop tab). Every Saturday (the very first one: Tuesday
-  20 October 2026): eight vendor tables of mostly chase cards, raw and graded, one visit a show.
+  20 October 2026): thirteen vendor tables (about 120 cards), mostly chase cards, raw and graded, one visit a show.
   Once you walk in, the app shows no prices at all (no binder, vault, port or wanted board, and
   the desktop showcase hides its price) until you leave: you have to know the market. Vendors are
   honest dealers, bargain tables, premium dealers or scammers, and you only find out which after
   you leave. A scammer's stock is about half fakes, and their raw cards are never as nice as they
   say. Fakes can be spotted: a fake's foil barely shimmers when you tilt it and the print is a little
   washed out, a fake slab's label is misspelt ("GEM MNIT") and its 10 has no gold edge, and a close
-  look with the loupe (six a visit) says what's wrong. You can make one offer per card (5, 10 or
+  look with the loupe (ten a visit) says what's wrong. You can make one offer per card (5, 10 or
   20% off); scammers say yes suspiciously easily. When you leave, the recap shows what you paid
   against what it was really worth. Fakes go to the vault's Fakes tab, worth nothing: keep them
   or destroy them. The rules and the knobs (`SHOW_VENDORS`, `SHOW_RARITY`, `SHOW_LOOKS`...) are in
