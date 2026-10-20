@@ -403,7 +403,8 @@ Item {
                 Note {
                     width: parent.width
                     text: "Sealed boxes and cases gain value while you hold them (older sets faster), and count toward your "
-                          + "collection's value. Sell them for what they're worth now, or open them: the boxes wait for you in box mode."
+                          + "collection's value. Sell them for what they're worth now, or open them: the boxes wait for you in box mode. "
+                          + "Vintage packs and boxes (only ever at a card show) open a pack at a time."
                 }
                 Note { visible: !parent.held.length; text: "Nothing sealed yet." }
                 Repeater {
@@ -416,16 +417,22 @@ Item {
                         Text {
                             x: 14
                             anchors.verticalCenter: parent.verticalCenter
-                            text: modelData.set + " " + modelData.kind + "  ·  " + modelData.setName
+                            // a vintage one (from a card show) opens a pack at a time; a resealed one's worth nothing
+                            text: (modelData.vintage
+                                   ? "2005 CCG " + modelData.kind + "  ·  " + modelData.setName
+                                     + (modelData.kind === "box" ? "  ·  " + modelData.packs + " of " + modelData.packsTotal + " packs left" : "")
+                                     + (modelData.resealed ? "  ·  RESEALED" : "")
+                                   : modelData.set + " " + modelData.kind + "  ·  " + modelData.setName)
                                   + "  ·  paid " + Progress.format(modelData.paid) + "  ·  now " + Progress.format(parent.worth)
                                   + "  (" + (parent.worth >= modelData.paid ? "+" : "") + ((parent.worth / modelData.paid - 1) * 100).toFixed(1) + "%)"
-                            color: "#e8e8ee"
+                            color: modelData.resealed ? "#ff8a7a" : "#e8e8ee"
                             font { pixelSize: 14; weight: Font.Bold }
                         }
                         Row {
                             anchors { right: parent.right; rightMargin: 12; verticalCenter: parent.verticalCenter }
                             spacing: 8
-                            PillButton { text: "Open"; fontSize: 12; onClicked: port.stage.openSealed(modelData.id) }
+                            PillButton { text: modelData.vintage ? "Open a pack" : "Open"; fontSize: 12
+                                         onClicked: modelData.vintage ? port.stage.openVintagePack(modelData.id) : port.stage.openSealed(modelData.id) }
                             PillButton { text: "Sell"; fontSize: 12; accent: "#7fd1b9"; onClicked: port.stage.sellSealed(modelData.id) }
                         }
                     }

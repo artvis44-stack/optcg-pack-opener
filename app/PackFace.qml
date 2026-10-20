@@ -10,6 +10,7 @@ Item {
     property vector2d tilt
     property real time
     property string packImage
+    property int cardCount: 12
     readonly property bool photo: photoImg.status === Image.Ready
 
     Image {
@@ -143,7 +144,7 @@ Item {
         Text {
             anchors.horizontalCenter: parent.horizontalCenter
             y: face.height * 0.88
-            text: "◆  12 CARDS  ◆"
+            text: "◆  " + face.cardCount + " CARDS  ◆"
             color: "#ffd56b"
             font { pixelSize: face.height * 0.026; weight: Font.Bold; letterSpacing: 3 }
         }

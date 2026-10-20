@@ -2,6 +2,8 @@
 """Download OPTCG set data + card images into the local cache.
 
 Usage: fetch_cards.py [SET_ID]   one set (default OP-17), e.g. OP-05, EB-01, PRB-02
+       fetch_cards.py VINTAGE    the card show's vintage cards (app/vintage.json) and their photos
+       fetch_cards.py PROMO      the card show's promos: every promo card optcgapi lists
        fetch_cards.py all        every set in app/sets.json (~40 MB each)
        fetch_cards.py list       the known sets and whether they're downloaded
        fetch_cards.py previews   just the pack/box photos of every set (for the set picker)
@@ -34,6 +36,10 @@ import urllib.request
 from concurrent.futures import ThreadPoolExecutor
 
 API = "https://optcgapi.com/api/sets/{}/"
+PROMO_API = "https://optcgapi.com/api/allPromos/"
+# pictures of the 2005-06 CCG cards (app/vintage.json): Card Game Collector's scans, else PriceCharting photos
+VINTAGE_SCAN = "https://cgc.chakra42.net/images/one-piece-ccg-2005/{}"
+VINTAGE_IMG = "https://storage.googleapis.com/images.pricecharting.com/{}/1600.jpg"
 # Bandai's own product shots, where a set's product page has them
 OFFICIAL_URL = "https://en.onepiece-cardgame.com/products/boosters/{}/images/others/{}.webp"
 # The official rule manual has flat scans of the card backs
@@ -504,6 +510,120 @@ def save_set(set_id, info, cache, cards):
     print("done")
 
 
+def vintage_cards(data, cache):
+    """app/vintage.json's cards as cards.json has them: each Character card's holo
+    foil printing is a card of its own (id + "-F", tier V_FOIL), with the same picture."""
+    out = []
+    for c in data["cards"]:
+        card = {"id": c["id"], "name": c["name"], "rarity": c["rarity"], "tier": c["tier"], "color": "",
+                "type": "Character", "origin": c["set"], "character": c.get("character", ""),
+                "year": data.get("sets", {}).get(c["set"], 0), "image": os.path.join(cache, c["id"] + ".jpg")}
+        out.append(card)
+        if c.get("foil"):
+            out.append(dict(card, id=c["id"] + "-F", tier="V_FOIL", image=os.path.join(cache, c["id"] + "-F.jpg")))
+    return out
+
+
+def fetch_vintage():
+    """The card show's vintage cards: VINTAGE/cards.json from app/vintage.json, and their
+    pictures (the app draws a card face for the few there are none of)."""
+    with open(os.path.join(HERE, "app", "vintage.json")) as f:
+        data = json.load(f)
+    cache = os.path.join(ROOT, "VINTAGE")
+    os.makedirs(cache, exist_ok=True)
+
+    def one(c):
+        dest = os.path.join(cache, c["id"] + ".jpg")
+        if c.get("file"):   # a picture that comes with the app (app/pictures/vintage)
+            src = os.path.join(HERE, "app", c["file"])
+            if not (os.path.exists(dest) and open(src, "rb").read() == open(dest, "rb").read()):
+                shutil.copyfile(src, dest)
+                if os.path.exists(dest[:-4] + "-F.jpg"):
+                    os.remove(dest[:-4] + "-F.jpg")   # the foil copy is made again below
+        url = VINTAGE_SCAN.format(c["scan"]) if c.get("scan") else VINTAGE_IMG.format(c["photo"]) if c.get("photo") else ""
+        if url and not (os.path.exists(dest) and os.path.getsize(dest) > 0):
+            try:
+                img = fetch(url)
+                with open(dest + ".part", "wb") as f:
+                    f.write(img)
+                os.replace(dest + ".part", dest)
+            except Exception as e:
+                print(f"{c['id']}: no picture ({e})", flush=True)
+        foil = os.path.join(cache, c["id"] + "-F.jpg")
+        if c.get("foil") and os.path.exists(dest) and not os.path.exists(foil):
+            shutil.copyfile(dest, foil)   # the same art; the app's foil shader does the rest
+
+    with ThreadPoolExecutor(max_workers=6) as pool:
+        list(pool.map(one, data["cards"]))
+    cards = vintage_cards(data, cache)
+    with open(os.path.join(cache, "cards.json"), "w") as f:
+        json.dump({"set": "VINTAGE", "set_name": "One Piece CCG (2005-06)", "cards": cards}, f, indent=1)
+    have = sum(1 for c in cards if os.path.exists(c["image"]))
+    print(f"VINTAGE: {len(cards)} cards, {have} pictures")
+
+
+# bump when fetch_promos changes what it writes: the background run fetches the promos again
+PROMO_VERSION = 2
+
+
+def fetch_promos():
+    """The card show's promos: PROMO/cards.json and their pictures, named after their
+    (unique) image ids. Promos optcgapi has no picture of are left out (a card show
+    table of drawn stand-ins looks broken)."""
+    cache = os.path.join(ROOT, "PROMO")
+    os.makedirs(cache, exist_ok=True)
+    out_path = os.path.join(cache, "cards.json")
+    try:
+        raw = json.loads(fetch(PROMO_API))
+    except Exception as e:
+        if os.path.exists(out_path):
+            print(f"optcgapi unreachable ({e}); keeping the cached promos")
+            return
+        raise
+    cards, seen = [], set()
+    for c in raw:
+        cid = c["card_image_id"]
+        if cid in seen:
+            continue
+        seen.add(cid)
+        cards.append({"id": cid, "name": c["card_name"], "rarity": c["rarity"], "tier": "PROMO",
+                      "color": c.get("card_color") or "", "type": c.get("card_type") or "",
+                      "url": c.get("card_image") or "",
+                      "image": os.path.join(cache, re.sub(r"[^A-Za-z0-9_.-]", "_", cid) + ".jpg")})
+    print(f"PROMO: {len(cards)} cards, downloading images to {cache}", flush=True)
+
+    def one(card):
+        url, dest = card.pop("url"), card["image"]
+        if url and not (os.path.exists(dest) and os.path.getsize(dest) > 0):
+            try:
+                data = fetch(url)
+                with open(dest + ".part", "wb") as f:
+                    f.write(data)
+                os.replace(dest + ".part", dest)
+            except Exception as e:
+                print(f"{card['id']}: {e}", flush=True)
+        return card
+
+    with ThreadPoolExecutor(max_workers=8) as pool:
+        cards = [c for c in pool.map(one, cards) if os.path.exists(c["image"])]
+    with open(out_path, "w") as f:
+        json.dump({"set": "PROMO", "set_name": "Promotion Cards", "version": PROMO_VERSION, "cards": cards}, f, indent=1)
+    print(f"done: {len(cards)} promos with a picture")
+
+
+def promo_version():
+    """The version of the cached PROMO/cards.json (0: none, or from before versions)."""
+    try:
+        with open(os.path.join(ROOT, "PROMO", "cards.json")) as f:
+            return json.load(f).get("version", 0)
+    except (OSError, ValueError):
+        return 0
+
+
+# the card show's sets, outside sets.json (no packs)
+SHOW_SETS = {"VINTAGE": fetch_vintage, "PROMO": fetch_promos}
+
+
 def official_image(page):
     """The product picture on an official product page: an <img> or og:image
     whose name mentions the page's product (e.g. playmat005), else og:image."""
@@ -576,6 +696,13 @@ def background(playmats):
             fix_card_photos(set_id, info, cache)   # downloaded sets get the fixes too
         except Exception as e:
             print(f"{set_id} photos: {e}", flush=True)
+    for set_id, fetch_show_set in SHOW_SETS.items():   # small, and the card show wants them
+        if set_id == "PROMO" and promo_version() >= PROMO_VERSION:
+            continue
+        try:
+            fetch_show_set()
+        except Exception as e:
+            print(f"{set_id}: {e}", flush=True)
     for mat in playmats:
         try:
             fetch_playmat(*[str(x or "") for x in mat[:3]])
@@ -613,6 +740,8 @@ def main():
     elif arg == "all":
         for set_id in SETS:
             fetch_set(set_id)
+    elif arg in SHOW_SETS:
+        SHOW_SETS[arg]()
     else:
         fetch_set(arg)
 

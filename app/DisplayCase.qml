@@ -33,7 +33,9 @@ Item {
         wanted:    { frameA: "#8a6a3a", frameB: "#3a2a12", velvetA: "#5a4325", velvetB: "#2a1d0e", accent: "#ead9ae" },
         tr:        { frameA: "#c49a4a", frameB: "#5e4520", velvetA: "#3a2a06", velvetB: "#160f02", accent: "#ffe08a" },
         gold:      { frameA: "#c49a4a", frameB: "#5e4520", velvetA: "#2a2a2a", velvetB: "#0c0c0c", accent: "#ffe08a" },
-        char:      { frameA: "#c8ccd6", frameB: "#5a5f6a", velvetA: "#4a1030", velvetB: "#1e0614", accent: "#ff9ad0" }
+        char:      { frameA: "#c8ccd6", frameB: "#5a5f6a", velvetA: "#4a1030", velvetB: "#1e0614", accent: "#ff9ad0" },
+        vintage:   { frameA: "#6a4426", frameB: "#2a190e", velvetA: "#3a2a14", velvetB: "#160e05", accent: "#ead9ae" },
+        promo:     { frameA: "#4a5a7a", frameB: "#1a2238", velvetA: "#0e3040", velvetB: "#04141c", accent: "#7fe0ff" }
     })
     readonly property var st: styles[saved.style] || styles.master
     readonly property color frameA: gem ? "#ffe9a0" : st.frameA
@@ -165,6 +167,7 @@ Item {
                                 }
                             }
                             Image {   // the card
+                                id: miniCard
                                 x: parent.width * 0.08
                                 y: parent.height * 0.26
                                 width: parent.width * 0.84
@@ -175,6 +178,13 @@ Item {
                                 mipmap: true
                                 sourceSize.width: 240
                                 source: mini.modelData && mini.modelData.image ? "file://" + mini.modelData.image : ""
+                            }
+                            Loader {   // no picture of it: drawn
+                                anchors.centerIn: miniCard
+                                width: Math.min(miniCard.width, miniCard.height * 0.716)
+                                height: width / 0.716
+                                active: miniCard.status === Image.Error
+                                sourceComponent: DrawnFace { card: mini.modelData }
                             }
                             MouseArea {
                                 anchors.fill: parent

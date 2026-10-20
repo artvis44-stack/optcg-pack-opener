@@ -13,8 +13,11 @@
 //          Gold & Silver SPs
 //   char   a character's master set: every chase version of them
 //   long   every Manga Rare there is
+//   show   the card show's vintage cards and promos (Progress.SHOW_SETS): the
+//          2005-06 Gold Rares, Silver Rares and promos, a vintage Straw Hat crew,
+//          every P-001 Luffy, and the vintage master set
 
-var KINDS = [["set", "Per set"], ["theme", "Themes"], ["char", "Characters"], ["long", "Long hauls"]];
+var KINDS = [["set", "Per set"], ["theme", "Themes"], ["char", "Characters"], ["long", "Long hauls"], ["show", "Vintage & promos"]];
 
 // alt art and up: the versions a crew or character set asks for
 var CHASE = Tiers.HIT_TIERS;
@@ -47,6 +50,22 @@ var RARITIES = [
     ["gold",   "Gold & Silver SPs", "Every Gold and Silver SP", function (c) { return c.tier === "SP_GOLD"; }]
 ];
 
+// the card show's lists: [id, title, text, style, set, test(card)]
+var SHOW_LISTS = [
+    ["qbgold",  "The Quest Begins Gold Rares", "The first English set's three Gold Rares (2005)", "vintage", "VINTAGE",
+     function (c) { return c.tier === "V_GOLD" && c.origin === "The Quest Begins"; }],
+    ["pglgold", "Grand Line Gold Rares", "Passage to the Grand Line's Gold Rares (2006)", "vintage", "VINTAGE",
+     function (c) { return c.tier === "V_GOLD" && c.origin === "Passage to the Grand Line"; }],
+    ["silver",  "Silver Rares", "Passage to the Grand Line's Silver Rares (2006)", "vintage", "VINTAGE", function (c) { return c.tier === "V_SILVER"; }],
+    ["vpromo",  "The 2005 Promos", "Every vintage promo: tournament prizes and stamped cards", "vintage", "VINTAGE",
+     function (c) { return c.tier === "V_PROMO"; }],
+    ["p001",    "Every P-001 Luffy", "Each printing of the first promo", "promo", "PROMO",
+     function (c) { return /^P-001(_|$)/.test(c.id); }]
+];
+// the vintage crew: one card of each, any rarity ([slot, the names the 2005 cards use: 4Kids' English])
+var VINTAGE_CREW = [["Luffy", ["Luffy"]], ["Zoro", ["Roronoa Zolo", "Zoro"]], ["Nami", ["Nami the Navigator", "Nami"]],
+                    ["Usopp", ["Usopp"]], ["Sanji", ["Sanji"]], ["Chopper", ["Chopper"]], ["Robin", ["Ms. Sunday (Nico Robin)", "Robin"]]];
+
 // [id, short name, card name]
 var CHARACTERS = [
     ["luffy", "Luffy", "Monkey.D.Luffy"], ["zoro", "Zoro", "Roronoa Zoro"], ["nami", "Nami", "Nami"],
@@ -75,6 +94,7 @@ function build(cardsBySet, sets) {
     // every printing by card id: its copies in every set; an English one shows for it
     var byId = {}, ids = [];
     order.forEach(function (s) {
+        if ((sets[s] || {}).show) return;   // a promo can share its card's id, but it's not that card
         cardsBySet[s].forEach(function (c) {
             var e = byId[c.id];
             if (!e) {
@@ -96,6 +116,7 @@ function build(cardsBySet, sets) {
 
     order.forEach(function (s) {
         var info = sets[s] || {};
+        if (info.show && s !== "VINTAGE") return;   // the promos: a thousand cards, no master set
         PER_SET.forEach(function (l) {
             var seen = {}, slots = [];
             cardsBySet[s].forEach(function (c) {
@@ -138,6 +159,27 @@ function build(cardsBySet, sets) {
             out.push({ id: "char:" + ch[0], kind: "char", style: "char", title: ch[1] + " Master Set",
                        text: "Every chase version of " + ch[2], slots: slots });
     });
+
+    SHOW_LISTS.forEach(function (l) {
+        var seen = {}, slots = [];
+        (cardsBySet[l[4]] || []).forEach(function (c) {
+            var k = cardKey(l[4], c);
+            if (seen[k] || !l[5](c)) return;
+            seen[k] = true;
+            slots.push({ label: Tiers.displayName(c), keys: [k], card: c, set: l[4] });
+        });
+        if (slots.length >= 2)
+            out.push({ id: "show:" + l[0], kind: "show", style: l[3], title: l[1], text: l[2], slots: slots.sort(bestFirst) });
+    });
+    var crew = VINTAGE_CREW.map(function (who) {
+        var cs = (cardsBySet.VINTAGE || []).filter(function (c) { return who[1].indexOf(c.character) >= 0; })
+                                           .sort(function (a, b) { return rank(b) - rank(a); });
+        if (!cs.length) return null;
+        return { label: who[0], keys: cs.map(function (c) { return cardKey("VINTAGE", c); }), card: cs[0], set: "VINTAGE", any: true };
+    });
+    if (crew.every(function (x) { return x; }))
+        out.push({ id: "show:crew", kind: "show", style: "vintage", title: "Vintage Straw Hats",
+                   text: "A 2005-06 card of each Straw Hat, any rarity", slots: crew });
 
     var manga = ids.map(function (id) { return byId[id]; }).filter(function (e) { return e.card.tier === "MANGA"; })
                    .sort(bestFirst).map(slotOf);

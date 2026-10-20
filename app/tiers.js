@@ -47,8 +47,60 @@ var info = {
     TR:      { label: "Treasure Rare",          holo: 1.0,  gold: 1.0, rank: 12, color: "#ffe08a" },
     MANGA:   { label: "Manga Rare",             holo: 1.0,  gold: 0.2, rank: 13, color: "#ffffff" },
     SIGNED:  { label: "Gold-Stamped Signature", holo: 1.0,  gold: 1.0, rank: 13, color: "#ffd700" },
-    SUPER:   { label: "Super Alternate Art",    holo: 1.0,  gold: 0.8, rank: 14, color: "#ffd700" }
+    SUPER:   { label: "Super Alternate Art",    holo: 1.0,  gold: 0.8, rank: 14, color: "#ffd700" },
+
+    // never in packs: the card show's promos and vintage cards (the 2005-06 CCG, app/vintage.json)
+    PROMO:   { label: "Promo",                  holo: 0.6,  gold: 0.2, rank: 5,  color: "#7fe0ff" },
+    V_C:     { label: "Vintage",                holo: 0.0,  gold: 0.0, rank: 2,  color: "#d9c39a" },
+    V_FOIL:  { label: "Vintage Foil",           holo: 0.6,  gold: 0.0, rank: 3,  color: "#e8d7b0" },
+    V_SR:    { label: "Vintage Super Rare",     holo: 0.75, gold: 0.1, rank: 7,  color: "#d6a8ff" },
+    V_SILVER:{ label: "Vintage Silver Rare",    holo: 0.85, gold: 0.0, rank: 10, color: "#dfe6ee" },
+    V_GOLD:  { label: "Vintage Gold Rare",      holo: 0.9,  gold: 1.0, rank: 13, color: "#ffd24a" },
+    V_PROMO: { label: "Vintage Promo",          holo: 0.7,  gold: 0.5, rank: 13, color: "#ffb36b" },
+    // a sealed 2005-06 product on a show table (never a card in the collection)
+    SEALED_PACK: { label: "Sealed Booster Pack", holo: 0.3, gold: 0.0, rank: 6, color: "#ffb36b" },
+    SEALED_BOX:  { label: "Sealed Booster Box",  holo: 0.3, gold: 0.0, rank: 9, color: "#ffb36b" }
 };
+
+// the tiers of cards from the card show only (no packs, no set to open)
+var SHOW_ONLY_TIERS = ["PROMO", "V_C", "V_FOIL", "V_SR", "V_SILVER", "V_GOLD", "V_PROMO"];
+
+function isVintage(card) {
+    return !!card && String(card.tier).indexOf("V_") === 0;
+}
+
+// ---- vintage packs (the 2005-06 CCG) ------------------------------------------------
+//
+// A booster was 10 cards: 5 commons, 3 uncommons, a holo foil of a Character card
+// and a rare slot; a box was 12 packs. Retailers' and collectors' odds: a Super
+// Rare (The Quest Begins) or Silver Rare (Passage to the Grand Line) in about 1
+// pack in 12, a Gold Rare in 1 in 48; otherwise the rare slot is a Rare.
+// cards: the vintage cards of one set (each with .rarity, as app/vintage.json);
+// resealed: a pack someone searched and glued shut again (the show's scammers):
+// its rare slot and foil were swapped for an uncommon and a common.
+var VINTAGE_PACK = { commons: 5, uncommons: 3, silverOdds: 1 / 12, goldOdds: 1 / 48, packsPerBox: 12 };
+
+function makeVintagePack(cards, resealed) {
+    var of = function (rarities, foil) {
+        return cards.filter(function (c) { return rarities.indexOf(c.rarity) >= 0 && (c.tier === "V_FOIL") === !!foil; });
+    };
+    var take = function (list, n, out) {
+        var pool = shuffle(list.slice());
+        for (var i = 0; i < n && pool.length; i++) out.push(pool[i % pool.length]);
+        return out;
+    };
+    var commons = of(["Common"]), uncommons = of(["Uncommon"]);
+    var pack = take(commons, VINTAGE_PACK.commons, []);
+    take(uncommons, VINTAGE_PACK.uncommons + (resealed ? 1 : 0), pack);
+    if (resealed) return take(commons, 1, pack);
+    var foils = of(["Common", "Uncommon", "Rare"], true);
+    if (foils.length) pack.push(pick(foils));
+    var r = Math.random();
+    var hit = r < VINTAGE_PACK.goldOdds ? of(["Gold Rare"])
+            : r < VINTAGE_PACK.goldOdds + VINTAGE_PACK.silverOdds ? of(["Silver Rare", "Super Rare"]) : [];
+    pack.push(pick(hit.length ? hit : of(["Rare"])));
+    return pack;
+}
 
 // premium tiers that take the hit slot
 var HIT_TIERS = ["AA", "TEX", "SEC", "L_AA", "SEC_AA", "SP", "TR", "SUPER_L", "SP_GOLD", "MANGA", "SIGNED", "SUPER"];
