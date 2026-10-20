@@ -396,10 +396,11 @@ var SHOW_VENDORS = {
     honest:  { tables: 5, listings: [20, 30], price: [0.95, 1.15], slabs: 0.4,  fakes: 0,   haggle: [0.8, 0.5, 0.15] },
     bargain: { tables: 2, listings: [15, 25], price: [0.55, 0.85], slabs: 0.15, fakes: 0,   haggle: [0.85, 0.55, 0.25] },
     premium: { tables: 3, listings: [12, 18], price: [1.15, 1.5],  slabs: 0.75, fakes: 0,   haggle: [0.6, 0.3, 0.08] },
-    vintage: { tables: 2, listings: [10, 15], price: [1.0, 1.3],   slabs: 0.35, fakes: 0,   haggle: [0.7, 0.4, 0.1], vintage: true },
+    vintage: { tables: 2, listings: [10, 15], price: [1.0, 1.3],   slabs: 0.35, fakes: 0,   haggle: [0.7, 0.4, 0.1], vintage: "ccg" },
+    carddass:{ tables: 1, listings: [10, 15], price: [0.95, 1.25], slabs: 0.25, fakes: 0,   haggle: [0.75, 0.45, 0.12], vintage: "hb" },
     scammer: { tables: 3, listings: [18, 26], price: [0.6, 0.9],   slabs: 0.5,  fakes: 0.5, haggle: [0.95, 0.9, 0.75] }
 };
-var SHOW_VINTAGE_SCAMMER = 0.35;            // a scammer's table is a vintage one this often
+var SHOW_VINTAGE_SCAMMER = 0.35;            // a scammer's table is a vintage one this often (either game)
 var SHOW_VINTAGE_LISTINGS = [10, 15];       // ...with this many listings
 var SHOW_VINTAGE_MIN = 500;                 // a vintage table's singles start cheaper (฿): binders of commons too
 // [name, what the table says]; scammers' blurbs have their own tells
@@ -419,6 +420,8 @@ var SHOW_NAMES = {
     scammer: [["Dressrosa Deals", "Cash only, no returns. All gem mint, trust me."], ["Jaya Card Kingz", "Best prices at the show!! Pack fresh guaranteed!!"],
               ["Thriller Bark Treasures", "Too good to last. No refunds."], ["Big Mom's Bargains", "Everything mint. Buy two, I'll throw in a sleeve."],
               ["Buggy's Blowout", "Prices slashed!! Genuine 100%!! Cash only!!"]],
+    carddass: [["Carddass Corner", "Japanese vintage: Hyper Battle, 1999-2002."], ["Akihabara Retro", "Straight from Japan. Carddass, every stage."],
+               ["Showa-Heisei Cards", "Old Japanese cards, sorted by stage."]],
     vintageScammer: [["Retro Treasure Chest", "RARE vintage!! 1st print!! Sealed!!"], ["Grand Line Antiques", "Vintage at modern prices. No returns."],
                      ["Golden Age Grails", "Every card a grail. Cash only, today only."]]
 };
@@ -428,16 +431,21 @@ var SHOW_RARITY = { SR: 3, AA: 10, TEX: 5, SEC: 10, SEC_AA: 10, L_AA: 12, SP: 18
 // the show-only sets: their cards come from app/vintage.json (VINTAGE) and optcgapi's promo list (PROMO)
 var SHOW_SETS = {
     VINTAGE: { name: "One Piece CCG (2005-06)", show: true },
-    PROMO:   { name: "Promotion Cards", show: true }
+    PROMO:   { name: "Promotion Cards", show: true },
+    HYPERBATTLE: { name: "Carddass Hyper Battle (1999-2002)", show: true }
 };
 var SHOW_SPECIAL_SHARE = 0.12;              // of the other tables' listings: promos and vintage cards
-var SHOW_SPECIAL_RARITY = { PROMO: 8, V_C: 4, V_FOIL: 3, V_SR: 3, V_SILVER: 2, V_GOLD: 1, V_PROMO: 1 };
+var SHOW_SPECIAL_RARITY = { PROMO: 8, V_C: 4, V_FOIL: 3, V_SR: 3, V_SILVER: 2, V_GOLD: 1, V_PROMO: 1,
+                            V_HB: 4, V_HB_HOLO: 3, V_HB_GOLD: 1.5, V_HB_SECRET: 0.5, V_HB_PROMO: 1 };
 var SHOW_SPECIAL_MIN = 2000;                // promos and vintage cards worth less than this (฿) stay home
 var SHOW_GRAIL_USD = 1000;                  // a card worth this much or more is a grail
 var SHOW_GRAIL_CHANCE = 0.25;               // a show with a grail: about one a month
 var SHOW_SPECIAL_FAKES = 0.8;               // a scammer's promo, vintage card or sealed product is fake this often
 // sealed vintage packs / boxes: the chance a vintage table has one, and that some other table does
 var SHOW_SEALED = { vintage: { pack: 0.35, box: 0.08 }, other: { pack: 0.06, box: 0.01 } };
+// Hyper Battle's sealed products (app/hyperbattle.json "sealed"): the chance a Carddass table has
+// one of each kind (a vending pack, a Grand Box, a Jump Festa pack), and that another table has a vending pack
+var SHOW_SEALED_HB = { carddass: { vpack: 0.7, grandbox: 0.15, jfpack: 0.05 }, other: { vpack: 0.04 } };
 var SHOW_SEALED_TABLES = [["premium", 0.55], ["honest", 0.25], ["scammer", 0.2]];   // which other table
 
 // ---- checking a listing ----
@@ -562,7 +570,7 @@ var SHOW_EDGES = {
     "": "Some wear, about what you'd expect from a binder."
 };
 // asking the vendor about a listing: the chance of a straight answer, by kind; else vague, or for a scammer a line
-var SHOW_STRAIGHT = { honest: 0.85, premium: 0.9, bargain: 0.45, vintage: 0.9, scammer: 0.3 };
+var SHOW_STRAIGHT = { honest: 0.85, premium: 0.9, bargain: 0.45, vintage: 0.9, carddass: 0.9, scammer: 0.3 };
 var SHOW_TALK = {
     honest:  ["\"Came out of a collection I bought last month. I checked every card myself.\"",
               "\"Pulled it myself, actually. Been in a top loader ever since.\"",
@@ -574,6 +582,9 @@ var SHOW_TALK = {
     vintage: ["\"Opened that box myself back in 2006. Kept everything in a binder away from the light.\"",
               "\"Bought it from the original owner. He played the game when it came out.\"",
               "\"I've collected this game for twenty years. I can tell you the print run.\""],
+    carddass: ["\"Brought these back from Japan myself. Vending machine pulls, kept in a binder since 2000.\"",
+               "\"A collector in Osaka sold me his stages. He kept every holo in a sleeve.\"",
+               "\"Bought the lot from an old toy shop that still had the Carddass machine.\""],
     vague:   ["\"Not sure, I bought a big lot. Looks fine to me.\"",
               "\"Couldn't tell you. It was in with a bunch of others.\""],
     scam:    ["\"Trust me, it's legit. Look at it, it's beautiful.\"",
@@ -659,13 +670,15 @@ function roundPrice(v) {
 // claim, cond, fake, fakeGrade, fakeLook, tells (the checks that give a fake away), value (what it's really worth, never shown while
 // you're there), ask, checks: { check id: what you see }, talk (the vendor's answer) }; a
 // sealed product's also has sealed: { kind: "pack" | "box", origin, packs } (its card stands
-// in for it). sealed: { "<set name>": { pack: ฿, box: ฿ } } (app/vintage.json's "sealed",
-// in ฿), or nothing.
+// in for it; a Hyper Battle one's also has line "hb", name and its product's cards). sealed:
+// { ccg: { "<set name>": { pack: ฿, box: ฿ } } (app/vintage.json's "sealed", in ฿), hb: [product:
+// { name, kind: "vpack" | "grandbox" | "jfpack", set, worth: ฿, cards }] (app/hyperbattle.json's) },
+// or nothing (a bare ccg map works too).
 function makeShowStock(day, pool, sealed) {
     var rnd = hash("show " + day);
     var pickOf = function (list) { return list[Math.floor(rnd() * list.length)]; };
     // modern chase cards; promos and vintage cards; vintage only (grails apart: one a show at most)
-    var modern = {}, special = {}, vintage = {}, grails = [];
+    var modern = {}, special = {}, vintage = { ccg: {}, hb: {} }, grails = [];
     pool.forEach(function (x) {
         var t = x.card.tier;
         if (!(x.value > 0)) return;
@@ -674,7 +687,10 @@ function makeShowStock(day, pool, sealed) {
         else if (isGrail(x)) grails.push(x);
         else {
             if (x.value >= SHOW_SPECIAL_MIN) (special[t] = special[t] || []).push(x);
-            if (Tiers.isVintage(x.card)) (vintage[t] = vintage[t] || []).push(x);
+            if (Tiers.isVintage(x.card)) {
+                var line = vintage[x.card.set === "HYPERBATTLE" ? "hb" : "ccg"];
+                (line[t] = line[t] || []).push(x);
+            }
         }
     });
     var used = {};
@@ -692,7 +708,8 @@ function makeShowStock(day, pool, sealed) {
         };
     };
     var pickModern = picker(modern, SHOW_RARITY), pickSpecial = picker(special, SHOW_SPECIAL_RARITY);
-    var pickVintage = picker(vintage, SHOW_SPECIAL_RARITY);
+    var pickVintage = { ccg: picker(vintage.ccg, SHOW_SPECIAL_RARITY), hb: picker(vintage.hb, SHOW_SPECIAL_RARITY) };
+    var lines = Object.keys(pickVintage).filter(function (l) { return pickVintage[l]; });
     if (!pickModern && !pickSpecial) return [];
     var kinds = [];
     Object.keys(SHOW_VENDORS).forEach(function (k) { for (var i = 0; i < SHOW_VENDORS[k].tables; i++) kinds.push(k); });
@@ -763,9 +780,10 @@ function makeShowStock(day, pool, sealed) {
                  checks: seen.checks, talk: talk(kind, fake) };
     };
 
+    var ccgSealed = sealed && (sealed.ccg || (sealed.hb ? null : sealed)) || {}, hbSealed = sealed && sealed.hb || [];
     // a sealed vintage pack or box on a table
     var sealedListing = function (table, kind, origin) {
-        var worth = sealed[origin][kind];
+        var worth = ccgSealed[origin][kind];
         if (!(worth > 0)) return null;
         var cfg = SHOW_VENDORS[table.kind], fake = !!cfg.fakes && rnd() < SHOW_SPECIAL_FAKES;
         var seen = inspect(kind, fake, 0, "");
@@ -780,16 +798,38 @@ function makeShowStock(day, pool, sealed) {
         };
     };
 
+    // a sealed Hyper Battle product (a vending pack, a Grand Box, a Jump Festa pack)
+    var hbListing = function (table, product) {
+        var cfg = SHOW_VENDORS[table.kind], fake = !!cfg.fakes && rnd() < SHOW_SPECIAL_FAKES;
+        var box = product.kind === "grandbox";
+        var seen = inspect(box ? "box" : "pack", fake, 0, "");
+        return {
+            id: table.id + "-" + product.kind + "-" + Math.floor(rnd() * 1e6), key: "sealed:hb:" + product.name,
+            card: { id: box ? "BOX" : "PACK", name: product.name, tier: box ? "SEALED_BOX" : "SEALED_PACK", set: "HYPERBATTLE",
+                    origin: product.set, line: "hb", image: "" },
+            sealed: { kind: product.kind, line: "hb", origin: product.set, name: product.name, packs: 1, cards: product.cards || null },
+            grade: 0, claim: box ? "Sealed, never opened" : "Unopened", cond: "", fake: fake, fakeGrade: seen.grade, fakeLook: seen.look,
+            tells: seen.tells, value: fake ? 0 : product.worth, ask: roundPrice(product.worth * between(rnd, cfg.price[0], cfg.price[1])),
+            checks: seen.checks, talk: talk(table.kind, fake)
+        };
+    };
+    var hbProduct = function (kind) {
+        var of = hbSealed.filter(function (x) { return x.kind === kind && x.worth > 0; });
+        return of.length ? pickOf(of) : null;
+    };
+
     var hall = shuffled(kinds, rnd).map(function (kind, v) {
         var cfg = SHOW_VENDORS[kind];
-        var old = !!cfg.vintage || (kind === "scammer" && !!pickVintage && rnd() < SHOW_VINTAGE_SCAMMER);   // sells only vintage
+        // sells only vintage: a specialist (of one game), or a scammer passing as one
+        var old = cfg.vintage && pickVintage[cfg.vintage] ? cfg.vintage
+                : kind === "scammer" && lines.length && rnd() < SHOW_VINTAGE_SCAMMER ? pickOf(lines) : "";
         var pool = old && kind === "scammer" ? "vintageScammer" : kind;
         var nm = names[pool].shift() || ["Table " + (v + 1), ""];
         var range = old ? SHOW_VINTAGE_LISTINGS : cfg.listings;
-        var n = old && !pickVintage ? 0 : range[0] + Math.floor(rnd() * (range[1] - range[0] + 1));
+        var n = cfg.vintage && !old ? 0 : range[0] + Math.floor(rnd() * (range[1] - range[0] + 1));
         var listings = [];
         for (var i = 0; i < n; i++) {
-            var x = old ? pickVintage()
+            var x = old ? pickVintage[old]()
                   : pickSpecial && (!pickModern || rnd() < SHOW_SPECIAL_SHARE) ? pickSpecial() : pickModern();
             used[x.key] = true;
             listings.push(listing(kind, x, v + "-" + i));
@@ -801,17 +841,18 @@ function makeShowStock(day, pool, sealed) {
     // one), or a scammer's (likely a fake)
     if (grails.length && rnd() < SHOW_GRAIL_CHANCE) {
         var g = grails[Math.floor(rnd() * grails.length)];
-        var honestKind = Tiers.isVintage(g.card) && rnd() < 0.5 ? "vintage" : "premium";
+        var gline = !Tiers.isVintage(g.card) ? "" : g.card.set === "HYPERBATTLE" ? "hb" : "ccg";
+        var honestKind = gline && rnd() < 0.5 ? (gline === "hb" ? "carddass" : "vintage") : "premium";
         var kind = rnd() < 0.65 ? honestKind : "scammer";
-        var where = hall.filter(function (t) { return t.kind === kind && (!t.vintage || Tiers.isVintage(g.card)); });
+        var where = hall.filter(function (t) { return t.kind === kind && (!t.vintage || t.vintage === gline); });
         var table = where[Math.floor(rnd() * where.length)];
         if (table) table.listings.unshift(listing(table.kind, g, table.id + "-g"));
     }
 
     // sealed vintage packs and boxes: often at the vintage tables, very rarely anywhere else
-    var origins = Object.keys(sealed || {});
+    var origins = Object.keys(ccgSealed);
     if (origins.length) {
-        hall.filter(function (t) { return t.vintage; }).forEach(function (t) {
+        hall.filter(function (t) { return t.vintage === "ccg"; }).forEach(function (t) {
             ["box", "pack"].forEach(function (kind) {
                 if (rnd() >= SHOW_SEALED.vintage[kind]) return;
                 var it = sealedListing(t, kind, pickOf(origins));
@@ -830,6 +871,21 @@ function makeShowStock(day, pool, sealed) {
             var it = t && sealedListing(t, kind, pickOf(origins));
             if (it) t.listings.unshift(it);
         });
+    }
+    // Hyper Battle: vending packs, Grand Boxes, Jump Festa packs at the Carddass tables; now and
+    // then a vending pack somewhere else
+    if (hbSealed.length) {
+        hall.filter(function (t) { return t.vintage === "hb"; }).forEach(function (t) {
+            ["jfpack", "grandbox", "vpack"].forEach(function (kind) {
+                var product = rnd() < SHOW_SEALED_HB.carddass[kind] ? hbProduct(kind) : null;
+                if (product) t.listings.unshift(hbListing(t, product));
+            });
+        });
+        if (rnd() < SHOW_SEALED_HB.other.vpack) {
+            var others = hall.filter(function (t) { return !t.vintage && t.kind !== "bargain"; });
+            var t2 = others[Math.floor(rnd() * others.length)], product = hbProduct("vpack");
+            if (t2 && product) t2.listings.unshift(hbListing(t2, product));
+        }
     }
     return hall;
 }
@@ -936,7 +992,8 @@ function buyAtShow(p, id, now) {
     p.show.bought[id] = { price: price, at: now };
     if (x.sealed) {   // to the Port's sealed products (a resealed one's found out when you leave)
         var sid = now.toString(36) + Math.floor(Math.random() * 1e6).toString(36);
-        p.sealed[sid] = { set: "VINTAGE", setName: x.sealed.origin, kind: x.sealed.kind, boxes: 0, vintage: true,
+        p.sealed[sid] = { set: x.sealed.line === "hb" ? "HYPERBATTLE" : "VINTAGE", setName: x.sealed.origin, kind: x.sealed.kind,
+                          boxes: 0, vintage: true, line: x.sealed.line || "ccg", name: x.sealed.name || "", cards: x.sealed.cards || null,
                           packs: x.sealed.packs, packsTotal: x.sealed.packs, resealed: !!x.fake,
                           paid: price, at: now, rate: SEALED_RATE[1] };
     }
@@ -965,7 +1022,8 @@ function leaveShow(p, now) {
     var tally = function (fn) { return real.filter(fn).length; };
     recap.done = record(p, { type: "show", fakes: recap.fakes, steals: recap.steals,
                              vintage: tally(function (x) { return Tiers.isVintage(x.card); }),
-                             promos: tally(function (x) { return x.card.tier === "PROMO" || x.card.tier === "V_PROMO"; }),
+                             promos: tally(function (x) { return ["PROMO", "V_PROMO", "V_HB_PROMO"].indexOf(x.card.tier) >= 0; }),
+                             rookie: tally(function (x) { return x.card.set === "HYPERBATTLE" && x.card.id === "C01"; }),
                              goldRares: tally(function (x) { return x.card.tier === "V_GOLD"; }),
                              grails: tally(function (x) { return isGrail({ card: x.card, value: x.grade ? x.value / GRADE_MULT[x.grade] : x.value }); }) });
     return recap;
@@ -1141,6 +1199,10 @@ var ACHIEVEMENTS = [
     a("vintage5", "Vintage Collector",     "Bring home 5 genuine vintage cards from card shows", 2e8, 15000, null, function (p) { return p.stats.vintage; }, 5),
     a("goldrare", "First Edition",         "Bring home a genuine 2005-06 Gold Rare", 5e8, 30000, null, function (p) { return p.stats.goldRares; }, 1),
     a("promo25",  "Promo Hunter",          "Bring home 25 genuine promos from card shows", 8e8, 50000, null, function (p) { return p.stats.promos; }, 25),
+    a("rookie",   "Rookie",                "Own the 1999 Hyper Battle Luffy (C01), from a card show or a pack", 1.5e9, 120000, null,
+      function (p) { return p.stats.rookie; }, 1),
+    a("carddass10","Carddass Kid",         "Open 10 Hyper Battle vending packs", 3e8, 20000, null,
+      function (p) { return setStats(p, "HYPERBATTLE").packs; }, 10),
     a("grail",    "Holy Grail",            "Bring home a genuine grail (a $1,000+ promo or vintage card)", 3e9, 250000, null,
       function (p) { return p.stats.grails; }, 1),
     a("sealed1",  "Shrink Wrap",           "Buy a sealed product",                 5e6,   500,   null, function (p) { return Object.keys(p.sealed).length + p.stats.sealedOpened; }, 1),
@@ -1302,7 +1364,7 @@ function fresh(now) {
                  backfilled: 1,                   // 0: the set boards still need back-dating from the collection (see backfill)
                  spent: 0, bought: 0, boughtValue: 0, graded: 0, gem10: 0, sealedOpened: 0,
                  seasonsDone: 0, weeklyDone: 0, shows: 0, showSteals: 0, fakes: 0,
-                 vintage: 0, promos: 0, goldRares: 0, grails: 0 },
+                 vintage: 0, promos: 0, goldRares: 0, grails: 0, rookie: 0 },
         achievements: {},              // id -> date unlocked
         collections: {},               // saved collection id -> { day, bounty, reward, gem } (rewarded once)
         bounties: { day: "", list: [] },
@@ -1552,6 +1614,7 @@ function record(p, ev) {
     if (ev.type === "pack") {
         var b = bySet(p, ev.set);
         s.packs++;
+        s.rookie += ev.rookie || 0;   // the 1999 Hyper Battle Luffy came out of it
         b.packs++;
         s.sets[ev.set] = (s.sets[ev.set] || 0) + 1;
         ev.tiers.forEach(function (t) {
@@ -1596,6 +1659,7 @@ function record(p, ev) {
         s.promos += ev.promos || 0;
         s.goldRares += ev.goldRares || 0;
         s.grails += ev.grails || 0;
+        s.rookie += ev.rookie || 0;
     } else if (ev.type === "reviewed") {   // a review lifted a slab: a new 10 counts, it's not another grading
         if (ev.grade === 10) s.gem10++;
     } else if (ev.type === "registry") {
@@ -2039,14 +2103,16 @@ function openSealed(p, id) {
     return it;
 }
 
-// a vintage product: one of its packs comes out (Stage rips it). Returns { origin, resealed, left }
+// a vintage product: one of its packs comes out (Stage rips it). Returns { origin, resealed, left,
+// line, product (the kind), name, cards }
 function openVintagePack(p, id) {
     var it = p.sealed[id];
     if (!it || !it.vintage || !(it.packs > 0)) return null;
     if (it.packs === it.packsTotal) p.stats.sealedOpened++;
     it.packs--;
     if (!it.packs) delete p.sealed[id];
-    return { origin: it.setName, resealed: !!it.resealed, left: it.packs };
+    return { origin: it.setName, resealed: !!it.resealed, left: it.packs, line: it.line || "ccg", product: it.kind,
+             name: it.name || "", cards: it.cards || null };
 }
 
 // ---- the Port: cosmetics -----------------------------------------------------------------------

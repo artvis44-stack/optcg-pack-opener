@@ -4,6 +4,8 @@
 Usage: fetch_cards.py [SET_ID]   one set (default OP-17), e.g. OP-05, EB-01, PRB-02
        fetch_cards.py VINTAGE    the card show's vintage cards (app/vintage.json) and their photos
        fetch_cards.py PROMO      the card show's promos: every promo card optcgapi lists
+       fetch_cards.py HYPERBATTLE  the card show's Carddass Hyper Battle cards (app/hyperbattle.json):
+                                 their pictures, one zip from the repo's releases
        fetch_cards.py all        every set in app/sets.json (~40 MB each)
        fetch_cards.py list       the known sets and whether they're downloaded
        fetch_cards.py previews   just the pack/box photos of every set (for the set picker)
@@ -33,6 +35,7 @@ import sys
 import tempfile
 import urllib.parse
 import urllib.request
+import zipfile
 from concurrent.futures import ThreadPoolExecutor
 
 API = "https://optcgapi.com/api/sets/{}/"
@@ -620,8 +623,56 @@ def promo_version():
         return 0
 
 
+def hyper_wanted():
+    """The picture version app/hyperbattle.json asks for."""
+    with open(os.path.join(HERE, "app", "hyperbattle.json")) as f:
+        return json.load(f).get("picturesVersion", 1)
+
+
+def hyper_version():
+    """The picture version of the cached HYPERBATTLE/cards.json (0: none)."""
+    try:
+        with open(os.path.join(ROOT, "HYPERBATTLE", "cards.json")) as f:
+            return json.load(f).get("picturesVersion", 0)
+    except (OSError, ValueError):
+        return 0
+
+
+def fetch_hyperbattle():
+    """The card show's Hyper Battle cards: their pictures (a zip published with the repo's
+    releases, app/hyperbattle.json "pictures"), unpacked to HYPERBATTLE/, then cards.json
+    (written last: the app waits for it before the show stocks them)."""
+    with open(os.path.join(HERE, "app", "hyperbattle.json")) as f:
+        data = json.load(f)
+    cache = os.path.join(ROOT, "HYPERBATTLE")
+    os.makedirs(cache, exist_ok=True)
+    version = data.get("picturesVersion", 1)
+    if hyper_version() < version:
+        print(f"HYPERBATTLE: downloading the pictures ({data['pictures']})", flush=True)
+        with tempfile.TemporaryDirectory() as tmp:
+            zpath = os.path.join(tmp, "pictures.zip")
+            with open(zpath, "wb") as f:
+                f.write(fetch(data["pictures"]))
+            with zipfile.ZipFile(zpath) as z:
+                for name in z.namelist():
+                    base = os.path.basename(name)
+                    if not re.fullmatch(r"[A-Za-z0-9_.-]+\.jpg", base):   # only the pictures, flat
+                        continue
+                    with z.open(name) as src, open(os.path.join(cache, base), "wb") as dst:
+                        shutil.copyfileobj(src, dst)
+    years = {s["name"]: s.get("year", 2000) for s in data.get("sets", [])}
+    cards = [{"id": c["id"], "name": c["name"], "rarity": c["rarity"], "tier": c["tier"], "color": "",
+              "type": c.get("type", ""), "origin": c["set"], "year": years.get(c["set"], 2000),
+              "image": os.path.join(cache, c["key"] + ".jpg")} for c in data["cards"]]
+    with open(os.path.join(cache, "cards.json"), "w") as f:
+        json.dump({"set": "HYPERBATTLE", "set_name": "Carddass Hyper Battle (1999-2002)", "picturesVersion": version,
+                   "cards": cards}, f, indent=1)
+    have = sum(1 for c in cards if os.path.exists(c["image"]))
+    print(f"HYPERBATTLE: {len(cards)} cards, {have} pictures")
+
+
 # the card show's sets, outside sets.json (no packs)
-SHOW_SETS = {"VINTAGE": fetch_vintage, "PROMO": fetch_promos}
+SHOW_SETS = {"VINTAGE": fetch_vintage, "PROMO": fetch_promos, "HYPERBATTLE": fetch_hyperbattle}
 
 
 def official_image(page):
@@ -698,6 +749,8 @@ def background(playmats):
             print(f"{set_id} photos: {e}", flush=True)
     for set_id, fetch_show_set in SHOW_SETS.items():   # small, and the card show wants them
         if set_id == "PROMO" and promo_version() >= PROMO_VERSION:
+            continue
+        if set_id == "HYPERBATTLE" and hyper_version() >= hyper_wanted():
             continue
         try:
             fetch_show_set()

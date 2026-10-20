@@ -13,6 +13,7 @@ Item {
     readonly property bool vintage: Tiers.isVintage(card)
     // a sealed 2005-06 pack or box on a card show table (its card stands in for it)
     readonly property bool sealed: !!card && (card.tier === "SEALED_PACK" || card.tier === "SEALED_BOX")
+    readonly property bool hyper: !!card && card.line === "hb"   // a Carddass Hyper Battle product
     readonly property real u: width / 100
     // the lettering: gold and silver rares in metal, everything else in ink
     readonly property var metal: !card ? null
@@ -238,16 +239,17 @@ Item {
         }
     }
 
-    // ---- a sealed pack or box: the wrapper, crimped top and bottom (a box: its lid) ----
+    // ---- a sealed pack or box: the wrapper, crimped top and bottom (a box: its lid); Hyper
+    // Battle's: Carddass blue (a vending pack, a Grand Box deck, a Jump Festa pack) ----
     Rectangle {
         anchors.fill: parent
         visible: face.sealed
         readonly property bool box: !!face.card && face.card.tier === "SEALED_BOX"
         radius: (box ? 1 : 2.5) * face.u
         gradient: Gradient {
-            GradientStop { position: 0; color: "#f08a24" }
-            GradientStop { position: 0.45; color: "#d4421c" }
-            GradientStop { position: 1; color: "#6e1a12" }
+            GradientStop { position: 0; color: face.hyper ? "#3a78d0" : "#f08a24" }
+            GradientStop { position: 0.45; color: face.hyper ? "#1f4fa0" : "#d4421c" }
+            GradientStop { position: 1; color: face.hyper ? "#0c2452" : "#6e1a12" }
         }
         Repeater {   // the crimps
             model: parent.box ? 0 : 2
@@ -271,7 +273,7 @@ Item {
             color: "#2a190e"
             Text {
                 anchors.centerIn: parent
-                text: "BOOSTER BOX  ·  12 PACKS"
+                text: face.hyper ? "GRAND BOX  ·  READY-MADE DECK" : "BOOSTER BOX  ·  12 PACKS"
                 color: "#ffd56b"
                 font { pixelSize: 5 * face.u; weight: Font.Black; letterSpacing: 0.5 * face.u }
             }
@@ -292,7 +294,7 @@ Item {
             }
             Text {
                 width: parent.width
-                text: "COLLECTIBLE CARD GAME"
+                text: face.hyper ? "CARDDASS HYPER BATTLE" : "COLLECTIBLE CARD GAME"
                 color: "#ffffff"
                 font { pixelSize: 4.6 * face.u; weight: Font.Black; letterSpacing: 0.6 * face.u }
                 horizontalAlignment: Text.AlignHCenter
@@ -300,7 +302,7 @@ Item {
             Item { width: 1; height: 8 * face.u }
             Text {
                 width: parent.width
-                text: face.card ? face.card.origin || "" : ""
+                text: !face.card ? "" : face.hyper && face.card.origin === "Promotionals" ? face.card.name : face.card.origin || ""
                 color: "#ffe9c0"
                 font { family: "serif"; pixelSize: 7 * face.u; weight: Font.Bold; italic: true }
                 fontSizeMode: Text.HorizontalFit
@@ -308,7 +310,9 @@ Item {
             }
             Text {
                 width: parent.width
-                text: face.card && face.card.tier === "SEALED_BOX" ? "12 booster packs" : "10 game cards"
+                text: !face.card ? "" : face.hyper ? (face.card.tier === "SEALED_BOX" ? "a ready-made deck"
+                                                      : face.card.origin === "Promotionals" ? "event limited pack" : "4 cards · 100 yen")
+                    : face.card.tier === "SEALED_BOX" ? "12 booster packs" : "10 game cards"
                 color: "#ffe9c0"
                 font.pixelSize: 4.4 * face.u
                 horizontalAlignment: Text.AlignHCenter
@@ -316,7 +320,7 @@ Item {
         }
         Text {
             anchors { horizontalCenter: parent.horizontalCenter; bottom: parent.bottom; bottomMargin: 9 * face.u }
-            text: "BANDAI  ·  SHONEN JUMP"
+            text: face.hyper ? "BANDAI  ·  CARDDASS" : "BANDAI  ·  SHONEN JUMP"
             color: "#ffd0a0"
             opacity: 0.8
             font { pixelSize: 3.4 * face.u; weight: Font.Bold; letterSpacing: 0.4 * face.u }

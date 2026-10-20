@@ -418,7 +418,9 @@ Item {
                             x: 14
                             anchors.verticalCenter: parent.verticalCenter
                             // a vintage one (from a card show) opens a pack at a time; a resealed one's worth nothing
-                            text: (modelData.vintage
+                            text: (modelData.line === "hb"
+                                   ? "Hyper Battle  ·  " + (modelData.name || modelData.setName) + (modelData.resealed ? "  ·  RESEALED" : "")
+                                   : modelData.vintage
                                    ? "2005 CCG " + modelData.kind + "  ·  " + modelData.setName
                                      + (modelData.kind === "box" ? "  ·  " + modelData.packs + " of " + modelData.packsTotal + " packs left" : "")
                                      + (modelData.resealed ? "  ·  RESEALED" : "")
@@ -431,7 +433,8 @@ Item {
                         Row {
                             anchors { right: parent.right; rightMargin: 12; verticalCenter: parent.verticalCenter }
                             spacing: 8
-                            PillButton { text: modelData.vintage ? "Open a pack" : "Open"; fontSize: 12
+                            PillButton { text: modelData.line === "hb" ? (modelData.kind === "grandbox" ? "Open the deck" : "Open it")
+                                               : modelData.vintage ? "Open a pack" : "Open"; fontSize: 12
                                          onClicked: modelData.vintage ? port.stage.openVintagePack(modelData.id) : port.stage.openSealed(modelData.id) }
                             PillButton { text: "Sell"; fontSize: 12; accent: "#7fd1b9"; onClicked: port.stage.sellSealed(modelData.id) }
                         }

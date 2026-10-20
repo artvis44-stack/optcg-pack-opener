@@ -70,7 +70,9 @@ Item {
 
     // where a card's from: its set, or for the show-only ones what they are ("One Piece CCG · The Quest Begins")
     function fromText(c) {
-        return c.set === "VINTAGE" ? "One Piece CCG" + (c.origin ? " · " + c.origin : "") : c.set === "PROMO" ? "Promo" : c.set;
+        return c.set === "VINTAGE" ? "One Piece CCG" + (c.origin ? " · " + c.origin : "")
+             : c.set === "HYPERBATTLE" ? "Carddass Hyper Battle" + (c.origin ? " · " + c.origin : "")
+             : c.set === "PROMO" ? "Promo" : c.set;
     }
 
     function bought(id) { return !!(s.bought || {})[id]; }
@@ -78,6 +80,7 @@ Item {
     // a stall's look: its tablecloth, from its name (the same every visit)
     readonly property var cloths: ["#7a2230", "#24507a", "#2f6b46", "#6b4a8a", "#8a5a24", "#2c6a6e", "#7a6a22", "#4a4f5c", "#8a3a5e"]
     function clothOf(t) {
+        if (t.vintage === "hb") return "#1f3f7a";   // Carddass blue
         if (t.vintage) return "#5a3a22";
         var h = 0;
         for (var i = 0; i < t.name.length; i++) h = (h * 31 + t.name.charCodeAt(i)) % 9973;
@@ -94,8 +97,9 @@ Item {
     }
 
     readonly property var kindName: ({ honest: "an honest dealer", bargain: "a bargain table", premium: "a premium dealer",
-                                       vintage: "a vintage specialist", scammer: "a SCAMMER" })
-    readonly property var kindColor: ({ honest: "#7fd1b9", bargain: "#ffd56b", premium: "#c8a0ff", vintage: "#e8c48a", scammer: "#ff8a7a" })
+                                       vintage: "a vintage specialist", carddass: "a Carddass specialist", scammer: "a SCAMMER" })
+    readonly property var kindColor: ({ honest: "#7fd1b9", bargain: "#ffd56b", premium: "#c8a0ff", vintage: "#e8c48a",
+                                        carddass: "#9ad8ff", scammer: "#ff8a7a" })
     readonly property var gradeName: ({ crude: "a crude fake", decent: "a decent fake", good: "a good fake" })
 
     // ---- the hall: a warm ceiling, rows of lights ----------------------------------------
@@ -483,7 +487,10 @@ Item {
                         width: parent.width
                         wrapMode: Text.WordWrap
                         text: !info.lst ? "" : info.lst.grade ? "In a slab, graded " + info.lst.grade + "."
-                              : info.lst.sealed ? (info.lst.sealed.kind === "box" ? "A sealed box of 12 packs" : "A sealed pack of 10 cards")
+                              : info.lst.sealed ? ({ box: "A sealed box of 12 packs", pack: "A sealed pack of 10 cards",
+                                                     vpack: "An unopened Carddass vending pack: 4 cards",
+                                                     grandbox: "A sealed Grand Box: a ready-made deck",
+                                                     jfpack: "An unopened Jump Festa limited pack" })[info.lst.sealed.kind] || "Sealed"
                                                   + ". The vendor says: \"" + info.lst.claim + "\""
                               : "Raw. The vendor says: \"" + info.lst.claim + "\""
                         color: "#c8ccd6"
