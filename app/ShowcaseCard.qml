@@ -167,6 +167,12 @@ Item {
         if (!card || card.type === "DON!!" || !setId) return;   // DON!! cards aren't priced there
         if (priceHistory.length && priceHistory[priceHistory.length - 1].d === today()) return;
         var forKey = key;
+        if (setId === "VINTAGE") {   // no live prices: the reference price the pack opener saved
+            var ref = {};
+            try { ref = JSON.parse(host.readText(dataDir + "/market/VINTAGE.json") || "{}").prices || {}; } catch (e) {}
+            if (ref[card.id + "|" + card.name] > 0) recordPrice(ref[card.id + "|" + card.name]);
+            return;
+        }
         // a Japanese card: the same printing's English price, scaled (see Stage.loadMarket)
         var info = sets[setId] || {};
         var jp = info.lang === "jp";
@@ -182,7 +188,7 @@ Item {
                         recordPrice(Number(m.market_price) * (jp ? Progress.JP_CARD_PRICE : 1));
                 } catch (e) {}
             };
-            xhr.open("GET", "https://optcgapi.com/api/sets/" + src + "/");
+            xhr.open("GET", src === "PROMO" ? "https://optcgapi.com/api/allPromos/" : "https://optcgapi.com/api/sets/" + src + "/");
             xhr.send();
         });
     }
@@ -450,7 +456,8 @@ Item {
                     Text {
                         width: parent.width
                         elide: Text.ElideRight
-                        text: show.setId + ((show.sets[show.setId] || {}).name ? "  ·  " + show.sets[show.setId].name : "")
+                        text: show.setId + ((show.sets[show.setId] || Progress.SHOW_SETS[show.setId] || {}).name
+                                           ? "  ·  " + (show.sets[show.setId] || Progress.SHOW_SETS[show.setId]).name : "")
                         color: label.style.sub
                         font { pixelSize: 4.4 * show.u; weight: Font.Bold }
                     }

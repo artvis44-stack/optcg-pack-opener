@@ -35,6 +35,7 @@ Item {
     readonly property string deckBack: "file://" + cacheRoot + "/assets/back.png"
     readonly property string leaderBack: "file://" + cacheRoot + "/assets/back_leader.png"
     readonly property string donBack: "file://" + cacheRoot + "/assets/back_don.png"
+    readonly property string vintageBack: Qt.resolvedUrl("pictures/vintage-back.png")   // the 2005-06 CCG's back (comes with the app)
 
     readonly property string boxImage: boxProbe.status === Image.Ready ? boxProbe.source : ""
 
@@ -149,6 +150,7 @@ Item {
         reloadCollection();
         if (!offTheRecord) {
             prog(p => Progress.backfill(p, host, dataDir, cacheRoot).concat(Progress.accrue(p, Date.now(), () => downloadedSets())));
+            Object.keys(Progress.SHOW_SETS).forEach(id => loadMarket(id));   // the show's, and what they're worth in the collection
             refreshValue();
             refreshRegistry();
         }
@@ -664,9 +666,7 @@ Item {
         var graded = collection.graded || {}, cardsBySet = {};
         Object.keys(graded).forEach(id => {
             var set = graded[id].set;
-            if (cardsBySet[set]) return;
-            try { cardsBySet[set] = JSON.parse(host.readText(cacheRoot + "/" + set + "/cards.json") || "{}").cards || []; }
-            catch (e) { cardsBySet[set] = []; }
+            if (!cardsBySet[set]) cardsBySet[set] = cardsOf(set);
         });
         var reg = Progress.registry(graded, cardsBySet, c => Tiers.tierOf(c).rank);
         prog(p => Progress.record(p, { type: "registry", bySet: reg }));
@@ -702,9 +702,10 @@ Item {
             if (!text) return;
             try { out[id] = JSON.parse(text).cards || []; } catch (e) {}
         });
+        Object.keys(Progress.SHOW_SETS).forEach(id => { var c = cardsOf(id); if (c.length) out[id] = c; });
         allCards = out;
     }
-    readonly property var collectionDefs: allCards ? Collections.build(allCards, sets) : []
+    readonly property var collectionDefs: allCards ? Collections.build(allCards, Object.assign({}, sets, Progress.SHOW_SETS)) : []
     readonly property var collectionById: {
         var m = {};
         collectionDefs.forEach(d => m[d.id] = d);
@@ -824,12 +825,47 @@ Item {
         return true;
     }
 
-    // every card of your downloaded sets, at its market price: what the vendors stock
+    // the vintage cards (app/vintage.json) as cards.json has them (fetch_cards.py vintage_cards):
+    // each Character card's holo foil is a card of its own. Their pictures, when fetch_cards.py
+    // has them, go in the cache's VINTAGE folder (DrawnFace draws the rest).
+    property var vintageData: null
+    function vintageCards() {
+        if (!vintageData) {
+            try { vintageData = JSON.parse(host.readText(host.appPath("app/vintage.json")) || "{}"); } catch (e) { vintageData = {}; }
+        }
+        var v = vintageData, out = [];
+        (v.cards || []).forEach(c => {
+            var card = { id: c.id, name: c.name, tier: c.tier, rarity: c.rarity, type: "Character", origin: c.set,
+                         character: c.character, year: (v.sets || {})[c.set] || 0, refUsd: c.refUsd,
+                         image: cacheRoot + "/VINTAGE/" + c.id + ".jpg" };
+            out.push(card);
+            if (c.foil) out.push(Object.assign({}, card, { id: c.id + "-F", tier: "V_FOIL", refUsd: c.foil,
+                                                           image: cacheRoot + "/VINTAGE/" + c.id + "-F.jpg" }));
+        });
+        return out;
+    }
+
+    // a set's cards: the cached cards.json (the vintage ones come with the app)
+    function cardsOf(id) {
+        if (id === "VINTAGE") return vintageCards();
+        try { return JSON.parse(host.readText(cacheRoot + "/" + id + "/cards.json") || "{}").cards || []; } catch (e) { return []; }
+    }
+
+    // sealed vintage packs and boxes, ฿: { "<set name>": { pack, box } } (app/vintage.json "sealed", USD)
+    function vintageSealed() {
+        vintageCards();   // loads vintageData
+        var out = {}, s = vintageData.sealed || {};
+        Object.keys(s).forEach(k => out[k] = { pack: s[k].pack * Progress.USD_TO_BERRY, box: s[k].box * Progress.USD_TO_BERRY });
+        return out;
+    }
+
+    // every card of your downloaded sets, plus the promos and vintage cards, at its market
+    // price: what the vendors stock
     function showPool() {
         var out = [];
-        downloadedSets().forEach(s => {
-            var cards = [], prices = markets[s.id] || null;
-            try { cards = JSON.parse(host.readText(cacheRoot + "/" + s.id + "/cards.json") || "{}").cards || []; } catch (e) {}
+        Object.keys(Progress.SHOW_SETS).forEach(id => { if (!markets[id]) loadMarket(id); });
+        downloadedSets().concat(Object.keys(Progress.SHOW_SETS).map(id => ({ id: id }))).forEach(s => {
+            var cards = cardsOf(s.id), prices = markets[s.id] || null;
             if (!prices) {
                 try { prices = (JSON.parse(host.readText(dataDir + "/market/" + s.id + ".json") || "null") || {}).prices || null; }
                 catch (e) { prices = null; }
@@ -840,7 +876,7 @@ Item {
                 if (seen[key]) return;
                 seen[key] = true;
                 out.push({ key: key, value: Progress.cardValue(c, prices),
-                           card: { id: c.id, name: c.name, tier: c.tier, type: c.type, image: c.image, set: s.id } });
+                           card: { id: c.id, name: c.name, tier: c.tier, type: c.type, image: c.image, set: s.id, origin: c.origin, character: c.character } });
             });
         });
         return out;
@@ -865,7 +901,7 @@ Item {
                 toast("Download a set first (S): the vendors sell cards from the sets you have.");
                 return;
             }
-            prog(p => { Progress.enterShow(p, Date.now(), pool); return []; });
+            prog(p => { Progress.enterShow(p, Date.now(), pool, vintageSealed()); return []; });
             sfx("chime");
         }
         showReturn = phase === "board" ? boardReturn : phase === "port" ? portReturn : phase;
@@ -883,6 +919,13 @@ Item {
         }
         var it = x.listing, col = readCollection(), c = it.card;
         var id36 = Date.now().toString(36) + Math.floor(Math.random() * 1e6).toString(36);
+        if (it.sealed) {   // Progress.buyAtShow put it with your sealed products
+            prog(p => Progress.record(p, { type: "bought", count: 1, value: Progress.showState(p).bought[id].price }));
+            sfx("coin");
+            toast("Bought a sealed " + c.name + " for " + Progress.format(Progress.showState(progress).bought[id].price)
+                  + ". It's in the port's Sealed tab.");
+            return true;
+        }
         if (it.fake) {
             col.fakes = col.fakes || {};
             col.fakes[id36] = { card: c, key: it.key, grade: it.grade, paid: Progress.showState(progress).bought[id].price,
@@ -948,6 +991,41 @@ Item {
         }
     }
 
+    // ---- a sealed vintage pack (from a card show), opened from the port ----------------------
+    // The pack goes through the usual tear and reveal; it's taken out of the sealed product
+    // when it tears (so backing out before that loses nothing). After the summary, back to the port.
+    property var vintageRip: null   // { id (the sealed product), origin, code } while one's on screen
+    function openVintagePack(id) {
+        var it = (progress.sealed || {})[id];
+        if (!it || !it.vintage || offTheRecord) return;
+        var cards = vintageCards().filter(c => c.origin === it.setName).map(c => Object.assign({ set: "VINTAGE" }, c));
+        if (!cards.length) return;
+        pack = Tiers.makeVintagePack(cards, !!it.resealed);
+        var art = cards.filter(c => c.tier === "V_GOLD" || c.tier === "V_SILVER" || c.tier === "V_SR");
+        packArt = art.length ? "file://" + art[Math.floor(Math.random() * art.length)].image : "";
+        vintageRip = { id: id, origin: it.setName, code: it.setName === "The Quest Begins" ? "2005" : "2006" };
+        packPaid = true;
+        revealed = 0;
+        cardsIn = false;
+        inspectIndex = -1;
+        phase = "pack";
+        sfx("box");
+    }
+
+    // torn: out of the sealed product, into the collection; counts as a pack opened (of VINTAGE)
+    function recordVintagePack() {
+        var id = vintageRip.id;
+        prog(p => { Progress.openVintagePack(p, id); return []; });
+        packNew = pack.map(c => !collection.cards[cardKey(c)]);
+        recordCards(pack);
+        if (offTheRecord) return;
+        var have = ownedKeys(), all = vintageCards();
+        var owned = Object.keys(have).filter(k => k.indexOf("VINTAGE:") === 0).length;
+        prog(p => Progress.record(p, { type: "pack", set: "VINTAGE", tiers: pack.map(c => c.tier), god: false,
+                                       completion: all.length ? owned / all.length : 0, groups: {}, present: null }));
+        refreshValue();
+    }
+
     // boxes from opened sealed products go to this set's case as prepaid
     function claimPrepaid() {
         if (offTheRecord || !caseState || !(progress.prepaidBoxes || {})[setId]) return;
@@ -981,6 +1059,13 @@ Item {
     function loadMarket(id) {
         id = id || setId;
         var path = dataDir + "/market/" + id + ".json", cached = null;
+        if (id === "VINTAGE") {   // no live prices for these: the app's reference prices (rewritten: the list may have changed)
+            var ref = {};
+            vintageCards().forEach(c => ref[c.id + "|" + c.name] = c.refUsd);
+            host.writeText(path, JSON.stringify({ day: Progress.dayOf(Date.now()), prices: ref }));
+            setMarket(id, ref);
+            return;
+        }
         try { cached = JSON.parse(host.readText(path) || "null"); } catch (e) {}
         if (cached) setMarket(id, cached.prices);
         if (cached && cached.day === Progress.dayOf(Date.now())) return;
@@ -1003,7 +1088,7 @@ Item {
                 stage.setMarket(id, prices);
                 if (!stage.offTheRecord) stage.refreshValue();
             };
-            xhr.open("GET", "https://optcgapi.com/api/sets/" + src + "/");
+            xhr.open("GET", src === "PROMO" ? "https://optcgapi.com/api/allPromos/" : "https://optcgapi.com/api/sets/" + src + "/");
             xhr.send();
         });
     }
@@ -1310,6 +1395,7 @@ Item {
     }
 
     function newPack() {
+        vintageRip = null;
         var leaders = db.cards.filter(c => c.tier === "L");
         packArt = leaders.length ? "file://" + leaders[Math.floor(Math.random() * leaders.length)].image : "";
         var waiting = pendingPack();
@@ -1361,6 +1447,7 @@ Item {
             }
         } else if (phase === "summary") {
             if (inspectIndex >= 0) inspectIndex = -1;
+            else if (vintageRip) { vintageRip = null; phase = "port"; }   // back to the sealed products
             else if (mode === "box") backToBox();
             else newPack();
         }
@@ -1444,6 +1531,7 @@ Item {
     }
 
     function recordPack() {
+        if (vintageRip) return recordVintagePack();
         if (mode !== "box") savePending(null);   // opened: the next one is dealt fresh
         packNew = pack.map(c => !collection.cards[cardKey(c)]);
         recordCards(pack);
@@ -1734,10 +1822,11 @@ Item {
             height: stage.height * 0.66
             width: height * stage.packAspect
             time: stage.t
-            packImage: stage.packImage
+            packImage: stage.vintageRip ? "" : stage.packImage   // a vintage pack: drawn
             artSource: stage.packArt
-            setCode: stage.db.set
-            setName: stage.db.set_name
+            setCode: stage.vintageRip ? stage.vintageRip.code : stage.db.set
+            setName: stage.vintageRip ? stage.vintageRip.origin : stage.db.set_name
+            cardCount: stage.vintageRip ? stage.pack.length : 12
             onTearStarted: {
                 stage.cardsIn = true;
                 stage.sfx("tear");
@@ -1844,7 +1933,8 @@ Item {
             readonly property bool chargingMe: stage.charging && index === stage.revealed
 
             card: modelData
-            backSource: modelData.type === "Leader" ? stage.leaderBack
+            backSource: Tiers.isVintage(modelData) ? stage.vintageBack
+                      : modelData.type === "Leader" ? stage.leaderBack
                       : modelData.type === "DON!!" ? stage.donBack : stage.deckBack
             width: stage.cw
             time: stage.t

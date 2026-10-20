@@ -56,15 +56,17 @@ The app is split into a platform-independent part (`app/`) and a thin host.
   `OPTCG_MUTE=1` starts muted
 - `app/Pack.qml`, `app/PackFace.qml`: the booster wrapper (official photo, or the drawn fallback) and the tear animation
 - `app/BoxView.qml`: box mode (the sealed display box, the grid of 24 packs, the box summary)
-- `app/CardShow.qml`: the weekly card show (vendor tables, haggling, the loupe, the recap)
+- `app/CardShow.qml`, `app/StallTable.qml`: the weekly card show (the hall map, a vendor's table, checking and haggling, the recap)
+- `app/vintage.json`, `app/DrawnFace.qml`: the 2005-06 CCG's cards (list, prices, pictures, sealed prices), and the drawn face of a card or sealed product with no picture
 - `app/collections.js`, `app/SetsView.qml`, `app/DisplayCase.qml`: the collections to complete with graded cards, the vault's Sets tab, and the display cases saved sets go in
 - `app/Binder.qml`: the collection view (owned cards first with counts, missing ones faded)
 - `app/Card.qml`, `app/CardBack.qml`: the flipping, tilting card (Leaders get the red back), plus the drawn fallback back
 - `app/tiers.js`: rarity tiers, pack layouts and case budgets per product family, and the pack / case generators
 - `app/shaders/*.frag`: the holo foil, pack foil and god-ray shaders. Run `./build-shaders.sh` after editing them.
-- `fetch_cards.py SET | all | list | previews | background`: downloads a set's data and images from
+- `fetch_cards.py SET | all | list | previews | background | VINTAGE | PROMO`: downloads a set's data and images from
   optcgapi.com into `~/.cache/optcg/<SET>/`. You don't need to run it: `background` fetches
-  everything that's missing (card backs, every set's pack photos, the playmats, then every set,
+  everything that's missing (card backs, every set's pack photos, the card show's vintage cards and
+  promos (`VINTAGE`, `PROMO`), the playmats, then every set,
   newest first, English then Japanese, at low priority), and the desktop companion runs it a
   couple of minutes after you log in and every 6 hours after, the pack opener 20 seconds after it
   opens; so picking a set is instant. Only one runs at a time, and a set is never downloaded twice
@@ -154,18 +156,40 @@ there are wanted posters for them
   each day; they can be cards you already have, and each deal says how many you own. You can't
   order cards from the binder: the shop and the card show are the only places to buy cards.
 - **The card show** (K, or the Port's card shop tab). Every Saturday (the very first one: Tuesday
-  20 October 2026): thirteen vendor tables (about 120 cards), mostly chase cards, raw and graded, one visit a show.
-  Once you walk in, the app shows no prices at all (no binder, vault, port or wanted board, and
-  the desktop showcase hides its price) until you leave: you have to know the market. Vendors are
-  honest dealers, bargain tables, premium dealers or scammers, and you only find out which after
-  you leave. A scammer's stock is about half fakes, and their raw cards are never as nice as they
-  say. Fakes can be spotted: a fake's foil barely shimmers when you tilt it and the print is a little
-  washed out, a fake slab's label is misspelt ("GEM MNIT") and its 10 has no gold edge, and a close
-  look with the loupe (ten a visit) says what's wrong. You can make one offer per card (5, 10 or
-  20% off); scammers say yes suspiciously easily. When you leave, the recap shows what you paid
-  against what it was really worth. Fakes go to the vault's Fakes tab, worth nothing: keep them
-  or destroy them. The rules and the knobs (`SHOW_VENDORS`, `SHOW_RARITY`, `SHOW_LOOKS`...) are in
-  `app/progress.js`, the screen in `app/CardShow.qml`.
+  20 October 2026), one visit a show. You walk in to a map of the hall: fifteen stalls (about 290
+  cards, slabs and sealed products), honest or not, all looking alike from the aisle. Click one to walk
+  over to its table: slabs in a glass case, raw cards in the pages of an open binder, sealed product
+  stacked beside them, a price sticker on everything. Once you walk in, the app shows no prices at
+  all (no binder, vault, port or wanted board, and the desktop showcase hides its price) until you
+  leave: you have to know the market. Vendors are honest dealers, bargain tables, premium dealers,
+  vintage specialists or scammers, and you only find out which after you leave.
+  - **Checking.** Pick something up and check it, twenty checks a visit: a raw card under the loupe,
+  under the light, its back, its stock, its corners and edges (its real condition: a scammer's "pack
+  fresh" never is); a slab's label, its cert (looked up), its case, the card inside; a sealed
+  product's crimp or shrink wrap, its print, its weight. A scammer's stock is about half fakes, and a
+  fake is crude, decent or good: it gives itself away in three, two or one of its checks and looks
+  fine in the rest (a good one looks almost right on the table). A real card sometimes has an innocent
+  quirk that can look suspicious. You can ask the vendor about something once: honest dealers mostly
+  give a straight answer, scammers mostly don't (sometimes they lie convincingly), and they get pushy
+  if you inspect too much at their stall.
+  - **Vintage and promos.** Promotion cards (optcgapi's list, the ones with a picture) and the
+  2005-06 English One Piece CCG (The Quest Begins, Passage to the Grand Line and six promos,
+  `app/vintage.json`) are only sold here. Two vintage specialists a show, and now and then a
+  scammer, sell nothing but vintage: singles, slabs, and often a sealed 2005-06 booster pack or box.
+  Sealed product goes to the Port's sealed products, gains value, and opens a pack at a time (ten
+  cards: five commons, three uncommons, a foil and a rare slot; a Super or Silver Rare in about one
+  pack in twelve, a Gold Rare in one in forty-eight); a scammer's may be resealed, its hits taken
+  out. Some shows have a grail, a $1,000+ promo or vintage card. Vintage cards show the 2005 card
+  back, and their pictures are Card Game Collector scans, cleaned-up photos (`app/pictures/vintage/`)
+  or PriceCharting photos; cards there's no good picture of are left out for now. The vault's sets
+  have vintage and promo lists (the Gold and Silver Rares, the 2005 promos, every P-001 Luffy, a
+  vintage Straw Hat crew), and the wanted board has Vintage Collector, First Edition, Promo Hunter
+  and Holy Grail.
+  - You can make one offer per item (5, 10 or 20% off); scammers say yes suspiciously easily. When
+  you leave, the recap shows what you paid against what it was really worth, and what kind of fake
+  you got. Fakes go to the vault's Fakes tab, worth nothing: keep them or destroy them. The rules and
+  the knobs (`SHOW_VENDORS`, `SHOW_CHECKS`, `SHOW_FAKE_GRADES`, `SHOW_SEALED`...) are in
+  `app/progress.js`, the screens in `app/CardShow.qml` and `app/StallTable.qml`.
 - **Grading.** In the binder, click a card you own, "Grade / pre-grade…": pick a copy and a service
   (Value 24 h, Standard 6 h, Express 30 min, Elite 3 days; the fee grows with the card's value), the
   odds are shown. It comes back in a slab with a grade from 1 to 10: a 10 is worth 4× the card, a 9

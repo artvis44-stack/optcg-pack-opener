@@ -14,8 +14,9 @@ Item {
     property bool tiltRotates: true  // false: tilt only moves the foil (e.g. inside a slab that tilts)
     property bool dropShadow: true
     readonly property var tier: card ? Tiers.tierOf(card) : Tiers.info.C
-    // a counterfeit (the card show): the foil barely shimmers and the print is a little washed out
-    readonly property bool fake: !!card && !!card.fake
+    // a counterfeit (the card show): the foil barely shimmers and the print is a little washed out;
+    // how much (0..1): a good fake (card.fakeLook, the show's listings) looks almost right
+    readonly property real fakeness: !card || !card.fake ? 0 : card.fakeLook !== undefined ? card.fakeLook : 1
     readonly property bool hovered: mouse.containsMouse
 
     signal clicked()
@@ -57,24 +58,38 @@ Item {
             Image {
                 id: img
                 anchors.fill: parent
-                source: root.card ? "file://" + root.card.image : ""
+                source: root.card && root.card.image ? "file://" + root.card.image : ""
                 smooth: true
                 mipmap: true
                 visible: false
             }
+            // no picture (a vintage card nobody's photographed, a promo without an image): drawn instead
+            Loader {
+                id: drawn
+                anchors.fill: parent
+                active: !!root.card && (!root.card.image || img.status === Image.Error)
+                sourceComponent: DrawnFace { card: root.card }
+            }
+            ShaderEffectSource {
+                id: drawnTexture
+                sourceItem: drawn.item as Item
+                hideSource: true
+                textureSize: Qt.size(drawn.width * 2, drawn.height * 2)
+            }
             ShaderEffect {
                 anchors.fill: parent
-                property variant source: img
+                property variant source: drawn.item ? drawnTexture : img
                 property vector2d tilt: Qt.vector2d(root.tx, root.ty)
                 property real time: root.time
-                property real intensity: root.tier.holo * (root.fake ? 0.12 : 1)
-                property real gold: root.fake ? 0 : root.tier.gold
+                property real intensity: root.tier.holo * (1 - 0.88 * root.fakeness)
+                property real gold: root.tier.gold * (1 - root.fakeness)
                 property real aspect: width / Math.max(1, height)
                 property real radius: 0.035
                 fragmentShader: Qt.resolvedUrl("shaders/holo.frag.qsb")
             }
             Rectangle {   // a counterfeit's print: a faint yellowish wash
-                visible: root.fake
+                visible: root.fakeness > 0
+                opacity: root.fakeness
                 anchors.fill: parent
                 radius: root.width * 0.035
                 color: "#33e6d38a"

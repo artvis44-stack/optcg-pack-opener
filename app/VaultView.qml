@@ -411,7 +411,7 @@ Item {
                     height: 74
                     Text {
                         x: 16; y: 12
-                        text: modelData.set + "  ·  " + ((vault.stage.sets[modelData.set] || {}).name || "")
+                        text: modelData.set + "  ·  " + ((vault.stage.sets[modelData.set] || Progress.SHOW_SETS[modelData.set] || {}).name || "")
                         color: "#e8e8ee"
                         font { pixelSize: 16; weight: Font.Black }
                     }

@@ -176,7 +176,7 @@ function mergeShop(b, l, r) {
 }
 
 // the card show: the later show; the same show, its stock as first dealt, both sides'
-// purchases, haggles and looks, in when either walked in, out when either left
+// purchases, haggles, checks and questions, in when either walked in, out when either left
 function mergeShow(b, l, r) {
     if (!isObject(l)) return r;
     if (!isObject(r)) return l;
@@ -185,7 +185,17 @@ function mergeShow(b, l, r) {
     return { day: l.day, entered: first(l.entered, r.entered), left: Math.max(l.left || 0, r.left || 0),
              stock: (l.entered && r.entered ? (l.entered <= r.entered ? l : r) : l.entered ? l : r).stock || l.stock || r.stock,
              bought: Object.assign({}, r.bought || {}, l.bought || {}), haggled: Object.assign({}, r.haggled || {}, l.haggled || {}),
-             looked: Object.assign({}, r.looked || {}, l.looked || {}), looks: Math.max(l.looks || 0, r.looks || 0) };
+             checked: mergeChecked(l.checked, r.checked), asked: Object.assign({}, r.asked || {}, l.asked || {}),
+             looks: Math.max(l.looks || 0, r.looks || 0) };
+}
+
+// what was checked of each listing, on either device
+function mergeChecked(l, r) {
+    var out = {};
+    [r || {}, l || {}].forEach(function (side) {
+        Object.keys(side).forEach(function (id) { out[id] = Object.assign(out[id] || {}, side[id]); });
+    });
+    return out;
 }
 
 // this week's event and bounties: the later week; the same week, each bounty's best progress
