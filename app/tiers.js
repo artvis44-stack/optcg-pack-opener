@@ -133,7 +133,7 @@ function setConfig(setInfo) {
     });
     cfg.packsPerCase = cfg.packsPerBox * cfg.boxes;
     cfg.lang = (setInfo && setInfo.lang) || "en";
-    cfg.boxUsd = setInfo && setInfo.boxUsd;   // the market price of a sealed box (Progress.boxPrice)
+    cfg.boxUsd = setInfo && setInfo.boxUsd;   // the market price of a real sealed box (for reference)
     cfg.boxJpy = setInfo && setInfo.boxJpy;
     return cfg;
 }
@@ -229,14 +229,21 @@ function hitOrRare(byTier, cfg, hit) {
 // srScale / premiumScale: how much likelier a hit is in a pack that may hold
 // one (dead Leader packs push the box's hits into the other packs)
 // boost: { tier: factor } for single tiers (a weekly event)
+// If luck pushes the chances past HIT_CAP together, they're all scaled down
+// alike, so every tier keeps its share (otherwise the rarest ones, rolled last,
+// would never come up).
+var HIT_CAP = 0.95;
 function rollHit(byTier, cfg, srScale, premiumScale, boost) {
-    var r = Math.random();
-    var acc = byTier.SR ? srScale * cfg.srPerBox / cfg.packsPerBox : 0;
-    if (r < acc) return "SR";
-    for (var i = 0; i < HIT_TIERS.length; i++) {
-        if (!byTier[HIT_TIERS[i]]) continue;
-        acc += premiumScale * ((boost && boost[HIT_TIERS[i]]) || 1) * caseAmount(cfg, HIT_TIERS[i]) / cfg.packsPerCase;
-        if (r < acc) return HIT_TIERS[i];
+    var odds = [["SR", byTier.SR ? srScale * cfg.srPerBox / cfg.packsPerBox : 0]];
+    HIT_TIERS.forEach(function (t) {
+        if (byTier[t]) odds.push([t, premiumScale * ((boost && boost[t]) || 1) * caseAmount(cfg, t) / cfg.packsPerCase]);
+    });
+    var total = odds.reduce(function (n, o) { return n + o[1]; }, 0);
+    var scale = total > HIT_CAP ? HIT_CAP / total : 1;
+    var r = Math.random(), acc = 0;
+    for (var i = 0; i < odds.length; i++) {
+        acc += odds[i][1] * scale;
+        if (r < acc) return odds[i][0];
     }
     return "R";
 }
@@ -498,6 +505,50 @@ function boxChances(cards, setInfo, godBoost) {
         leaders: byTier.L ? cfg.leadersPerBox : 0,
         topper: !!byTier.TOPPER
     };
+}
+
+// What one box holds on average: { tier: cards a box }, from the pack layout and
+// the case budget (lottery hits at their mean). present: the tiers the set has
+// ({ tier: true }); without it every tier the layout and budget name. God packs
+// aren't in it. Progress.boxPrice prices a box from this.
+function boxContents(cfg, present) {
+    var has = function (t) { return present ? !!present[t] : true; };
+    var P = cfg.packsPerBox, B = cfg.boxes, out = {}, hits = 0;
+    var add = function (t, n) { if (n) out[t] = (out[t] || 0) + n; };
+    HIT_TIERS.forEach(function (t) {
+        if (!has(t)) return;
+        var n = caseAmount(cfg, t) / B;
+        add(t, n);
+        hits += n;
+    });
+    var sr = has("SR") ? cfg.srPerBox : 0;
+    add("SR", sr);
+    cfg.slots.forEach(function (s) { if (s !== "HIT") add(s === "RARE" ? "R" : s, P); });
+    var rest = Math.max(0, P - hits - sr);   // hit slots without a hit
+    if (cfg.rPerBox !== undefined && has("UC")) {
+        add("R", Math.min(rest, cfg.rPerBox));
+        add("UC", Math.max(0, rest - cfg.rPerBox));
+    } else {
+        add("R", rest);
+    }
+    var leaders = has("L") ? cfg.leadersPerBox : 0;
+    add("L", leaders);
+    add("C", -leaders);
+    if (has("DON")) {
+        var dons = cfg.donPerBox || 0;
+        var gold = !has("DON_GOLD") ? 0 : cfg.goldDonPerBox ? cfg.goldDonPerBox : (cfg.fixed.DON_GOLD || 0) / B;
+        var sp = has("DON_SP") ? (cfg.lottery.DON_SP || cfg.fixed.DON_SP || 0) / B : 0;
+        add("DON_GOLD", gold);
+        add("DON_SP", sp);
+        add("DON", Math.max(0, dons - gold - sp));
+        if (!cfg.donFront) add("C", -dons);   // a DON!! takes a common's place
+    }
+    var panda = has("PANDA") ? (cfg.fixed.PANDA || 0) / B : 0;
+    add("PANDA", panda);
+    add("R", -panda);
+    if (present && present.TOPPER) add("TOPPER", 1);
+    Object.keys(out).forEach(function (t) { if (out[t] <= 0) delete out[t]; });
+    return out;
 }
 
 // highest-ranked card in a pack

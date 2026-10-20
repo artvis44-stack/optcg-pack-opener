@@ -3,7 +3,7 @@ import "tiers.js" as Tiers
 import "progress.js" as Progress
 
 // The Port (P): where berries go. Tabs (← →): your ship and crew (perks), the
-// card shop (today's deals; any card can also be ordered from the binder),
+// card shop (today's deals, random every day; each says whether you own the card),
 // sealed products (buy, hold while they gain value, sell or open) and
 // cosmetics (backdrops, slab labels). Grading has its own screen, the Vault (G).
 Item {
@@ -317,12 +317,28 @@ Item {
                 visible: port.tab === "shop"
                 width: parent.width
                 spacing: 12
+                Heading { text: "The card show" }
+                Note {
+                    width: parent.width
+                    readonly property string next: Progress.nextShowDay(port.p, port.now)
+                    text: Progress.canEnterShow(port.p, port.now)
+                          ? "It's in town today! Eight tables of chase cards, raw and graded, at prices you'll have to judge "
+                            + "yourself: once you're in, nothing shows a market price. Haggle, look closely, and watch out for fakes."
+                          : "Every Saturday. The next one is on " + next + "."
+                }
+                PillButton {
+                    visible: Progress.canEnterShow(port.p, port.now) && !port.stage.offTheRecord
+                    text: "Go to the card show (K)"
+                    accent: "#ff9ad5"
+                    onClicked: port.stage.toggleShow()
+                }
+                Item { width: 1; height: 8 }
                 Heading { text: "Today's deals" }
                 Note {
                     width: parent.width
                     text: "New stock every day from the sets you've downloaded, at market price + "
-                          + Math.round((Progress.dealMarkup(port.p) - 1) * 100) + "%. Looking for one card? Find it in the binder (B), "
-                          + "click it and order it (+" + Math.round((Progress.ORDER_MARKUP - 1) * 100) + "%)."
+                          + Math.round((Progress.dealMarkup(port.p) - 1) * 100) + "%. It's luck of the draw: the stock can include cards "
+                          + "you already have, and each one says how many you own."
                 }
                 Note {
                     visible: port.deals.length === 0
@@ -354,6 +370,15 @@ Item {
                                 elide: Text.ElideRight
                                 text: deal.modelData.card.set + " · " + Tiers.tierOf(deal.modelData.card).label
                                 color: Tiers.tierOf(deal.modelData.card).color
+                                font { pixelSize: 11; weight: Font.Bold }
+                            }
+                            Text {   // do you have it already? (raw copies, slabs and display cases)
+                                readonly property var own: port.stage.ownedCount(deal.modelData.key)
+                                width: parent.width
+                                elide: Text.ElideRight
+                                text: own.raw + own.graded === 0 ? "New for you"
+                                      : "You own " + (own.raw + own.graded) + (own.graded ? " · " + own.graded + " graded" : "")
+                                color: own.raw + own.graded === 0 ? "#7fd1b9" : "#c8ccd6"
                                 font { pixelSize: 11; weight: Font.Bold }
                             }
                             PillButton {
@@ -413,8 +438,8 @@ Item {
                         required property string modelData
                         readonly property var info: port.stage.sets[modelData] || {}
                         readonly property var c: Tiers.setConfig(info)
-                        readonly property int box: Progress.boxPrice(c, port.p, modelData)
-                        readonly property int wholeCase: Progress.casePrice(c, c.boxes, port.p, modelData)
+                        readonly property int box: Progress.boxPrice(c, port.p, modelData, port.stage.tierValues(modelData))
+                        readonly property int wholeCase: Progress.casePrice(c, c.boxes, port.p, modelData, port.stage.tierValues(modelData))
                         width: content.width
                         height: 46
                         Text {

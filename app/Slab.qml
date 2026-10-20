@@ -16,7 +16,9 @@ Item {
     signal clicked()
 
     readonly property real u: width / 100           // everything scales with the width
-    readonly property bool gem: !!card && card.grade === 10
+    // a fake slab (the card show): no gold edge on its 10, a misspelt grade, a duller case
+    readonly property bool fake: !!card && !!card.fake
+    readonly property bool gem: !!card && card.grade === 10 && !fake
     readonly property bool diamond: !!card && !!card.diamond
     readonly property var style: diamond ? Progress.DIAMOND_LABEL : labelStyle
     readonly property color prism: Qt.hsla((time * 0.18) % 1, 0.9, 0.72, 1)   // the diamond's edge, round the rainbow
@@ -40,7 +42,7 @@ Item {
             GradientStop { position: 0.5; color: "#18ffffff" }
             GradientStop { position: 1.0; color: "#30e8f4ff" }
         }
-        border.color: slab.diamond ? slab.prism : slab.gem ? "#ffd700" : "#8fffffff"
+        border.color: slab.diamond ? slab.prism : slab.gem ? "#ffd700" : slab.fake ? "#5fd8d0c0" : "#8fffffff"
         border.width: slab.diamond ? Math.max(3, 1.8 * slab.u) : slab.gem ? Math.max(2, 1.2 * slab.u) : Math.max(1, 0.6 * slab.u)
     }
     Rectangle {   // a Diamond Label glows
@@ -151,7 +153,7 @@ Item {
             }
             Text {
                 anchors.horizontalCenter: parent.horizontalCenter
-                text: slab.card ? Progress.gradeName(slab.card) : ""
+                text: !slab.card ? "" : slab.fake ? Progress.fakeGradeName(slab.card) : Progress.gradeName(slab.card)
                 color: slab.style.sub
                 font { pixelSize: Math.max(5, 3.2 * slab.u); weight: Font.Black; letterSpacing: 0.2 * slab.u }
             }

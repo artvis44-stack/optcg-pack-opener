@@ -24,7 +24,8 @@ Boosters EB-01 to EB-03 and the Premium Boosters PRB-01 / PRB-02.
 | Y | sync: sign in to your sync server (or create an account) to share your saves between computers |
 | M | sound on / off (remembered) |
 | P | the Port: ship and crew, card shop, sealed products, cosmetics (← → switch tabs) |
-| G | the Vault: your graded slabs (filter by set and grade), sets and their display cases, cards out for grading, the set registry |
+| G | the Vault: your graded slabs (filter by set and grade), sets and their display cases, cards out for grading, the set registry, fakes from card shows |
+| K | the card show (on show days: every Saturday) |
 | F | in the binder: filters (rarity, card type, colour, owned / missing / duplicates / graded); there's also a search box and sorting by rarity, number, value or copies |
 | C | box mode: buy the rest of the case (15% off) |
 | U | Mac: check for an update, or install the one that's out |
@@ -55,6 +56,7 @@ The app is split into a platform-independent part (`app/`) and a thin host.
   `OPTCG_MUTE=1` starts muted
 - `app/Pack.qml`, `app/PackFace.qml`: the booster wrapper (official photo, or the drawn fallback) and the tear animation
 - `app/BoxView.qml`: box mode (the sealed display box, the grid of 24 packs, the box summary)
+- `app/CardShow.qml`: the weekly card show (vendor tables, haggling, the loupe, the recap)
 - `app/collections.js`, `app/SetsView.qml`, `app/DisplayCase.qml`: the collections to complete with graded cards, the vault's Sets tab, and the display cases saved sets go in
 - `app/Binder.qml`: the collection view (owned cards first with counts, missing ones faded)
 - `app/Card.qml`, `app/CardBack.qml`: the flipping, tilting card (Leaders get the red back), plus the drawn fallback back
@@ -92,13 +94,15 @@ English product's, marked JP.
 
 ## Progression: berries, bounties and focus
 
-Packs and boxes cost berries (฿), following today's market price of the sealed product, but
-gently (it's for fun): a box at retail value ($120) is ฿10,000, and the price grows with the
-square root of how far the market is above that, so a box worth 10× retail costs ~3×. The newest
-English boxes are ~฿14,000–16,000, long-gone ones more (OP-05 ฿28,100, OP-01 ฿34,200), Japanese
-boxes ฿7,000–15,000. A pack is a 24th of the box plus 5% (฿600–1,500, Japanese ฿300–700), the
-rest of a case 15% off. The knobs are `SEALED_BASE` / `SEALED_CURVE` in `app/progress.js`. You
-earn them by:
+Packs and boxes cost berries (฿), priced from what's inside: a box costs what its cards are worth
+at today's market prices, leaving out the chase cards (Treasure Rares, Manga Rares, Super parallels,
+Gold/Silver SPs, gold-signature cards, god packs), plus 10%. So a box without a chase card comes
+back a little under break-even (about 91%), and the chase cards are where the money is: on average
+a box always makes money (about 105–150% back, depending on the set), and a bit under half of all
+boxes turn a profit. Main-set boxes come to about ฿11,000–15,000, premium boosters about ฿30,000,
+Japanese boxes about ฿4,000–7,000, and they move with the market. A pack is a 24th of the box plus 5%,
+the rest of a case 15% off. The knob is `BOX_VALUE_MARKUP` in `app/progress.js` (and
+`Tiers.boxContents` for what a box holds). You earn them by:
 
 - **being at your computer**: while you're active (idle time doesn't count; Hyprland's idle
   detection on Linux, the system idle timer on macOS) you earn 4 ฿ a minute plus 2 × √(collection
@@ -143,10 +147,25 @@ there are wanted posters for them
   the last, up to ฿60M): more passive income, free packs faster and more of them. Recruit the
   Straw Hats, each with a perk: Zoro doubles focus berries, Nami +25% income, Usopp better hit odds
   in single packs, Sanji cheaper packs, Chopper saves a streak that missed one day, Robin tells you
-  how good a sealed pack is, Franky cheaper boxes and cases, Brook +10% when selling, Jinbe a fourth
+  how good a sealed pack is (the pack waiting in each set is saved until you open it, so closing the
+  app or switching sets doesn't deal a new one), Franky cheaper boxes and cases, Brook +10% when selling, Jinbe a fourth
   daily bounty, Luffy (Gear 5) god packs twice as likely.
-- **Card shop.** Eight deals a day from your downloaded sets at market price + 10% (once each), and
-  any card can be ordered from the binder (click it) at + 50%.
+- **Card shop.** Eight deals a day from your downloaded sets at market price + 10% (once each), random
+  each day; they can be cards you already have, and each deal says how many you own. You can't
+  order cards from the binder: the shop and the card show are the only places to buy cards.
+- **The card show** (K, or the Port's card shop tab). Every Saturday (the very first one: Tuesday
+  20 October 2026): eight vendor tables of mostly chase cards, raw and graded, one visit a show.
+  Once you walk in, the app shows no prices at all (no binder, vault, port or wanted board, and
+  the desktop showcase hides its price) until you leave: you have to know the market. Vendors are
+  honest dealers, bargain tables, premium dealers or scammers, and you only find out which after
+  you leave. A scammer's stock is about half fakes, and their raw cards are never as nice as they
+  say. Fakes can be spotted: a fake's foil barely shimmers when you tilt it and the print is a little
+  washed out, a fake slab's label is misspelt ("GEM MNIT") and its 10 has no gold edge, and a close
+  look with the loupe (six a visit) says what's wrong. You can make one offer per card (5, 10 or
+  20% off); scammers say yes suspiciously easily. When you leave, the recap shows what you paid
+  against what it was really worth. Fakes go to the vault's Fakes tab, worth nothing: keep them
+  or destroy them. The rules and the knobs (`SHOW_VENDORS`, `SHOW_RARITY`, `SHOW_LOOKS`...) are in
+  `app/progress.js`, the screen in `app/CardShow.qml`.
 - **Grading.** In the binder, click a card you own, "Grade / pre-grade…": pick a copy and a service
   (Value 24 h, Standard 6 h, Express 30 min, Elite 3 days; the fee grows with the card's value), the
   odds are shown. It comes back in a slab with a grade from 1 to 10: a 10 is worth 4× the card, a 9
@@ -174,11 +193,13 @@ there are wanted posters for them
     Rare. A card's English or Japanese printing fills its slot. Save a complete one and its slabs go
     in a display case (frame and velvet by kind; gold for a Gem Set, every slab a 10): they're locked
     there, the set is worth 25% more than its slabs (50% for a Gem Set), and the first time you save
-    it you get 10% of its value (20% for a Gem Set) and a wanted poster. Break the set to get the slabs
-    back (the bonus goes), or sell it whole.
+    it you get 10% of its value (20% for a Gem Set) and a wanted poster. A saved set is a collectable:
+    it can't be sold, and its bonus only counts toward your passive income (not the collection-worth
+    posters). Break the set to get the slabs back (the bonus goes).
 - **Sealed products.** Buy boxes and cases and hold them: they gain value every week (older sets
   faster, up to about 2.3× a year) and count toward your collection's value. Sell them for what
-  they're worth, or open them: their boxes wait, prepaid, in that set's box mode.
+  they're worth, or open them: their boxes wait, prepaid, in that set's box mode. Buying and selling
+  them doesn't count toward the berries-spent and berries-earned posters.
 - **Cosmetics.** Real One Piece Card Game playmats as the pack opener's background (the official
   Limited Edition Vol.1-5, the Flame-Flame Fruit Coliseum Edition, the 2024 / 2025 Regional prize
   mats), plain colour backdrops, and labels for your desktop slab. Playmat pictures are downloaded

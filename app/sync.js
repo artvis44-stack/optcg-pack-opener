@@ -116,6 +116,10 @@ function mergeCollection(b, l, r) {
     var graded = mergeTree(b.graded || {}, l.graded || {}, r.graded || {}, "graded");
     if (graded && Object.keys(graded).length) out.graded = graded;
     else delete out.graded;
+    // fakes from card shows: by id, the same way
+    var fakes = mergeTree(b.fakes || {}, l.fakes || {}, r.fakes || {}, "graded");
+    if (fakes && Object.keys(fakes).length) out.fakes = fakes;
+    else delete out.fakes;
     // saved sets (the vault's display cases): by id, the same way
     var sets = mergeTree(b.sets || {}, l.sets || {}, r.sets || {}, "sets");
     if (sets && Object.keys(sets).length) out.sets = sets;
@@ -171,6 +175,19 @@ function mergeShop(b, l, r) {
     return { day: l.day, bought: Object.assign({}, r.bought || {}, l.bought || {}) };
 }
 
+// the card show: the later show; the same show, its stock as first dealt, both sides'
+// purchases, haggles and looks, in when either walked in, out when either left
+function mergeShow(b, l, r) {
+    if (!isObject(l)) return r;
+    if (!isObject(r)) return l;
+    if (l.day !== r.day) return l.day > r.day ? l : r;
+    var first = function (x, y) { return x && y ? Math.min(x, y) : x || y || 0; };
+    return { day: l.day, entered: first(l.entered, r.entered), left: Math.max(l.left || 0, r.left || 0),
+             stock: (l.entered && r.entered ? (l.entered <= r.entered ? l : r) : l.entered ? l : r).stock || l.stock || r.stock,
+             bought: Object.assign({}, r.bought || {}, l.bought || {}), haggled: Object.assign({}, r.haggled || {}, l.haggled || {}),
+             looked: Object.assign({}, r.looked || {}, l.looked || {}), looks: Math.max(l.looks || 0, r.looks || 0) };
+}
+
 // this week's event and bounties: the later week; the same week, each bounty's best progress
 function mergeWeekly(b, l, r) {
     if (!isObject(l)) return r;
@@ -205,11 +222,11 @@ var PROGRESS_RULES = [
     ["streak", mergeStreak], ["income", mergeIncome], ["focus", pickLater("startedAt")], ["bounties", mergeBounties],
     ["achievements.*", earliest], ["graded.*", slab], ["grading.*", slab], ["sealed.*", slab],
     ["sets.*", slab], ["collections.*", slab],
-    ["stats.bestCompletion", max], ["stats.backfilled", max], ["stats.value", preferLocal],
+    ["stats.bestCompletion", max], ["stats.backfilled", max], ["stats.value", preferLocal], ["stats.setBonus", preferLocal],
     ["stats.bySet.*.completion", max], ["stats.bySet.*.groups.*", max],
     ["stats.bySet.*.present", preferLocal], ["stats.bySet.*.value", preferLocal],
     // the Port
-    ["ship.level", max], ["crew.*", earliest], ["shop", mergeShop],
+    ["ship.level", max], ["crew.*", earliest], ["shop", mergeShop], ["show", mergeShow],
     ["weekly", mergeWeekly], ["season", mergeSeason], ["seasonOf.done.*", earliest], ["seasonOf.tiers.*", earliest],
     ["titles.*", preferLocal], ["seasons.*", preferLocal],
     ["cosmetics.owned.*", earliest], ["cosmetics.backdrop", preferLocal], ["cosmetics.slab", preferLocal]

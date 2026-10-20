@@ -6,6 +6,22 @@ conditions, sealed products, ship, crew, events, bounties, posters, saved sets).
 
 ---
 
+## 0. What was changed after this report (October 2026)
+
+Passive income was left alone on purpose: this is a productivity app first. These changes went in:
+
+| Finding | Change |
+|---|---|
+| #1 Order → grade → sell loop | **Binder ordering removed.** Cards can only be bought from the daily card shop (random, 8 a day; each deal now says how many you own) and the new weekly **card show**. Grading is unchanged and still pays; there's just no unlimited supply of cards to feed it. |
+| #2 Robin rerolls | The sealed single pack waiting in each set is **saved until it's opened** (`pending-packs.json`), so restarting the app or switching sets brings back the same pack. |
+| #3 Gem master sets / saved-set bonus | **Saved sets can't be sold.** Their +25% / +50% bonus counts only toward passive income, not the collection-worth posters. |
+| #4, #6 Pack and box pricing | **Boxes are priced from what's in them:** the market value of a box's cards *without* the chase cards, × 1.10 (`BOX_VALUE_MARKUP`). Simulated against the new code: a box with no chase card returns ~91–93%, the average box 108–144%, and 33–46% of boxes turn a profit, on every set. |
+| #5 Sealed posters | Buying and selling sealed products **no longer counts as spent / earned**. Growth, prices and holding are unchanged. |
+| #9 Luck overflow bug | Fixed: when Usopp and the Featured Set together push the odds past 95%, every tier is scaled down alike instead of the rarest ones disappearing. |
+| New | **The card show:** every Saturday (the first was Tuesday 20 Oct 2026). Eight vendors (honest, bargain, premium, scammer) with mostly chase cards, raw and graded. No prices anywhere while you're inside. Haggling, a loupe for close looks, and fakes with visible tells (a dead foil, a washed-out print, a misspelt slab label). The recap after you leave reveals the truth. |
+
+---
+
 ## 1. Summary: what's broken, ranked
 
 | # | Problem | How bad | What it does in practice |

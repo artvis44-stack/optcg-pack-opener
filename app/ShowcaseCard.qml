@@ -252,8 +252,11 @@ Item {
             events = events.filter(e => e.kind !== "achievement");
         }
         events.forEach(e => {
-            if (e.kind === "streak")
+            if (e.kind === "streak") {
                 host.notify("Day " + e.count + " streak", "+" + Progress.format(e.reward) + (e.freePack ? " and a free pack" : ""));
+                if (Progress.canEnterShow(show.progress, Date.now()))   // a new day, and it's a show day
+                    host.notify("The card show is in town", "Today only: open the pack opener and press K. Know your prices!");
+            }
             else if (e.kind === "backfill")
                 host.notify("Back-dated " + e.count + " wanted posters", "For what you'd already done  ·  +" + Progress.format(e.reward)
                             + "  ·  bounty +" + Progress.formatBounty(e.bounty));
@@ -622,22 +625,24 @@ Item {
                     }
                 }
 
-                Item {   // market price
+                Item {   // market price (hidden while you're at a card show: no peeking)
                     width: parent.width
                     height: priceText.height
+                    readonly property bool hidden: Progress.atShow(show.progress, show.now)
                     Text {
                         id: priceText
-                        text: show.card && show.card.type === "DON!!" ? "DON!! cards aren't priced"
+                        text: parent.hidden ? "price hidden: you're at the card show"
+                              : show.card && show.card.type === "DON!!" ? "DON!! cards aren't priced"
                               : show.price >= 0 ? "$" + show.price.toFixed(2)
                               : "price: checking…"
-                        color: show.price >= 0 ? "#fff6e0" : "#7a8090"
-                        font { pixelSize: (show.price >= 0 ? 7.2 : 4.2) * show.u; weight: Font.Black }
+                        color: show.price >= 0 && !parent.hidden ? "#fff6e0" : "#7a8090"
+                        font { pixelSize: (show.price >= 0 && !parent.hidden ? 7.2 : 4.2) * show.u; weight: Font.Black }
                     }
                     Text {
                         anchors.left: priceText.right
                         anchors.leftMargin: 2.4 * show.u
                         anchors.baseline: priceText.baseline
-                        visible: show.price >= 0 && show.previousPrice > 0   // needs a second day's price
+                        visible: show.price >= 0 && show.previousPrice > 0 && !parent.hidden   // needs a second day's price
                         readonly property real change: show.previousPrice > 0 ? (show.price - show.previousPrice) / show.previousPrice : 0
                         text: (change > 0 ? "▲ " : change < 0 ? "▼ " : "■ ") + Math.abs(change * 100).toFixed(1) + "%"
                         color: change > 0 ? "#6fdc8c" : change < 0 ? "#ff7a7a" : "#9aa0ad"
@@ -646,7 +651,7 @@ Item {
                     Text {
                         anchors.right: parent.right
                         anchors.baseline: priceText.baseline
-                        visible: show.price >= 0
+                        visible: show.price >= 0 && !parent.hidden
                         text: "TCGplayer market"
                         color: "#7a8090"
                         font.pixelSize: 3.6 * show.u
@@ -739,6 +744,13 @@ Item {
                     text: "day " + show.progress.streak.count
                     color: "#ffb347"
                     font { pixelSize: bar.fs * 0.85; weight: Font.Bold }
+                }
+                Text {   // the card show is in town (K in the pack opener)
+                    anchors.verticalCenter: parent.verticalCenter
+                    visible: Progress.canEnterShow(show.progress, show.now) || Progress.atShow(show.progress, show.now)
+                    text: Progress.atShow(show.progress, show.now) ? "at the show" : "show today"
+                    color: "#ff9ad5"
+                    font { pixelSize: bar.fs * 0.85; weight: Font.Black }
                 }
             }
             PillButton {   // focus session: start / countdown + stop
