@@ -15,6 +15,7 @@ Item {
     property string tab: "ship"
     property real now: Date.now()
     property var inspected: null     // a card or slab shown big
+    property bool notes: false       // Robin's notes, open
 
     function step(d) {
         var ids = tabs.map(t => t[0]);
@@ -23,13 +24,15 @@ Item {
     }
 
     function back() {
-        if (inspected) inspected = null;
+        if (notes) notes = false;
+        else if (inspected) inspected = null;
         else stage.togglePort();
     }
 
     onVisibleChanged: {
         if (!visible) return;
         inspected = null;
+        notes = false;
         now = Date.now();
         loadPool();
         if (tab === "cosmetics") fetchPlaymats();
@@ -305,6 +308,13 @@ Item {
                                     text: "Aboard since " + port.p.crew[modelData.id]
                                     color: "#7fd1b9"
                                     font.pixelSize: 12
+                                }
+                                PillButton {
+                                    visible: parent.parent.aboard && modelData.id === "robin"
+                                    text: "Her notes"
+                                    fontSize: 12
+                                    accent: "#c8a0ff"
+                                    onClicked: port.notes = true
                                 }
                             }
                         }
@@ -747,5 +757,12 @@ Item {
         text: "← →: switch tabs   ·   graded cards: the vault (G)   ·   P or Esc: back"
         color: "#9aa0ad"
         font.pixelSize: 14
+    }
+
+    RobinNotes {   // Robin's notes, over everything
+        anchors.fill: parent
+        visible: port.notes
+        stage: port.stage
+        onClose: port.notes = false
     }
 }

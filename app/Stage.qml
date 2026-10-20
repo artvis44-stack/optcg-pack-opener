@@ -883,6 +883,54 @@ Item {
         return { ccg: ccg, hb: hb };
     }
 
+    // Nico Robin's notes (a crew perk): what every vintage card and sealed vintage product is
+    // worth, from the same reference prices the show's vendors price from. { list: [{ key, card,
+    // line: "ccg" | "hb" | "sealed", value: ฿ raw }], most valuable first, byKey }; keys as the
+    // show's listings have them
+    property var robinCache: null
+    function robinNotes() {
+        var hb = hyperReady();
+        if (robinCache && robinCache.hb === hb) return robinCache;
+        var list = [];
+        [["VINTAGE", "ccg", vintageCards()], ["HYPERBATTLE", "hb", hb ? hyperCards() : []]].forEach(s => {
+            var seen = {};
+            s[2].forEach(c => {
+                var key = s[0] + ":" + c.image.split("/").pop(), ref = {};
+                if (seen[key]) return;
+                seen[key] = true;
+                ref[c.id + "|" + c.name] = c.refUsd;
+                list.push({ key: key, line: s[1], value: Progress.cardValue(c, ref), card: Object.assign({}, c, { set: s[0] }) });
+            });
+        });
+        var sealed = vintageSealed();
+        Object.keys(sealed.ccg).forEach(origin => ["box", "pack"].forEach(kind => {
+            if (!(sealed.ccg[origin][kind] > 0)) return;
+            list.push({ key: "sealed:" + origin + ":" + kind, line: "sealed", value: sealed.ccg[origin][kind],
+                        card: { id: kind === "box" ? "BOX" : "PACK", name: origin + (kind === "box" ? " Booster Box" : " Booster Pack"),
+                                tier: kind === "box" ? "SEALED_BOX" : "SEALED_PACK", set: "VINTAGE", origin: origin, image: "" } });
+        }));
+        sealed.hb.forEach(x => {
+            if (!(x.worth > 0)) return;
+            var box = x.kind === "grandbox";
+            list.push({ key: "sealed:hb:" + x.name, line: "sealed", value: x.worth,
+                        card: { id: box ? "BOX" : "PACK", name: x.name, tier: box ? "SEALED_BOX" : "SEALED_PACK", set: "HYPERBATTLE",
+                                origin: x.set, line: "hb", image: "" } });
+        });
+        list.sort((a, b) => b.value - a.value);
+        var byKey = {};
+        list.forEach(x => byKey[x.key] = x);
+        robinCache = { hb: hb, list: list, byKey: byKey };
+        return robinCache;
+    }
+
+    // what Robin says a show listing is worth if it's genuine (in its slab, if it's graded):
+    // 0 when it's nothing she knows (not vintage) or she isn't aboard
+    function robinWorth(listing) {
+        if (!listing || !Progress.hasCrew(progress, "robin")) return 0;
+        var x = robinNotes().byKey[listing.key];
+        return !x ? 0 : Math.round(x.value * (listing.grade ? Progress.GRADE_MULT[listing.grade] : 1));
+    }
+
     // every card of your downloaded sets, plus the promos and vintage cards, at its market
     // price: what the vendors stock
     function showPool() {
@@ -1422,7 +1470,7 @@ Item {
 
     // The sealed single pack waiting in each set, saved (pending-packs.json, per computer:
     // { set: [card key] }) until it's torn open, so closing the app, switching sets or
-    // modes and coming back brings back the same pack: Robin's reading of it holds.
+    // modes and coming back brings back the same pack.
     readonly property string pendingPath: dataDir + "/pending-packs.json"
     function readPending() {
         try { return JSON.parse(host.readText(pendingPath) || "{}"); } catch (e) { return {}; }
@@ -2296,22 +2344,6 @@ Item {
                 onClicked: stage.updateButton()
             }
         }
-    }
-
-    // Robin reads the sealed pack (a crew perk)
-    Text {
-        z: 150
-        visible: stage.phase === "pack" && !stage.cardsIn && !stage.offTheRecord && Progress.hasCrew(stage.progress, "robin") && stage.pack.length > 0
-        anchors.horizontalCenter: parent.horizontalCenter
-        y: stage.height * 0.875 + 30
-        readonly property int best: stage.pack.reduce((a, c) => Math.max(a, Tiers.tierOf(c).rank), 0)
-        text: "Robin: " + (stage.godPack ? "\"...every page of this one glows. I've never seen anything like it.\""
-                           : best >= 10 ? "\"This one holds a treasure. A real one.\""
-                           : best >= 6 ? "\"Something special is in here.\""
-                           : best >= 4 ? "\"There's a Super Rare or better in here.\""
-                           : "\"Nothing remarkable, I'm afraid.\"")
-        color: "#c8a0ff"
-        font { pixelSize: 15; italic: true; weight: Font.Bold }
     }
 
     // what the sealed pack costs
