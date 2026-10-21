@@ -12,8 +12,7 @@ import "progress.js" as Progress
 // Click something to pick it up: check it (the loupe, the light, the back... a few
 // checks a visit, Progress.checkListing), ask the vendor about it, haggle once, buy.
 // You find out who was who when you leave (Esc), and the recap shows what you really got.
-// With Nico Robin aboard, her notes (vintage prices) come along; she won't tell you what a
-// particular listing is worth, though: that's still on you.
+// Robin's notes stay at the Port: study them before you go, but in here it's on you.
 Item {
     id: show
 
@@ -26,8 +25,6 @@ Item {
     property string inspected: ""        // the listing in your hands
     property bool confirmLeave: false
     property var visited: ({})           // stalls you've walked up to this visit
-    property bool notes: false           // Robin's notes, open
-    readonly property bool robin: Progress.hasCrew(p, "robin")
 
     readonly property var stall: stallId ? stock.filter(t => t.id === stallId)[0] || null : null
     readonly property var listing: inspected ? Progress.showListing(p, inspected) : null
@@ -36,7 +33,6 @@ Item {
 
     function back() {
         if (recap) stage.closeShow();
-        else if (notes) notes = false;
         else if (inspected) inspected = "";
         else if (stallId) stallId = "";
         else if (!confirmLeave) confirmLeave = true;
@@ -58,7 +54,7 @@ Item {
         visited = v;
     }
 
-    onVisibleChanged: if (visible) { inspected = ""; stallId = ""; confirmLeave = false; notes = false; }
+    onVisibleChanged: if (visible) { inspected = ""; stallId = ""; confirmLeave = false; }
 
     // a listing as a card the Card / Slab components draw (a fake looks a little off: how
     // much, and which of a slab's checks show it, come with it)
@@ -209,13 +205,6 @@ Item {
                 fontSize: 13
                 accent: "#ffd56b"
                 onClicked: show.stallId = ""
-            }
-            PillButton {
-                visible: show.robin
-                text: "Robin's notes"
-                fontSize: 13
-                accent: "#c8a0ff"
-                onClicked: show.notes = true
             }
             PillButton {
                 text: show.confirmLeave ? "Leave? You can't come back until the next show. Yes, leave" : "Leave the show"
@@ -743,12 +732,5 @@ Item {
               : "Click a stall to walk over   ·   Esc: leave the show"
         color: "#9aa0ad"
         font.pixelSize: 14
-    }
-
-    RobinNotes {   // Robin's notes, over everything
-        anchors.fill: parent
-        visible: show.notes
-        stage: show.stage
-        onClose: show.notes = false
     }
 }

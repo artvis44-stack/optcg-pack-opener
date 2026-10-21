@@ -356,7 +356,7 @@ var DIAMOND_LABEL = { id: "diamond", name: "Diamond Label", top: "#f4fdff", bott
 // (CardShow.qml: a floor plan you walk around, then each stall's table), one visit a
 // show. Once you're in, the app shows no prices (no binder, vault, port or wanted board
 // until you leave): you have to know the market. Nico Robin (crew) knows the vintage
-// market: her notes come along (she won't appraise a listing for you). Vendors are honest, bargain tables,
+// market, but her notes stay at the Port (study them before you go). Vendors are honest, bargain tables,
 // premium dealers, vintage specialists or scammers; which is which you only know for
 // sure after you leave.
 //
