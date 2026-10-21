@@ -972,6 +972,10 @@ Item {
         if (!(phase === "error" || (phase === "pack" && !cardsIn) || phase === "summary" || inBoxScreen || phase === "board" || phase === "port"))
             return;
         reloadProgress();
+        if (!atShow && Progress.canEnterShow(progress, Date.now()) && !Progress.showTutorialSeen(progress, "prep")) {
+            if (phase === "port" && portView.showGuide) markShowTutorial("prep");   // K again: ready, in we go
+            else return showPrep();
+        }
         if (!atShow) {
             if (!Progress.canEnterShow(progress, Date.now())) {
                 var next = Progress.nextShowDay(progress, Date.now());
@@ -983,7 +987,16 @@ Item {
                 toast("Download a set first (S): the vendors sell cards from the sets you have.");
                 return;
             }
-            prog(p => { Progress.enterShow(p, Date.now(), pool, vintageSealed()); return []; });
+            var fee = Progress.entryFee(Date.now());
+            if (progress.berries < fee) {
+                toast("It's " + Progress.format(fee) + " at the door, and you have " + Progress.format(progress.berries) + ".");
+                return;
+            }
+            var walkedIn = false;
+            prog(p => { walkedIn = Progress.enterShow(p, Date.now(), pool, vintageSealed()); return []; });
+            if (!walkedIn) return;
+            toast(Progress.showState(progress).expo ? "Paid " + Progress.format(fee) + " at the door. Welcome to the Grand Line Expo!"
+                                                    : "Paid " + Progress.format(fee) + " at the door.");
             sfx("chime");
         }
         showReturn = phase === "board" ? boardReturn : phase === "port" ? portReturn : phase;
@@ -1055,30 +1068,36 @@ Item {
         });
         return out;
     }
+    // what's saved in it, less what's dropped out (gone, or in a display case): those don't
+    // keep a pocket
+    function liveShowBinder(p) {
+        var live = {};
+        showBinderItems.forEach(it => live[it.id] = true);
+        return Progress.showBinder(p).filter(b => live[b.id]);
+    }
     // how many copies of a raw card are in it
     function inShowBinder(key) {
-        return Progress.showBinder(progress).filter(b => !b.slabId && b.key === key).length;
+        return showBinderItems.filter(it => !it.slabId && it.key === key).length;
     }
     function slabInShowBinder(slabId) {
-        return Progress.showBinder(progress).some(b => b.slabId === slabId);
+        return showBinderItems.some(it => it.slabId === slabId);
     }
     // put a card in (key: a raw copy of it) or a slab (slabId); false when it's full or it can't go in
     function addToShowBinder(key, slabId) {
         if (offTheRecord || atShow) return false;
-        var items = Progress.showBinder(progress);
-        if (items.length >= Progress.SHOW_BINDER_SIZE) {
+        if (showBinderItems.length >= Progress.SHOW_BINDER_SIZE) {
             toast("Your show binder is full: " + Progress.SHOW_BINDER_SIZE + " cards.");
             return false;
         }
         if (slabId ? slabInShowBinder(slabId) || lockedSlabs[slabId] : inShowBinder(key) >= ((collection.cards[key] || {}).count || 0))
             return false;
         var id = Date.now().toString(36) + Math.floor(Math.random() * 1e6).toString(36);
-        prog(p => { Progress.setShowBinder(p, items.concat([slabId ? { id: id, slabId: slabId } : { id: id, key: key }]), Date.now()); return []; });
+        prog(p => { Progress.setShowBinder(p, liveShowBinder(p).concat([slabId ? { id: id, slabId: slabId } : { id: id, key: key }]), Date.now()); return []; });
         return true;
     }
     function removeFromShowBinder(ids) {
         if (offTheRecord) return;
-        prog(p => { Progress.setShowBinder(p, Progress.showBinder(p).filter(b => ids.indexOf(b.id) < 0), Date.now()); return []; });
+        prog(p => { Progress.setShowBinder(p, liveShowBinder(p).filter(b => ids.indexOf(b.id) < 0), Date.now()); return []; });
     }
     function loadShowBinderMarkets() {
         showBinderItems.forEach(it => { if (!markets[it.card.set]) loadMarket(it.card.set); });
@@ -1118,7 +1137,7 @@ Item {
         if (!items.length) return 0;
         var v = (Progress.showState(progress).stock || []).filter(t => t.id === vendorId)[0];
         if (!v) return 0;
-        var wanted = items.filter(it => Progress.showOffer(progress, v, it));
+        var wanted = items.filter(it => Progress.offerAsked(progress, vendorId, it) && Progress.showOffer(progress, v, it));
         if (!wanted.length) {
             toast("\"Not really what I buy.\"");
             return 0;
@@ -1137,6 +1156,103 @@ Item {
         return total;
     }
 
+    // ask the vendor of this stall what they'd give for binder cards (ids): one check for the lot
+    function askOffers(vendorId, ids) {
+        var items = showBinderItems.filter(it => ids.indexOf(it.id) >= 0), ok = false;
+        if (!items.length) return false;
+        prog(p => { ok = Progress.askOffers(p, vendorId, items, Date.now()); return []; });
+        if (!ok) toast("You're out of checks for this visit: you can still deal on what they've already offered.");
+        return ok;
+    }
+
+    // report a listing to show security: a fake gets the table taken down (and you a bounty), a
+    // real card gets you turned away from that table for the day
+    function reportListing(id) {
+        var r = null, x = Progress.showListing(progress, id), v = Progress.showVendor(progress, id);
+        prog(p => { r = Progress.reportListing(p, id, Date.now()); return []; });
+        if (!r) return null;
+        if (r.fake) {
+            sfx("coin");
+            toast("Security takes " + (v ? v.name : "the table") + " down: the " + Tiers.displayName(x.card) + " was a fake. "
+                  + "Bounty: " + Progress.format(r.bounty) + ".");
+        } else {
+            sfx("flip");
+            toast("Security checks it: the " + Tiers.displayName(x.card) + " is real. " + (v ? v.name : "The vendor")
+                  + " won't deal with you for the rest of the show.");
+        }
+        return r;
+    }
+
+    // an early entry ticket (before you've done anything): the crowd comes in later
+    function buyEarlyEntry() {
+        var ok = false;
+        prog(p => { ok = Progress.buyEarlyEntry(p, Date.now()); return []; });
+        if (ok) {
+            sfx("coin");
+            toast("Early entry: you've got the hall to yourself for a while.");
+        } else toast("Not enough berries: early entry's " + Progress.format(Progress.earlyFee(progress)) + ".");
+        return ok;
+    }
+
+    // the expo's auction: bid a step up (the room answers), or drop out
+    function auctionBid() {
+        var a = null, was = Progress.showAuction(progress);
+        if (!was || was.state !== "open" || was.leader === "you") return;
+        var next = Progress.auctionNext(was);
+        if (progress.berries < next.cost) {
+            toast("You'd need " + Progress.format(next.cost) + " with the buyer's premium.");
+            return;
+        }
+        prog(p => { a = Progress.auctionBid(p, Date.now()); return []; });
+        if (!a) return;
+        if (a.state === "won") {
+            receiveFromShow(a.lot, "auction", a.paid, null);
+            prog(p => Progress.record(p, { type: "bought", count: 1, value: a.paid }));
+            refreshValue();
+            refreshRegistry();
+            sfx("legendary");
+            toast("SOLD, to you! " + Tiers.displayName(a.lot.card) + " (gem mint 10) for " + Progress.format(a.paid) + " with the premium.");
+        } else sfx(a.leader === "you" ? "coin" : "flip");
+    }
+    function auctionDrop() {
+        var a = null;
+        prog(p => { a = Progress.auctionDrop(p, Date.now()); return []; });
+        if (a) toast("You put your paddle down. " + (a.leader ? "Sold to " + a.leader.toLowerCase() + " for " + Progress.format(a.bid) + "." : ""));
+    }
+
+    // the expo's authentication booth: is it real? (a fee, no checks)
+    function authenticate(id) {
+        var r = null, x = Progress.showListing(progress, id);
+        if (!x) return;
+        if (progress.berries < Progress.authFee(x)) {
+            toast("The booth charges " + Progress.format(Progress.authFee(x)) + " for that one.");
+            return;
+        }
+        prog(p => { r = Progress.authenticate(p, id, Date.now()); return []; });
+        if (r) {
+            sfx(r.fake ? "flip" : "chime");
+            toast(r.fake ? "The booth's verdict: FAKE." : "The booth's verdict: genuine.");
+        }
+    }
+
+    // the first visit's walkthroughs ("prep" in the Port, "hall" inside)
+    function markShowTutorial(part) {
+        if (offTheRecord || Progress.showTutorialSeen(progress, part)) return;
+        prog(p => { Progress.markShowTutorial(p, part, Date.now()); return []; });
+    }
+
+    // the first time you head for the show (K): the Port's card shop tab first, where your
+    // show binder and notes are, with a word on what they're for
+    function showPrep() {
+        if (phase !== "port") {
+            reloadProgress();
+            collectGrading();
+            portReturn = phase === "board" ? boardReturn : phase;
+            phase = "port";
+        }
+        portView.openShowGuide();
+    }
+
     // trade binder cards (ids), plus berries if they come up short, for a vendor's listing
     function tradeAtShow(vendorId, listingId, ids) {
         var items = showBinderItems.filter(it => ids.indexOf(it.id) >= 0), r = null;
@@ -1151,6 +1267,7 @@ Item {
         receiveFromShow(r.listing, listingId, b.price + b.trade.value - b.trade.change, col);
         writeCollection(col);
         removeFromShowBinder(r.gave.map(it => it.id));
+        prog(p => Progress.record(p, { type: "bought", count: 1, value: b.price + b.trade.value - b.trade.change }));
         refreshValue();
         refreshRegistry();
         sfx("epic");

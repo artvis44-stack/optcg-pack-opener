@@ -3,11 +3,12 @@ import QtQuick
 import "tiers.js" as Tiers
 import "progress.js" as Progress
 
-// Your show binder at the card show (the "Your binder" button): the cards you brought, at
-// their market prices (they're yours: you know what they're worth). At a vendor's table it's
-// how you deal with them: pick cards to see what they'd pay (cash) or give for them (trade
-// credit), sell them, or trade them (plus berries if you're short) for something on their
-// table or under it (cards they only trade, not on display).
+// Your show binder at the card show (the "Your binder" button): the cards you brought. Like
+// everything in the hall they show no market price (that's what your notes are for). At a
+// vendor's table it's how you deal with them: pick cards and ask what they'd pay (cash) or
+// give for them (trade credit), one check for the lot, then sell them, or trade them (plus
+// berries if you're short) for something on their table or under it (cards they only
+// trade, not on display).
 Rectangle {
     id: view
 
@@ -25,15 +26,27 @@ Rectangle {
     readonly property var items: stage ? stage.showBinderItems : []
     readonly property var pickedItems: items.filter(it => !!picked[it.id])
     readonly property var under: vendor ? Progress.tradeStock(p, vendor.id) : []
+    readonly property string closed: vendor ? Progress.tableClosed(p, vendor.id) : ""
     readonly property var targetListing: target ? Progress.showListing(p, target) : null
-    readonly property bool targetHere: !!targetListing && !!vendor && target.split("-")[0] === vendor.id && !hall.bought(target)
-    function offer(it) { return vendor ? Progress.showOffer(p, vendor, it) : null; }
+    readonly property bool targetHere: !!targetListing && !!vendor && target.split("-")[0] === vendor.id && !hall.bought(target) && !hall.taken(target)
+    function asked(it) { return !!vendor && Progress.offerAsked(p, vendor.id, it); }
+    function offer(it) { return asked(it) ? Progress.showOffer(p, vendor, it) : null; }
+    readonly property var unasked: pickedItems.filter(it => !asked(it))
     readonly property var wanted: pickedItems.filter(it => offer(it))
+    // "I've got a stack of those": the sets they're overstocked on, of the cards you've picked
+    readonly property var overstocked: {
+        var seen = {};
+        wanted.forEach(it => { if (offer(it).overstock) seen[hall.fromText(it.card)] = true; });
+        return Object.keys(seen);
+    }
     readonly property int cashTotal: wanted.reduce((n, it) => n + offer(it).cash, 0)
     readonly property var quote: targetHere && wanted.length ? Progress.tradeQuote(p, vendor, targetListing, wanted) : null
 
     onVisibleChanged: if (visible && stage) stage.loadShowBinderMarkets()
-    onVendorChanged: { picked = {}; target = ""; }
+    // a new table starts over (not every progress reload: that makes a new vendor object
+    // every few seconds)
+    readonly property string vendorId: vendor ? vendor.id : ""
+    onVendorIdChanged: { picked = {}; target = ""; }
 
     function toggle(id) {
         var m = Object.assign({}, picked);
@@ -71,9 +84,8 @@ Rectangle {
             Text {
                 width: parent.width
                 wrapMode: Text.WordWrap
-                text: view.items.length + " / " + Progress.SHOW_BINDER_SIZE + " cards  ·  worth "
-                      + Progress.format(view.items.reduce((n, it) => n + it.value, 0)) + " at market"
-                      + (view.vendor ? "   ·   click cards to see what " + view.vendor.name + " offers for them"
+                text: view.items.length + " / " + Progress.SHOW_BINDER_SIZE + " cards"
+                      + (view.vendor ? "   ·   pick cards, then ask what " + view.vendor.name + " would give for them"
                                      : "   ·   walk up to a table to sell or trade")
                 color: "#c8ccd6"
                 font { pixelSize: 14; weight: Font.Bold }
@@ -108,6 +120,7 @@ Rectangle {
                         id: pocket
                         required property int index
                         readonly property var it: view.items[index] || null
+                        readonly property bool known: !!it && view.asked(it)
                         readonly property var o: it ? view.offer(it) : null
                         readonly property bool on: !!it && !!view.picked[it.id]
                         width: binder.pocketW
@@ -161,7 +174,7 @@ Rectangle {
                                 width: parent.width
                                 horizontalAlignment: Text.AlignHCenter
                                 elide: Text.ElideRight
-                                text: pocket.it ? Progress.format(pocket.it.value) + (pocket.it.grade ? " · " + pocket.it.grade : "") : ""
+                                text: pocket.it ? (pocket.it.grade ? "Graded " + pocket.it.grade : "Raw") : ""
                                 color: "#ffd56b"
                                 font { pixelSize: 13; weight: Font.Black }
                             }
@@ -178,7 +191,8 @@ Rectangle {
                                 width: parent.width
                                 horizontalAlignment: Text.AlignHCenter
                                 elide: Text.ElideRight
-                                text: !pocket.o ? "not interested" : "cash " + Progress.format(pocket.o.cash) + "\ntrade " + Progress.format(pocket.o.credit)
+                                text: !pocket.known ? "no offer yet" : !pocket.o ? "not interested"
+                                      : "cash " + Progress.format(pocket.o.cash) + "\ntrade " + Progress.format(pocket.o.credit)
                                 color: !pocket.o ? "#7a8090" : "#9ad8ff"
                                 font { pixelSize: 11; weight: Font.Bold }
                             }
@@ -207,9 +221,18 @@ Rectangle {
         }
 
         // ---- dealing with the vendor ----
+        Text {   // a table you can't deal with
+            visible: !!view.vendor && !!view.closed
+            anchors { top: binder.top; left: binder.right; leftMargin: 20; right: parent.right; rightMargin: 20 }
+            wrapMode: Text.WordWrap
+            text: view.closed === "removed" ? "Security took this table down. There's nobody here to deal with."
+                                            : "\"After what you pulled? Not today.\" They won't buy or trade with you for the rest of the show."
+            color: "#ff8a7a"
+            font { pixelSize: 16; weight: Font.Bold }
+        }
         Flickable {
             id: deal
-            visible: !!view.vendor
+            visible: !!view.vendor && !view.closed
             anchors {
                 top: binder.top; bottom: binder.bottom
                 left: binder.right; leftMargin: 20
@@ -236,13 +259,22 @@ Rectangle {
                 Text {
                     width: parent.width
                     wrapMode: Text.WordWrap
-                    text: !view.pickedItems.length ? "Pick cards in your binder to get an offer."
+                    text: !view.pickedItems.length ? "Pick cards in your binder, then ask what they'd give for them."
+                          : view.unasked.length && !view.wanted.length ? "Ask what they'd give for " + (view.unasked.length > 1 ? "these" : "it") + ": one check."
                           : !view.wanted.length ? "\"Not really what I buy.\""
                           : "They'd pay " + Progress.format(view.cashTotal) + " for " + view.wanted.length + " card" + (view.wanted.length > 1 ? "s" : "")
-                            + " worth " + Progress.format(view.wanted.reduce((n, it) => n + it.value, 0)) + " at market"
-                            + (view.wanted.length < view.pickedItems.length ? " (not interested in the rest)" : "") + "."
+                            + (view.unasked.length ? " (you haven't asked about the rest)"
+                               : view.wanted.length < view.pickedItems.length ? " (not interested in the rest)" : "") + "."
+                            + (view.overstocked.length ? "  \"I've got a stack of " + view.overstocked.join(" and ") + " already.\"" : "")
                     color: "#e8e8ee"
                     font.pixelSize: 14
+                }
+                PillButton {
+                    visible: view.unasked.length > 0
+                    text: "Ask what they'd give  (1 check, " + view.hall.checksLeft + " left)"
+                    accent: "#ffd56b"
+                    enabledLook: view.hall.checksLeft > 0
+                    onClicked: view.stage.askOffers(view.vendor.id, view.unasked.map(it => it.id))
                 }
                 PillButton {
                     visible: view.wanted.length > 0
@@ -358,6 +390,7 @@ Rectangle {
                             visible: view.targetHere
                             wrapMode: Text.WordWrap
                             text: !view.targetHere ? ""
+                                  : view.unasked.length && !view.wanted.length ? "Ask what they'd give for the cards you've picked first (under Sell)."
                                   : !view.pickedItems.length ? "Their price: " + Progress.format(view.targetListing.tradeOnly ? view.targetListing.ask : Progress.showPrice(view.p, view.targetListing))
                                                                + ". Now pick the cards you'd give."
                                   : !view.quote ? "\"Not really what I'm after.\" They don't want any of those."

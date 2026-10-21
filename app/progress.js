@@ -385,7 +385,156 @@ var DIAMOND_LABEL = { id: "diamond", name: "Diamond Label", top: "#f4fdff", bott
 // value like the others) and opens a pack at a time. A scammer's is resealed: searched,
 // its rare and foil swapped out (Tiers.makeVintagePack).
 
-var SHOW_CHECK_BUDGET = 20;                 // checks a visit (one look at one thing about one listing)
+var SHOW_ENTRY = 2500;                      // ฿ at the door, once a show
+// The Grand Line Expo: on the 1st of every month, in place of that day's show. Bigger (its own
+// table counts, with SHOW_EXPO.regulars of the expo-only regulars and their stock: the rarest
+// cards there are), SHOW_EXPO.grails grails for sure, a bigger crowd (it buys .crowd × as
+// fast), more checks, dearer at the door, and the auction and the authentication booth.
+var SHOW_EXPO = { entry: 15000, early: 10000, checks: 10, crowd: 2, regulars: 4, grails: [2, 3], elite: 0.02,
+                  tables: { honest: 7, bargain: 2, premium: 4, vintage: 2, carddass: 1, scammer: 4 } };
+
+function isExpoDay(day) {
+    return /-01$/.test(day || "");
+}
+
+// what it costs to get in today (the expo's dearer)
+function entryFee(now) {
+    return isExpoDay(showDay(now)) ? SHOW_EXPO.entry : SHOW_ENTRY;
+}
+
+function earlyFee(p) {
+    return showState(p).expo ? SHOW_EXPO.early : SHOW_EARLY;
+}
+
+// ---- the expo's auction ----
+// One lot, house-authenticated (never a fake) and gem mint: a grail, or one of the most valuable
+// cards in your sets. It opens once the hall clock reaches SHOW_AUCTION.at. Bidding starts at
+// .open of its value; the room's bidders fight it out among themselves first (the price lands
+// a step over the second-highest's limit), then it's you against whoever's left: every bid
+// you make is a step up (.step of its value, and a tick of the hall clock), and they answer
+// while they're under their limit. Their limits are hidden; their style (cautious, steady,
+// stubborn: how far over value they'll go) shows from Regular up. Win, and you pay your bid
+// plus the buyer's premium (.premium). Drop out, and it's theirs.
+var SHOW_AUCTION = { at: 6, open: 0.6, step: 0.05, premium: 0.1, bidders: [3, 5], points: 3 };
+var SHOW_BIDDER_STYLES = { cautious: [0.85, 1.0], steady: [0.95, 1.15], stubborn: [1.05, 1.3] };
+var SHOW_BIDDER_NAMES = ["Paddle 12", "The grey suit", "A phone bidder", "The collector from Wano", "Old man in the front row",
+                         "The young money", "A dealer from Water 7", "Paddle 31", "The woman with the binoculars"];
+
+function makeAuction(day, pool, stock) {
+    var r = hash("auction " + day), taken = {};
+    stock.forEach(function (t) { t.listings.forEach(function (x) { taken[x.key] = true; }); });
+    var lots = pool.filter(function (x) { return x.value > 0 && !taken[x.key] && (isGrail(x) || SHOW_RARITY[x.card.tier]); })
+                   .sort(function (a, b) { return b.value - a.value; }).slice(0, 25);
+    if (!lots.length) return null;
+    var x = lots[Math.floor(r() * lots.length)], worth = Math.round(x.value * GRADE_MULT[10]);
+    var names = shuffled(SHOW_BIDDER_NAMES, r), styles = Object.keys(SHOW_BIDDER_STYLES);
+    var n = SHOW_AUCTION.bidders[0] + Math.floor(r() * (SHOW_AUCTION.bidders[1] - SHOW_AUCTION.bidders[0] + 1)), bidders = [];
+    for (var i = 0; i < n; i++) {
+        var style = styles[Math.floor(r() * styles.length)], lim = SHOW_BIDDER_STYLES[style];
+        bidders.push({ name: names[i], style: style, max: roundPrice(worth * between(r, lim[0], lim[1])) });
+    }
+    return { lot: { id: "auction", key: x.key, card: x.card, grade: 10, claim: "", cond: "", fake: false, tells: [], checks: {},
+                    value: worth, looks: worth, ask: roundPrice(worth * SHOW_AUCTION.open), auction: true },
+             bidders: bidders, bid: 0, leader: "", state: "" };
+}
+
+function auctionStep(a) {
+    return roundPrice(a.lot.value * SHOW_AUCTION.step);
+}
+
+// the auction: null (no expo), or { lot, bidders, bid, leader ("you" or a bidder's name), state:
+// "" (not open yet) | "open" | "won" | "lost" }
+function showAuction(p) {
+    var s = showState(p);
+    return s.expo && s.auction ? s.auction : null;
+}
+
+// its time's come (the hall clock moved on): the room bids among itself first
+function openAuction(p) {
+    var a = showAuction(p);
+    if (!a || a.state || (showState(p).clock || 0) < SHOW_AUCTION.at) return;
+    var by = a.bidders.slice().sort(function (x, y) { return y.max - x.max; });
+    var second = by[1] ? by[1].max + auctionStep(a) : a.lot.ask;
+    a.bid = Math.max(a.lot.ask, Math.min(by[0].max, second));
+    a.leader = by[0].max >= a.bid ? by[0].name : "";
+    if (!a.leader) a.bid = a.lot.ask;
+    a.state = "open";
+}
+
+// who's still in: the bidders whose limit's over the current bid
+function auctionRivals(a) {
+    return a.bidders.filter(function (b) { return b.max > a.bid; });
+}
+
+// what your next bid would be, and what it'd cost with the premium
+function auctionNext(a) {
+    var bid = a.leader ? a.bid + auctionStep(a) : a.bid;
+    return { bid: bid, cost: Math.round(bid * (1 + SHOW_AUCTION.premium)) };
+}
+
+// bid: the room answers. Returns the auction, or null (closed, or you couldn't pay it if you won)
+function auctionBid(p, now) {
+    var a = showAuction(p);
+    if (!atShow(p, now) || !a || a.state !== "open" || a.leader === "you") return null;
+    var next = auctionNext(a);
+    if (p.berries < next.cost) return null;
+    a.bid = next.bid;
+    a.leader = "you";
+    var top = auctionRivals(a).sort(function (x, y) { return y.max - x.max; })[0];
+    if (top && top.max >= a.bid + auctionStep(a)) {   // they come back
+        a.bid += auctionStep(a);
+        a.leader = top.name;
+    } else {   // nobody's going higher: sold, to you
+        spend(p, next.cost, "show");
+        a.state = "won";
+        a.paid = next.cost;
+        p.show.bought.auction = { price: next.cost, at: now, auction: true };
+        addRep(p, SHOW_AUCTION.points, now);
+        record(p, { type: "auction" });
+    }
+    showTick(p, "");
+    return a;
+}
+
+// stop bidding: whoever's ahead takes it
+function auctionDrop(p, now) {
+    var a = showAuction(p);
+    if (!atShow(p, now) || !a || a.state !== "open") return null;
+    a.state = "lost";
+    return a;
+}
+
+// ---- the expo's authentication booth ----
+// A grading company's table: pay (SHOW_AUTH.share of what it looks to be worth, at least .min)
+// and they tell you for sure whether a listing's real. A tick of the hall clock, no checks.
+var SHOW_AUTH = { share: 0.04, min: 1500 };
+
+function authFee(x) {
+    return Math.max(SHOW_AUTH.min, roundPrice((x.looks || x.ask) * SHOW_AUTH.share));
+}
+
+// what the booth said: true (fake), false (genuine), or undefined (not asked)
+function authResult(p, id) {
+    return (showState(p).authed || {})[id];
+}
+
+function authenticate(p, id, now) {
+    var s = showState(p), x = showListing(p, id);
+    if (!atShow(p, now) || !s.expo || !x || x.auction || authResult(p, id) !== undefined || showTaken(p, id)) return null;
+    if (!spend(p, authFee(x), "show")) return null;
+    p.show.authed = p.show.authed || {};
+    p.show.authed[id] = !!x.fake;
+    showTick(p, id);
+    return { fake: !!x.fake };
+}
+
+// the next expo: "2026-11-01"
+function nextExpoDay(now) {
+    var d = new Date(now);
+    if (d.getDate() === 1) return dayOf(now);
+    return dayOf(new Date(d.getFullYear(), d.getMonth() + 1, 1, 12).getTime());
+}
+var SHOW_CHECK_BUDGET = 25;                 // checks a visit (one look at one thing about one listing, or one ask for offers on your binder cards)
 var SHOW_STEAL = 0.75;                      // under this share of market: a steal (the Sharp Eye poster)
 var SHOW_HAGGLE = [0.05, 0.1, 0.2];         // the offers you can make: this much off
 // kind -> how many tables, listings [min, max], asking price [min, max] × market,
@@ -402,27 +551,88 @@ var SHOW_VENDORS = {
 var SHOW_VINTAGE_SCAMMER = 0.35;            // a scammer's table is a vintage one this often (either game)
 var SHOW_VINTAGE_LISTINGS = [10, 15];       // ...with this many listings
 var SHOW_VINTAGE_MIN = 500;                 // a vintage table's singles start cheaper (฿): binders of commons too
-// [name, what the table says]; scammers' blurbs have their own tells
+// The regulars: a cast of named dealers who come back show after show, each always the same
+// kind with the same habits (what they stock, how they price, how many slabs), so what you
+// learn about them is worth writing down. Each show draws its honest, premium and vintage
+// tables from them, the ones who come more often likelier. Nobody tells you who's who: the
+// recap only shows what your cards turned out to be worth. { id, name, blurb, kind, come
+// (how often they're there, 0-1), focus }; focus: { sets } (about half their table from
+// those sets, when you have them), { jp } (Japanese sets), { tiers }, { slabs } (their share
+// of slabs). expo: only ever at the monthly expo, with the rarest stock in the hall.
+var SHOW_REGULARS = [
+    // honest dealers
+    { id: "grandline", name: "Grand Line Cards", blurb: "Fair prices, everything checked.", kind: "honest", come: 0.6 },
+    { id: "baratie", name: "Baratie Collectibles", blurb: "Family shop since the first set.", kind: "honest", come: 0.5, focus: { sets: ["OP-01", "OP-02"] } },
+    { id: "water7", name: "Water 7 Trading", blurb: "Graded and raw, all guaranteed.", kind: "honest", come: 0.45, focus: { slabs: 0.6 } },
+    { id: "sabaody", name: "Sabaody Singles", blurb: "Prices match the market, give or take.", kind: "honest", come: 0.55, focus: { slabs: 0.15 } },
+    { id: "alabasta", name: "Alabasta TCG", blurb: "We grade what we sell.", kind: "honest", come: 0.4, focus: { sets: ["OP-03", "OP-04"] } },
+    { id: "fishman", name: "Fish-Man Island Games", blurb: "Ask about anything in the case.", kind: "honest", come: 0.35, focus: { sets: ["OP-05", "OP-06"] } },
+    { id: "loguetown", name: "Loguetown Hobbies", blurb: "Collectors serving collectors.", kind: "honest", come: 0.5 },
+    { id: "skypiea", name: "Skypiea Slabs & Singles", blurb: "Every card checked twice.", kind: "honest", come: 0.4, focus: { slabs: 0.55 } },
+    { id: "zou", name: "Zou Trading Post", blurb: "Fair and square, every time.", kind: "honest", come: 0.3 },
+    { id: "wano", name: "Wano Card House", blurb: "Japanese and English, side by side.", kind: "honest", come: 0.35, focus: { jp: true } },
+    { id: "punkhazard", name: "Punk Hazard Hobby", blurb: "New sets the day they land.", kind: "honest", come: 0.4, focus: { sets: ["OP-16", "OP-17", "OP15-EB04"] } },
+    { id: "enies", name: "Enies Lobby Exchange", blurb: "Trade-ins welcome.", kind: "honest", come: 0.35 },
+    { id: "cocoyasi", name: "Cocoyasi Cards", blurb: "Small shop, honest prices.", kind: "honest", come: 0.3, focus: { slabs: 0.2 } },
+    { id: "syrup", name: "Syrup Village Singles", blurb: "Started with one binder. Still at it.", kind: "honest", come: 0.25 },
+    { id: "drum", name: "Drum Island Collectibles", blurb: "Cold hands, fair deals.", kind: "honest", come: 0.25, focus: { sets: ["OP-07", "OP-08"] } },
+    { id: "impeldown", name: "Impel Down Archives", blurb: "Every set, every rarity.", kind: "honest", come: 0.3 },
+    { id: "marineford", name: "Marineford Memorabilia", blurb: "Leaders and alt arts, our specialty.", kind: "honest", come: 0.3, focus: { tiers: ["L_AA", "SUPER_L", "AA", "SEC_AA"] } },
+    { id: "egghead", name: "Egghead Exchange", blurb: "Manga rares and the newest chase.", kind: "honest", come: 0.3, focus: { tiers: ["MANGA", "TR", "SP"] } },
+    // premium dealers
+    { id: "mariejois", name: "Mariejois Vault", blurb: "Only the best slabs. Prices to match.", kind: "premium", come: 0.5, focus: { slabs: 0.9 } },
+    { id: "celestial", name: "Celestial Grails", blurb: "Investment-grade cards.", kind: "premium", come: 0.45 },
+    { id: "laughtale", name: "Laugh Tale Luxe", blurb: "Gem mints, nothing less.", kind: "premium", come: 0.45, focus: { slabs: 0.85 } },
+    { id: "elbaf", name: "Elbaf Grails", blurb: "Only the rarest. Serious buyers.", kind: "premium", come: 0.35 },
+    { id: "raftel", name: "Raftel Reserve", blurb: "By appointment, usually.", kind: "premium", come: 0.2 },
+    { id: "godvalley", name: "God Valley Grading", blurb: "Every slab a ten. Nearly.", kind: "premium", come: 0.3, focus: { slabs: 0.95 } },
+    { id: "kuja", name: "Kuja Treasures", blurb: "Only beautiful cards.", kind: "premium", come: 0.3, focus: { tiers: ["SP", "SP_GOLD", "TR"] } },
+    { id: "redline", name: "Red Line Rarities", blurb: "Secret rares and manga rares, nothing else.", kind: "premium", come: 0.3, focus: { tiers: ["SEC", "SEC_AA", "MANGA"] } },
+    { id: "wholecake", name: "Whole Cake Collection", blurb: "Sweet cards, serious prices.", kind: "premium", come: 0.25 },
+    { id: "tequila", name: "Tequila Wolf Imports", blurb: "Long-haul imports from Japan.", kind: "premium", come: 0.25, focus: { jp: true } },
+    // vintage specialists (the 2005-06 English game)
+    { id: "roger", name: "Gol D. Roger's Relics", blurb: "The 2005-06 English game. Singles, slabs, sealed.", kind: "vintage", come: 0.55 },
+    { id: "jumpvault", name: "Shonen Jump Vault", blurb: "Original 2005 product, stored right.", kind: "vintage", come: 0.45 },
+    { id: "oldera", name: "Old Era Cards", blurb: "Vintage One Piece only. Ask me anything.", kind: "vintage", come: 0.4 },
+    { id: "ohara", name: "Ohara Archives", blurb: "Twenty years collecting the first English game.", kind: "vintage", come: 0.35 },
+    { id: "rocks", name: "Rocks Era Retro", blurb: "The old game's foils, every one.", kind: "vintage", come: 0.25 },
+    { id: "firstprint", name: "First Print Vault", blurb: "2005 singles, never played.", kind: "vintage", come: 0.25 },
+    // Carddass (Hyper Battle, 1999-2002)
+    { id: "carddass", name: "Carddass Corner", blurb: "Japanese vintage: Hyper Battle, 1999-2002.", kind: "carddass", come: 0.55 },
+    { id: "akiba", name: "Akihabara Retro", blurb: "Straight from Japan. Carddass, every stage.", kind: "carddass", come: 0.45 },
+    { id: "showa", name: "Showa-Heisei Cards", blurb: "Old Japanese cards, sorted by stage.", kind: "carddass", come: 0.4 },
+    { id: "nakano", name: "Nakano Broadway Cards", blurb: "Vending machine singles, sorted by stage.", kind: "carddass", come: 0.3 },
+    // only ever at the expo
+    { id: "imu", name: "The Empty Throne Collection", blurb: "Not for sale to just anyone.", kind: "premium", come: 1, expo: true },
+    { id: "elders", name: "Five Elders Estate", blurb: "Five collections, one table.", kind: "premium", come: 1, expo: true },
+    { id: "joyboy", name: "Joy Boy's Treasure", blurb: "Cards you'll only see once.", kind: "premium", come: 1, expo: true },
+    { id: "shiki", name: "Golden Lion Vault", blurb: "Gem-mint vintage, flown in for the expo.", kind: "vintage", come: 1, expo: true },
+    { id: "tokyo", name: "Tokyo Grail Exchange", blurb: "Japanese grails you won't see twice.", kind: "premium", come: 1, expo: true, focus: { jp: true } },
+    { id: "bandaiarchive", name: "Bandai Archive Liquidation", blurb: "Sealed cases and the rarest pulls.", kind: "premium", come: 1, expo: true },
+    { id: "rogerlast", name: "The Last Voyage Collection", blurb: "A lifetime's grails, one weekend only.", kind: "premium", come: 1, expo: true },
+    { id: "jumpfesta", name: "Jump Festa Archive", blurb: "Event promos from every year.", kind: "carddass", come: 1, expo: true }
+];
+// how many shows a scammer keeps a name before moving on: [min, max]; and how often the name
+// they pick is a regular's, a letter off ("Sabaody Singels")
+var SHOW_SCAM_RUN = [2, 4];
+var SHOW_LOOKALIKE = 0.35;
+// the one-off tables and the scammers' names: [name, what the table says]; scammers' blurbs
+// have their own tells
 var SHOW_NAMES = {
-    honest:  [["Grand Line Cards", "Fair prices, everything checked."], ["Baratie Collectibles", "Family shop since the first set."],
-              ["Water 7 Trading", "Graded and raw, all guaranteed."], ["Sabaody Singles", "Prices match the market, give or take."],
-              ["Alabasta TCG", "We grade what we sell."], ["Fish-Man Island Games", "Ask about anything in the case."],
-              ["Loguetown Hobbies", "Collectors serving collectors."], ["Skypiea Slabs & Singles", "Every card checked twice."],
-              ["Zou Trading Post", "Fair and square, every time."]],
     bargain: [["Estate sale table", "Selling a late collector's binder. Not sure what it's worth."],
               ["Kid clearing out a binder", "Need money for a bike!"], ["Garage sale box", "Old cards, make me an offer."],
-              ["Moving-house sale", "Everything must go before Friday."]],
-    premium: [["Mariejois Vault", "Only the best slabs. Prices to match."], ["Celestial Grails", "Investment-grade cards."],
-              ["Laugh Tale Luxe", "Gem mints, nothing less."], ["Elbaf Grails", "Only the rarest. Serious buyers."]],
-    vintage: [["Gol D. Roger's Relics", "The 2005-06 English game. Singles, slabs, sealed."], ["Shonen Jump Vault", "Original 2005 product, stored right."],
-              ["Old Era Cards", "Vintage One Piece only. Ask me anything."], ["Ohara Archives", "Twenty years collecting the first English game."]],
+              ["Moving-house sale", "Everything must go before Friday."], ["Retired player's collection", "Played these for years. Time to let go."],
+              ["Divorce sale", "Her binder. Just get it out of the house."], ["Storage unit find", "Bought the unit, didn't want the cards."],
+              ["College kid", "Rent's due. Everything negotiable."]],
     scammer: [["Dressrosa Deals", "Cash only, no returns. All gem mint, trust me."], ["Jaya Card Kingz", "Best prices at the show!! Pack fresh guaranteed!!"],
               ["Thriller Bark Treasures", "Too good to last. No refunds."], ["Big Mom's Bargains", "Everything mint. Buy two, I'll throw in a sleeve."],
-              ["Buggy's Blowout", "Prices slashed!! Genuine 100%!! Cash only!!"]],
-    carddass: [["Carddass Corner", "Japanese vintage: Hyper Battle, 1999-2002."], ["Akihabara Retro", "Straight from Japan. Carddass, every stage."],
-               ["Showa-Heisei Cards", "Old Japanese cards, sorted by stage."]],
+              ["Buggy's Blowout", "Prices slashed!! Genuine 100%!! Cash only!!"], ["Grand Line Card Co.", "Quality slabs, collector prices."],
+              ["Red Force Collectibles", "Graded and guaranteed."], ["Arlong Park Cards", "Cash deals only. Best in the hall."],
+              ["Foxy's Fast Flips", "In and out, great prices."], ["Shells Town Singles", "Every card checked. Mostly."],
+              ["Orange Town Trading", "Below market, every card!"], ["Mock Town Grails", "Grails at half price. Ask why."]],
     vintageScammer: [["Retro Treasure Chest", "RARE vintage!! 1st print!! Sealed!!"], ["Grand Line Antiques", "Vintage at modern prices. No returns."],
-                     ["Golden Age Grails", "Every card a grail. Cash only, today only."]]
+                     ["Golden Age Grails", "Every card a grail. Cash only, today only."], ["First Edition Express", "2005 originals, cheap!"],
+                     ["Vintage Vault Outlet", "Sealed vintage, no questions."]]
 };
 // how likely a chase card of each tier is to be on a table
 var SHOW_RARITY = { SR: 3, AA: 10, TEX: 5, SEC: 10, SEC_AA: 10, L_AA: 12, SP: 18, DON_GOLD: 2, TR: 12, MANGA: 10,
@@ -599,28 +809,34 @@ var SHOW_TALK = {
 var SHOW_PUSHY = 3;                         // checks at a scammer's stall before they start pushing
 
 // ---- your show binder: cards you bring to sell or trade ----
-// You fill it in the Port before you go (SHOW_BINDER_SIZE cards: raw copies or slabs). At a
-// stall each card gets the vendor's offer: cash (what they'd pay) and trade credit (what it's
-// worth to them against their own stock), as a share of its market price, by who they are.
-// Honest dealers pay fairly (dealers keep a margin on cash, trade at about market), a kid or
-// an estate table guesses, premium dealers only want slabs and big cards, the vintage tables
-// only their own game, and scammers lowball everything and keep the change. Every vendor
-// also has a few cards under the table (SHOW_TRADE_ONLY): not on display, not for sale,
-// only for a trade (a scammer's are mostly fakes).
+// You fill it in the Port before you go (SHOW_BINDER_SIZE cards: raw copies or slabs). Inside,
+// like the listings, nothing shows what your cards are worth: that's what your notes are for.
+// At a stall you ask what they'd give for the cards you've picked (one of the visit's checks
+// per ask): cash (what they'd pay) and trade credit (what it's worth to them against their own
+// stock), as a share of its market price, by who they are. The ranges overlap on purpose, so
+// an offer alone doesn't tell you who's honest: dealers keep a margin on cash and trade at
+// about market, a kid or an estate table guesses, premium dealers only want slabs and big
+// cards, the vintage tables only their own game, and anyone can be overstocked on a set
+// (SHOW_OVERSTOCK: they say so). Scammers pay poorly in cash but love a trade, since they pay
+// in fakes: a trade offer that's too good is the warning sign, and they keep the change.
+// Every vendor also has a few cards under the table (SHOW_TRADE_ONLY): not on display, not
+// for sale, only for a trade (a scammer's are mostly fakes).
 var SHOW_BINDER_SIZE = 15;
 var SHOW_NOTES_MAX = 4000;                  // characters in your show notes
 // kind -> cash [min, max] and trade [min, max] × market; wants: "" anything, "high" slabs and
 // cards worth SHOW_PREMIUM_MIN+, "ccg" / "hb" that vintage game only; change: whether a trade
 // worth more than what you take gets you the difference (at their cash rate)
 var SHOW_DEALS = {
-    honest:  { cash: [0.78, 0.9],  trade: [0.95, 1.05], wants: "",     change: true },
-    bargain: { cash: [0.45, 0.75], trade: [0.75, 1.3],  wants: "",     change: true },
-    premium: { cash: [0.7, 0.85],  trade: [0.9, 1.0],   wants: "high", change: true },
-    vintage: { cash: [0.82, 0.95], trade: [1.0, 1.1],   wants: "ccg",  change: true },
-    carddass:{ cash: [0.82, 0.95], trade: [1.0, 1.1],   wants: "hb",   change: true },
-    scammer: { cash: [0.12, 0.4],  trade: [0.25, 0.55], wants: "",     change: false }
+    honest:  { cash: [0.68, 0.9],  trade: [0.9, 1.05],  wants: "",     change: true },
+    bargain: { cash: [0.45, 0.85], trade: [0.75, 1.3],  wants: "",     change: true },
+    premium: { cash: [0.65, 0.85], trade: [0.85, 1.0],  wants: "high", change: true },
+    vintage: { cash: [0.75, 0.95], trade: [0.95, 1.1],  wants: "ccg",  change: true },
+    carddass:{ cash: [0.75, 0.95], trade: [0.95, 1.1],  wants: "hb",   change: true },
+    scammer: { cash: [0.35, 0.8],  trade: [1.05, 1.4],  wants: "",     change: false }
 };
 var SHOW_PREMIUM_MIN = 15000;
+// a vendor with a stack of a set already: this often per set, and their offer × [min, max]
+var SHOW_OVERSTOCK = { chance: 0.25, mult: [0.65, 0.85] };
 var SHOW_TRADE_ONLY = [1, 3];               // cards under the table, per vendor
 
 function isShowSet(set) {
@@ -697,6 +913,61 @@ function roundPrice(v) {
 // { ccg: { "<set name>": { pack: ฿, box: ฿ } } (app/vintage.json's "sealed", in ฿), hb: [product:
 // { name, kind: "vpack" | "grandbox" | "jfpack", set, worth: ฿, cards }] (app/hyperbattle.json's) },
 // or nothing (a bare ccg map works too).
+// a regular's habits, the same every show: how they price (× their kind's range) and how many slabs
+function regularHabits(r) {
+    var h = hash("regular " + r.id);
+    return { price: 0.94 + h() * 0.12, slabs: r.focus && r.focus.slabs !== undefined ? r.focus.slabs : null };
+}
+
+// the day's regulars of a kind: n of them, likelier the more often they come
+function drawRegulars(kind, n, rnd, expo) {
+    var left = SHOW_REGULARS.filter(function (r) { return r.kind === kind && !!r.expo === !!expo; }), out = [];
+    while (out.length < n && left.length) {
+        var total = left.reduce(function (t, r) { return t + r.come; }, 0), x = rnd() * total;
+        for (var i = 0; i < left.length; i++) {
+            x -= left[i].come;
+            if (x < 0 || i === left.length - 1) { out.push(left.splice(i, 1)[0]); break; }
+        }
+    }
+    return out;
+}
+
+// a name a letter off: two letters swapped, one doubled or one dropped, inside a longer word
+function lookalike(name, rnd) {
+    var words = name.split(" "), i = 0;
+    words.forEach(function (w, k) { if (w.length > words[i].length) i = k; });
+    var w = words[i];
+    if (w.length < 5) return name + "s";
+    var at = 1 + Math.floor(rnd() * (w.length - 3)), op = rnd();
+    if (op < 0.5) w = w.slice(0, at) + w[at + 1] + w[at] + w.slice(at + 2);
+    else if (op < 0.75) w = w.slice(0, at) + w[at] + w.slice(at);
+    else w = w.slice(0, at) + w.slice(at + 1);
+    words[i] = w;
+    return words.join(" ");
+}
+
+// a scammer table's identity: the same for a few shows running, then gone (slot: which of the
+// day's scammer tables). { name, blurb, vintage line ("" or "ccg" / "hb"), id }
+function scammerIdentity(day, slot, lines, taken) {
+    var d = Math.floor(Date.parse(day + "T12:00:00Z") / 86400000);
+    var run = SHOW_SCAM_RUN[0] + (slot % (SHOW_SCAM_RUN[1] - SHOW_SCAM_RUN[0] + 1));
+    var era = Math.floor((d + slot * 7) / run), r = hash("scammer " + slot + " " + era);
+    var old = lines.length && r() < SHOW_VINTAGE_SCAMMER ? lines[Math.floor(r() * lines.length)] : "";
+    var nm = null;
+    if (r() < SHOW_LOOKALIKE) {
+        var like = SHOW_REGULARS.filter(function (x) { return !x.expo && (old ? x.kind === (old === "hb" ? "carddass" : "vintage")
+                                                                           : x.kind === "honest" || x.kind === "premium"); });
+        var reg = like[Math.floor(r() * like.length)];
+        if (reg) nm = [lookalike(reg.name, r), reg.blurb];
+    }
+    var names = SHOW_NAMES[old ? "vintageScammer" : "scammer"], k = Math.floor(r() * names.length);
+    for (var i = 0; !nm || taken[nm[0]]; i++) {
+        if (i >= names.length) { nm = [nm ? nm[0] + " II" : "Table " + (slot + 1), ""]; break; }
+        nm = names[(k + i) % names.length];
+    }
+    return { id: "scam-" + slot + "-" + era, name: nm[0], blurb: nm[1], vintage: old };
+}
+
 function makeShowStock(day, pool, sealed) {
     var rnd = hash("show " + day);
     var pickOf = function (list) { return list[Math.floor(rnd() * list.length)]; };
@@ -734,10 +1005,58 @@ function makeShowStock(day, pool, sealed) {
     var pickVintage = { ccg: picker(vintage.ccg, SHOW_SPECIAL_RARITY), hb: picker(vintage.hb, SHOW_SPECIAL_RARITY) };
     var lines = Object.keys(pickVintage).filter(function (l) { return pickVintage[l]; });
     if (!pickModern && !pickSpecial) return [];
-    var kinds = [];
-    Object.keys(SHOW_VENDORS).forEach(function (k) { for (var i = 0; i < SHOW_VENDORS[k].tables; i++) kinds.push(k); });
-    var names = {};
-    Object.keys(SHOW_NAMES).forEach(function (k) { names[k] = shuffled(SHOW_NAMES[k], rnd); });
+    // a regular's specialty: their own picker over the chase cards it covers (null: none of
+    // those in your sets)
+    var focused = {};
+    var focusPicker = function (f) {
+        if (!f || !(f.sets || f.jp || f.tiers)) return null;
+        var k = JSON.stringify(f);
+        if (focused[k] !== undefined) return focused[k];
+        var byTier = {};
+        Object.keys(modern).forEach(function (t) {
+            if (f.tiers && f.tiers.indexOf(t) < 0) return;
+            var of = modern[t].filter(function (x) {
+                var set = x.key.split(":")[0];
+                return f.sets ? f.sets.indexOf(set) >= 0 : f.jp ? /-JP$/.test(set) : true;
+            });
+            if (of.length) byTier[t] = of;
+        });
+        return focused[k] = picker(byTier, SHOW_RARITY);
+    };
+    var expo = isExpoDay(day), kinds = [];
+    var tables = function (k) { return expo ? SHOW_EXPO.tables[k] : SHOW_VENDORS[k].tables; };
+    Object.keys(SHOW_VENDORS).forEach(function (k) { for (var i = 0; i < tables(k); i++) kinds.push(k); });
+    var names = { bargain: shuffled(SHOW_NAMES.bargain, rnd) };
+    // the day's regulars, by kind; a vintage specialist only comes when you have their game
+    var regulars = {};
+    ["honest", "premium", "vintage", "carddass"].forEach(function (k) {
+        regulars[k] = drawRegulars(k, tables(k), rnd, false);
+    });
+    // the expo's own regulars, a few of them each month, with the rarest cards there are: the
+    // top SHOW_EXPO.elite of the chase cards by value (and every grail), or the top of their
+    // vintage game
+    var elitePick = {};
+    if (expo) {
+        shuffled(SHOW_REGULARS.filter(function (r) { return r.expo; }), rnd).slice(0, SHOW_EXPO.regulars).forEach(function (r) {
+            kinds.push("expo:" + r.id);
+        });
+        var top = function (list, share, min) {
+            list = list.slice().sort(function (a, b) { return b.value - a.value; });
+            return list.slice(0, Math.max(min, Math.ceil(list.length * share)));
+        };
+        var flat = function (byTier) { return Object.keys(byTier).reduce(function (a, t) { return a.concat(byTier[t]); }, []); };
+        var any = function (list) {
+            return !list.length ? null : function () {
+                var free = list.filter(function (x) { return !used[x.key]; });
+                return (free.length ? free : list)[Math.floor(rnd() * (free.length || list.length))];
+            };
+        };
+        var modernAll = flat(modern);
+        elitePick.modern = any(top(modernAll, SHOW_EXPO.elite, 30).concat(grails));
+        elitePick.jp = any(top(modernAll.filter(function (x) { return /-JP:/.test(x.key); }), SHOW_EXPO.elite * 2, 20));
+        elitePick.ccg = any(top(flat(vintage.ccg), 0.25, 10).concat(grails.filter(function (x) { return x.card.set === "VINTAGE"; })));
+        elitePick.hb = any(top(flat(vintage.hb), 0.25, 10).concat(grails.filter(function (x) { return x.card.set === "HYPERBATTLE"; })));
+    }
 
     // what each check shows: a fake fails `tells` of them (a good fake just one), a real one
     // may have an innocent quirk in one
@@ -770,14 +1089,15 @@ function makeShowStock(day, pool, sealed) {
         return pickOf(straight ? SHOW_TALK[kind] : SHOW_TALK.vague);
     };
 
-    var listing = function (kind, x, id) {
+    var listing = function (kind, x, id, habits) {
         var cfg = SHOW_VENDORS[kind], showOnly = !SHOW_RARITY[x.card.tier];
         var fake = rnd() < (showOnly && cfg.fakes ? SHOW_SPECIAL_FAKES : cfg.fakes);
-        var slab = rnd() < cfg.slabs;
+        var slab = rnd() < (habits && habits.slabs !== null ? habits.slabs : cfg.slabs);
         var grade = 0, cond = "", claim = "";
         if (slab) {
             var g = rnd();
-            grade = kind === "premium" ? (g < 0.5 ? 10 : g < 0.9 ? 9 : 8)
+            grade = habits && habits.gem ? (g < 0.75 ? 10 : 9)
+                  : kind === "premium" ? (g < 0.5 ? 10 : g < 0.9 ? 9 : 8)
                   : kind === "scammer" ? (g < 0.6 ? 10 : 9)
                   : (g < 0.25 ? 10 : g < 0.7 ? 9 : g < 0.92 ? 8 : 7);
         } else if (kind === "scammer") {   // always "pack fresh", never true
@@ -796,10 +1116,10 @@ function makeShowStock(day, pool, sealed) {
             claim = SHOW_CLAIM[cond];
         }
         var worth = grade ? x.value * GRADE_MULT[grade] : x.value;
-        var ask = roundPrice(worth * between(rnd, cfg.price[0], cfg.price[1]));
+        var ask = roundPrice(worth * between(rnd, cfg.price[0], cfg.price[1]) * (habits ? habits.price : 1));
         var seen = inspect(grade ? "slab" : "raw", fake, grade, cond);
         return { id: id, key: x.key, card: x.card, grade: grade, claim: claim, cond: cond, fake: fake,
-                 fakeGrade: seen.grade, fakeLook: seen.look, tells: seen.tells, value: fake ? 0 : Math.round(worth), ask: ask,
+                 fakeGrade: seen.grade, fakeLook: seen.look, tells: seen.tells, value: fake ? 0 : Math.round(worth), looks: Math.round(worth), ask: ask,
                  checks: seen.checks, talk: talk(kind, fake) };
     };
 
@@ -816,7 +1136,7 @@ function makeShowStock(day, pool, sealed) {
                     tier: kind === "box" ? "SEALED_BOX" : "SEALED_PACK", set: "VINTAGE", origin: origin, image: "" },
             sealed: { kind: kind, origin: origin, packs: kind === "box" ? Tiers.VINTAGE_PACK.packsPerBox : 1 },
             grade: 0, claim: "Factory sealed", cond: "", fake: fake, fakeGrade: seen.grade, fakeLook: seen.look, tells: seen.tells,
-            value: fake ? 0 : worth, ask: roundPrice(worth * between(rnd, cfg.price[0], cfg.price[1])),
+            value: fake ? 0 : worth, looks: worth, ask: roundPrice(worth * between(rnd, cfg.price[0], cfg.price[1])),
             checks: seen.checks, talk: talk(table.kind, fake)
         };
     };
@@ -832,7 +1152,7 @@ function makeShowStock(day, pool, sealed) {
                     origin: product.set, line: "hb", image: "" },
             sealed: { kind: product.kind, line: "hb", origin: product.set, name: product.name, packs: 1, cards: product.cards || null },
             grade: 0, claim: box ? "Sealed, never opened" : "Unopened", cond: "", fake: fake, fakeGrade: seen.grade, fakeLook: seen.look,
-            tells: seen.tells, value: fake ? 0 : product.worth, ask: roundPrice(product.worth * between(rnd, cfg.price[0], cfg.price[1])),
+            tells: seen.tells, value: fake ? 0 : product.worth, looks: product.worth, ask: roundPrice(product.worth * between(rnd, cfg.price[0], cfg.price[1])),
             checks: seen.checks, talk: talk(table.kind, fake)
         };
     };
@@ -841,35 +1161,63 @@ function makeShowStock(day, pool, sealed) {
         return of.length ? pickOf(of) : null;
     };
 
+    var scamSlot = 0, taken = {};
     var hall = shuffled(kinds, rnd).map(function (kind, v) {
-        var cfg = SHOW_VENDORS[kind];
-        // sells only vintage: a specialist (of one game), or a scammer passing as one
-        var old = cfg.vintage && pickVintage[cfg.vintage] ? cfg.vintage
-                : kind === "scammer" && lines.length && rnd() < SHOW_VINTAGE_SCAMMER ? pickOf(lines) : "";
-        var pool = old && kind === "scammer" ? "vintageScammer" : kind;
-        var nm = names[pool].shift() || ["Table " + (v + 1), ""];
+        var star = kind.indexOf("expo:") === 0 ? SHOW_REGULARS.filter(function (r) { return "expo:" + r.id === kind; })[0] : null;
+        if (star) {   // an expo-only regular: only the rarest, mostly gem mint
+            var line = star.kind === "vintage" ? "ccg" : star.kind === "carddass" ? "hb" : "";
+            if (line && !pickVintage[line]) line = "";   // not that game in your pool: the modern grails instead
+            var from = line ? elitePick[line] : star.focus && star.focus.jp ? elitePick.jp || elitePick.modern : elitePick.modern;
+            var stock = [], count = 8 + Math.floor(rnd() * 5), h = { price: regularHabits(star).price, slabs: 0.8, gem: true };
+            for (var e = 0; from && e < count; e++) {
+                var pick = from();
+                used[pick.key] = true;
+                stock.push(listing(star.kind, pick, v + "-" + e, h));
+            }
+            return { id: String(v), kind: star.kind, vintage: line, name: star.name, blurb: star.blurb, rid: star.id, expo: true, listings: stock };
+        }
+        var cfg = SHOW_VENDORS[kind], who = null, habits = null, old = "";
+        if (regulars[kind]) {   // one of the regulars
+            var reg = regulars[kind].shift();
+            who = { id: reg ? reg.id : "", name: reg ? reg.name : "Table " + (v + 1), blurb: reg ? reg.blurb : "" };
+            habits = reg ? regularHabits(reg) : null;
+            if (cfg.vintage && pickVintage[cfg.vintage]) old = cfg.vintage;   // sells only vintage, of one game
+            var focus = reg && reg.focus ? focusPicker(reg.focus) : null;
+        } else if (kind === "scammer") {   // a name for a few shows, sometimes a regular's, a letter off
+            who = scammerIdentity(day, scamSlot++, lines, taken);
+            old = who.vintage;
+        } else {
+            var nm = names[kind].shift() || ["Table " + (v + 1), ""];
+            who = { id: "", name: nm[0], blurb: nm[1] };
+        }
+        taken[who.name] = true;
         var range = old ? SHOW_VINTAGE_LISTINGS : cfg.listings;
         var n = cfg.vintage && !old ? 0 : range[0] + Math.floor(rnd() * (range[1] - range[0] + 1));
         var listings = [];
         for (var i = 0; i < n; i++) {
             var x = old ? pickVintage[old]()
-                  : pickSpecial && (!pickModern || rnd() < SHOW_SPECIAL_SHARE) ? pickSpecial() : pickModern();
+                  : pickSpecial && (!pickModern || rnd() < SHOW_SPECIAL_SHARE) ? pickSpecial()
+                  : focus && rnd() < 0.5 ? focus() : pickModern();
             used[x.key] = true;
-            listings.push(listing(kind, x, v + "-" + i));
+            listings.push(listing(kind, x, v + "-" + i, habits));
         }
-        return { id: String(v), kind: kind, vintage: old, name: nm[0], blurb: nm[1], listings: listings };
+        // rid: a regular's (scammers keep theirs to themselves: nobody remembers you there)
+        return { id: String(v), kind: kind, vintage: old, name: who.name, blurb: who.blurb, rid: kind === "scammer" ? "" : who.id,
+                 listings: listings };
     });
 
     // now and then a grail: on a premium dealer's table (or a vintage specialist's, for a vintage
     // one), or a scammer's (likely a fake)
-    if (grails.length && rnd() < SHOW_GRAIL_CHANCE) {
+    var grailCount = expo ? SHOW_EXPO.grails[0] + Math.floor(rnd() * (SHOW_EXPO.grails[1] - SHOW_EXPO.grails[0] + 1))
+                   : rnd() < SHOW_GRAIL_CHANCE ? 1 : 0;
+    for (var gi = 0; gi < grailCount && grails.length; gi++) {
         var g = grails[Math.floor(rnd() * grails.length)];
         var gline = !Tiers.isVintage(g.card) ? "" : g.card.set === "HYPERBATTLE" ? "hb" : "ccg";
         var honestKind = gline && rnd() < 0.5 ? (gline === "hb" ? "carddass" : "vintage") : "premium";
         var kind = rnd() < 0.65 ? honestKind : "scammer";
-        var where = hall.filter(function (t) { return t.kind === kind && (!t.vintage || t.vintage === gline); });
+        var where = hall.filter(function (t) { return t.kind === kind && !t.expo && (!t.vintage || t.vintage === gline); });
         var table = where[Math.floor(rnd() * where.length)];
-        if (table) table.listings.unshift(listing(table.kind, g, table.id + "-g"));
+        if (table) table.listings.unshift(listing(table.kind, g, table.id + "-g" + (gi || "")));
     }
 
     // sealed vintage packs and boxes: often at the vintage tables, very rarely anywhere else
@@ -920,27 +1268,166 @@ function makeShowStock(day, pool, sealed) {
                   : pickSpecial && (!pickModern || rnd() < SHOW_SPECIAL_SHARE * 2) ? pickSpecial() : pickModern();
             if (!x) continue;
             used[x.key] = true;
-            var it = listing(t.kind, x, t.id + "-t" + i);
+            var it = listing(t.kind, x, t.id + "-t" + i, habitsOf(t));
             it.tradeOnly = true;
             t.trade.push(it);
+        }
+    });
+    // what a regular keeps for the customers they know (SHOW_FAMILIAR): one more card under the
+    // table, and the best thing they brought, saved for you. Only yours once you're familiar
+    // (enterShow); dealt last, like the rest
+    hall.forEach(function (t) {
+        if (!t.rid) return;
+        var pick = function () {
+            return t.vintage ? pickVintage[t.vintage]()
+                 : pickSpecial && (!pickModern || rnd() < SHOW_SPECIAL_SHARE * 2) ? pickSpecial() : pickModern();
+        };
+        var x = pick(), best = null;
+        for (var i = 0; i < 6; i++) {
+            var y = pick();
+            if (y && (!best || y.value > best.value)) best = y;
+        }
+        t.extra = {};
+        if (x) {
+            t.extra.trade = listing(t.kind, x, t.id + "-tx", habitsOf(t));
+            t.extra.trade.tradeOnly = true;
+            used[x.key] = true;
+        }
+        if (best) {
+            t.extra.saved = listing(t.kind, best, t.id + "-s", habitsOf(t));
+            t.extra.saved.saved = true;
+            used[best.key] = true;
         }
     });
     return hall;
 }
 
+function habitsOf(table) {
+    var r = table && table.rid ? SHOW_REGULARS.filter(function (x) { return x.id === table.rid; })[0] : null;
+    return r ? regularHabits(r) : null;
+}
+
+// ---- the regulars: who you've dealt with ----
+// deals (purchases and trades, counted when you leave) with a regular -> what you get from
+// them: an extra card under the table, every small offer (5%) taken, the best card they
+// brought saved for you
+var SHOW_FAMILIAR = { trade: 3, haggle: 6, saved: 10 };
+
+function regularDeals(p, rid) {
+    return rid ? ((p.showRegulars || {})[rid] || {}).deals || 0 : 0;
+}
+
+// ---- reporting a fake, and your name at the shows ----
+// Once you've checked something about a listing you can report it to show security (one
+// report a table). A fake: the table's taken down (nothing more from it, not even what's under
+// it), you get a bounty (SHOW_REPORT.bounty of what they asked, at least .min) and reputation.
+// A real card: that vendor won't deal with you for the rest of the show, you lose reputation,
+// and word gets round the honest tables (their haggle odds × .haggle for the day). Real cards
+// have innocent quirks, so reporting on one odd detail is a gamble.
+var SHOW_REPORT = { bounty: 0.25, min: 2000, points: 5, falsePoints: -8, haggle: 0.6 };
+// reputation: a point for every visit, one for every deal (up to .deals a show), and the reports.
+// What each level brings
+var SHOW_REP = { visit: 1, deal: 1, deals: 5 };
+var SHOW_LEVELS = [
+    { name: "Newcomer",      points: 0,   perk: "" },
+    { name: "Familiar Face", points: 40,  perk: "Two more checks a visit" },
+    { name: "Regular",       points: 120, perk: "Vendors take your offers more often" },
+    { name: "Insider",       points: 300, perk: "Early entry's free, and every regular keeps an extra card under the table for you" },
+    { name: "Legend",        points: 700, perk: "Word's out: fakes give themselves away more when you're looking" }
+];
+var SHOW_LEVEL_CHECKS = 2;                  // Familiar Face and up
+var SHOW_LEVEL_HAGGLE = 0.1;                // Regular and up: added to every vendor's odds
+
+function showRep(p) {
+    return (p.showRep && p.showRep.points) || 0;
+}
+
+// your level: an index into SHOW_LEVELS
+function showLevel(p) {
+    var pts = showRep(p), lv = 0;
+    SHOW_LEVELS.forEach(function (l, i) { if (pts >= l.points) lv = i; });
+    return lv;
+}
+
+function addRep(p, n, now) {
+    var was = showRep(p);
+    p.showRep = { points: Math.max(0, was + n), at: now };
+    if (p.show) p.show.rep = (p.show.rep || 0) + p.showRep.points - was;   // this visit's (what really changed)
+}
+
+// checks a visit, with your level's
+function checkBudget(p) {
+    return SHOW_CHECK_BUDGET + (showLevel(p) >= 1 ? SHOW_LEVEL_CHECKS : 0) + (showState(p).expo ? SHOW_EXPO.checks : 0);
+}
+
+// a table you can't deal with: "removed" (security took it down) or "refused" (you reported
+// something real there), or ""
+function tableClosed(p, vendorId) {
+    var r = (showState(p).reports || {})[vendorId];
+    return !r ? "" : r.ok ? "removed" : "refused";
+}
+
+// you can report it: you've checked it, it's not yours, and you haven't reported at that table
+function canReport(p, id) {
+    var s = showState(p), x = showListing(p, id), v = showVendor(p, id);
+    return !!x && !!v && !s.bought[id] && !showTaken(p, id) && !(s.reports || {})[v.id] && Object.keys((s.checked || {})[id] || {}).length > 0;
+}
+
+// report a listing: { fake (it was), bounty (฿) }, or null (you can't)
+function reportListing(p, id, now) {
+    var x = showListing(p, id), v = showVendor(p, id);
+    if (!atShow(p, now) || !canReport(p, id)) return null;
+    p.show.reports = p.show.reports || {};
+    var bounty = x.fake ? Math.max(SHOW_REPORT.min, roundPrice(x.ask * SHOW_REPORT.bounty)) : 0;
+    p.show.reports[v.id] = { listing: id, ok: !!x.fake, bounty: bounty, at: now };
+    if (bounty) earn(p, bounty, "showBounty");
+    addRep(p, x.fake ? SHOW_REPORT.points : SHOW_REPORT.falsePoints, now);
+    record(p, { type: "report", ok: !!x.fake });
+    showTick(p, id);
+    return { fake: !!x.fake, bounty: bounty };
+}
+
+// a Legend's eye: a fake gives itself away in one more of its checks (not sealed products)
+function crudenFake(x, rnd) {
+    if (!x.fake || x.sealed) return;
+    var can = SHOW_CHECKS[x.grade ? "slab" : "raw"].filter(function (c) { return !c.noTell && c.id !== "edges" && x.tells.indexOf(c.id) < 0; });
+    if (!can.length) return;
+    var c = can[Math.floor(rnd() * can.length)];
+    x.tells.push(c.id);
+    x.checks[c.id] = c.tell[Math.floor(rnd() * c.tell.length)].replace("%g", x.grade);
+}
+
 // walk in: the hall is dealt (once a day) and you're there until you leave
+// walk in: pay at the door (SHOW_ENTRY, once a show: coming back in is free) and the hall is
+// dealt. The regulars you know bring out what they keep for you (SHOW_FAMILIAR). False: you
+// can't (been already, or short of the entry)
 function enterShow(p, now, pool, sealed) {
     var day = showDay(now);
     if (!canEnterShow(p, now)) return false;
     var s = showState(p);
-    if (s.day !== day || !s.stock) p.show = { day: day, entered: now, left: 0, stock: makeShowStock(day, pool, sealed), bought: {}, haggled: {},
-                                          looks: 0, checked: {}, asked: {} };
+    if (s.day !== day || !s.stock) {
+        var fee = entryFee(now), expo = isExpoDay(day);
+        if (!spend(p, fee, "show")) return false;
+        var stock = makeShowStock(day, pool, sealed);
+        var lv = showLevel(p), sharp = hash("legend " + day);
+        stock.forEach(function (t) {
+            var n = regularDeals(p, t.rid), x = t.extra || {};
+            if ((n >= SHOW_FAMILIAR.trade || lv >= 3) && x.trade) t.trade.push(x.trade);   // Insiders: every regular
+            if (n >= SHOW_FAMILIAR.saved && x.saved) t.listings.unshift(x.saved);
+            delete t.extra;
+            if (lv >= 4) t.listings.concat(t.trade || []).forEach(function (l) { crudenFake(l, sharp); });
+        });
+        p.show = { day: day, entered: now, left: 0, stock: stock, bought: {}, haggled: {}, looks: 0, checked: {}, asked: {}, paid: fee,
+                   clock: 0, early: lv >= 3,   // Insiders come in early
+                   expo: expo, auction: expo ? makeAuction(day, pool, stock) : null };
+    }
     else if (!s.entered) p.show.entered = now;
     return true;
 }
 
 function showListing(p, id) {
     var s = showState(p);
+    if (id === "auction") return s.auction ? s.auction.lot : null;
     for (var v = 0; v < (s.stock || []).length; v++) {
         var all = s.stock[v].listings.concat(s.stock[v].trade || []);
         for (var i = 0; i < all.length; i++)
@@ -967,8 +1454,14 @@ function haggle(p, id, pct, now) {
     var s = showState(p), x = showListing(p, id), v = showVendor(p, id);
     var k = SHOW_HAGGLE.indexOf(pct);
     if (!atShow(p, now) || !x || !v || k < 0 || s.haggled[id] || s.bought[id]) return null;
-    var ok = hash("haggle " + s.day + " " + id + " " + pct)() < SHOW_VENDORS[v.kind].haggle[k];
+    if (tableClosed(p, v.id) || showTaken(p, id)) return null;
+    var odds = SHOW_VENDORS[v.kind].haggle[k];
+    if (v.kind !== "scammer" && Object.keys(s.reports || {}).some(function (t) { return !s.reports[t].ok; })) odds *= SHOW_REPORT.haggle;   // word got round
+    if (showLevel(p) >= 2) odds = Math.min(1, odds + SHOW_LEVEL_HAGGLE);
+    var ok = (k === 0 && regularDeals(p, v.rid) >= SHOW_FAMILIAR.haggle)   // a regular who knows you takes a small offer
+             || hash("haggle " + s.day + " " + id + " " + pct)() < odds;
     p.show.haggled[id] = { pct: pct, ok: ok };
+    showTick(p, id);
     return ok;
 }
 
@@ -985,6 +1478,79 @@ function showSeen(p, id) {
     return out;
 }
 
+// ---- the crowd: other buyers ----
+// The hall has a clock that moves with what you do: a check, a question, an offer, a deal, a
+// report (one tick each; walking round and looking are free, and so is reading). The crowd
+// comes in after SHOW_CROWD.quiet ticks (.early more with an early entry ticket, SHOW_EARLY,
+// free for Insiders) and buys off the tables, the best deals first: each listing goes at a
+// tick of its own, sooner the better a deal it looks and the bigger the card (they don't
+// check, so fakes go too). Not what's under the table, what's saved for you, what you've
+// bought, or the card you're dealing with right then. What they take is gone (p.show.taken),
+// and the hall talks about the big ones (p.show.news).
+var SHOW_CROWD = { quiet: 4, early: 8, pace: 80 };
+var SHOW_EARLY = 5000;
+var SHOW_NEWS_MIN = 20000;                  // ฿: a card worth talking about
+var SHOW_BUYERS = ["a collector in a straw hat", "a dealer from out of town", "a kid and his dad", "a reseller with a backpack",
+                   "a woman with a long list", "someone in a Marine cap", "a pair of flippers", "a quiet man paying cash",
+                   "a regular you've seen before", "a tourist with a camera"];
+
+// when the crowd comes in (tick)
+function crowdStart(p) {
+    return SHOW_CROWD.quiet + (showState(p).early ? SHOW_CROWD.early : 0);
+}
+
+// the tick the crowd takes a listing
+function goneAt(p, x) {
+    var r = hash("crowd " + showState(p).day + " " + x.id)();
+    var worth = x.looks || x.value || x.ask;
+    var deal = Math.max(0.3, Math.min(2, worth / Math.max(1, x.ask)));
+    var want = Math.pow(deal, 2.5) * (0.6 + 0.4 * Math.min(1, Math.log(Math.max(10, worth)) / Math.LN10 / 6));
+    var pace = SHOW_CROWD.pace / (showState(p).expo ? SHOW_EXPO.crowd : 1);
+    return crowdStart(p) + Math.round(-Math.log(1 - r * 0.999) * pace / want);
+}
+
+// someone else bought it: { tick, who }, or null
+function showTaken(p, id) {
+    return (showState(p).taken || {})[id] || null;
+}
+
+// the clock moves on (except: the listing you're dealing with, which waits for the next tick)
+function showTick(p, exceptId) {
+    var s = showState(p);
+    p.show.clock = (s.clock || 0) + 1;
+    openAuction(p);
+    p.show.taken = p.show.taken || {};
+    var gone = [];
+    (s.stock || []).forEach(function (t) {
+        if (tableClosed(p, t.id) === "removed") return;
+        t.listings.forEach(function (x) {
+            if (x.saved || x.id === exceptId || s.bought[x.id] || p.show.taken[x.id] || goneAt(p, x) > p.show.clock) return;
+            var who = SHOW_BUYERS[Math.floor(hash("buyer " + s.day + " " + x.id)() * SHOW_BUYERS.length)];
+            p.show.taken[x.id] = { tick: p.show.clock, who: who };
+            gone.push({ x: x, t: t, who: who });
+        });
+    });
+    gone.sort(function (a, b) { return (b.x.looks || b.x.ask) - (a.x.looks || a.x.ask); });
+    var big = gone[0];
+    if (big && (big.x.looks || big.x.ask) >= SHOW_NEWS_MIN)
+        p.show.news = (p.show.news || []).concat([{ tick: p.show.clock, text: capitalize(big.who) + " just walked off with "
+            + (/^the /i.test(Tiers.displayName(big.x.card)) ? "" : "the ") + Tiers.displayName(big.x.card) + (big.x.grade ? " (graded " + big.x.grade + ")" : "") + " from " + big.t.name + "." }]).slice(-5);
+}
+
+function capitalize(t) {
+    return t.charAt(0).toUpperCase() + t.slice(1);
+}
+
+// an early entry ticket: before you've done anything, the crowd comes in later. Free for
+// Insiders (they have one already). False: too late, or you can't pay
+function buyEarlyEntry(p, now) {
+    var s = showState(p);
+    if (!atShow(p, now) || s.early || (s.clock || 0) > 0) return false;
+    if (!spend(p, earlyFee(p), "show")) return false;
+    p.show.early = true;
+    return true;
+}
+
 // check one thing about a listing (one of the visit's SHOW_CHECK_BUDGET; looking again is free):
 // what you see, or "" when you're out of checks (or not at the show)
 function checkListing(p, id, check, now) {
@@ -993,17 +1559,19 @@ function checkListing(p, id, check, now) {
     p.show.checked = p.show.checked || {};
     var done = p.show.checked[id] = p.show.checked[id] || {};
     if (done[check]) return x.checks[check];
-    if ((s.looks || 0) >= SHOW_CHECK_BUDGET) return "";
+    if ((s.looks || 0) >= checkBudget(p) || tableClosed(p, id.split("-")[0]) || showTaken(p, id)) return "";
     p.show.looks = (s.looks || 0) + 1;
     done[check] = true;
+    showTick(p, id);
     return x.checks[check];
 }
 
 // ask the vendor about a listing (free, once: the answer doesn't change)
 function askVendor(p, id, now) {
     var x = showListing(p, id);
-    if (!atShow(p, now) || !x) return "";
+    if (!atShow(p, now) || !x || tableClosed(p, id.split("-")[0]) || showTaken(p, id)) return "";
     p.show.asked = p.show.asked || {};
+    if (!p.show.asked[id]) showTick(p, id);
     p.show.asked[id] = true;
     return x.talk || "";
 }
@@ -1026,10 +1594,11 @@ function vendorMood(p, vendorId) {
 // Returns the listing, or null (not here, sold, or you can't afford it).
 function buyAtShow(p, id, now) {
     var s = showState(p), x = showListing(p, id);
-    if (!atShow(p, now) || !x || x.tradeOnly || s.bought[id]) return null;
+    if (!atShow(p, now) || !x || x.tradeOnly || s.bought[id] || tableClosed(p, id.split("-")[0]) || showTaken(p, id)) return null;
     var price = showPrice(p, x);
     if (!spend(p, price, "show")) return null;
     p.show.bought[id] = { price: price, at: now };
+    showTick(p, id);
     takeSealed(p, x, price, now);
     return x;
 }
@@ -1078,19 +1647,58 @@ function vendorWants(vendor, item) {
     return true;
 }
 
-// what a vendor offers for one of your cards: { cash, credit } (฿), or null (not interested).
-// The same all day: asking again doesn't change it
+// what a vendor offers for one of your cards: { cash, credit (฿), overstock }, or null (not
+// interested). The same all day: asking again doesn't change it
 function showOffer(p, vendor, item) {
     if (!vendor || !item || !(item.value > 0) || !vendorWants(vendor, item)) return null;
-    var d = showDeal(vendor), rnd = hash("offer " + showState(p).day + " " + vendor.id + " " + item.key + " " + (item.grade || 0));
+    var d = showDeal(vendor), day = showState(p).day;
+    var rnd = hash("offer " + day + " " + vendor.id + " " + item.key + " " + (item.grade || 0));
     var cash = between(rnd, d.cash[0], d.cash[1]), credit = between(rnd, d.trade[0], d.trade[1]);
-    return { cash: roundPrice(item.value * cash), credit: roundPrice(item.value * credit) };
+    var stock = hash("overstock " + day + " " + vendor.id + " " + item.card.set);   // the same for every card of the set
+    var over = stock() < SHOW_OVERSTOCK.chance;
+    if (over) {
+        var m = between(stock, SHOW_OVERSTOCK.mult[0], SHOW_OVERSTOCK.mult[1]);
+        cash *= m;
+        credit *= m;
+    }
+    return { cash: roundPrice(item.value * cash), credit: roundPrice(item.value * credit), overstock: over };
+}
+
+// have you asked this vendor about this binder card today?
+function offerAsked(p, vendorId, item) {
+    return !!(showState(p).offers || {})[vendorId + "|" + item.id];
+}
+
+// ask a vendor what they'd give for some of your binder cards: one of the visit's checks for
+// the lot (the ones you'd asked about already are free). Returns false when you're out of
+// checks (or not at the show)
+function askOffers(p, vendorId, items, now) {
+    var s = showState(p);
+    if (!atShow(p, now)) return false;
+    var fresh = items.filter(function (it) { return !offerAsked(p, vendorId, it); });
+    if (!fresh.length) return true;
+    if ((s.looks || 0) >= checkBudget(p) || tableClosed(p, vendorId)) return false;
+    p.show.looks = (s.looks || 0) + 1;
+    p.show.offers = p.show.offers || {};
+    fresh.forEach(function (it) { p.show.offers[vendorId + "|" + it.id] = true; });
+    showTick(p, "");
+    return true;
+}
+
+// the first visit's walkthroughs: "prep" (the Port: your binder and notes) and "hall" (inside)
+function showTutorialSeen(p, part) {
+    return !!(p.showTutorial || {})[part];
+}
+
+function markShowTutorial(p, part, now) {
+    p.showTutorial = p.showTutorial || {};
+    if (!p.showTutorial[part]) p.showTutorial[part] = now;
 }
 
 // a vendor's cards under the table
 function tradeStock(p, vendorId) {
     var v = (showState(p).stock || []).filter(function (t) { return t.id === vendorId; })[0];
-    return v ? v.trade || [] : [];
+    return v && tableClosed(p, vendorId) !== "removed" ? v.trade || [] : [];
 }
 
 // sell some of your binder to a vendor: items [{ id, key, card, grade, value }] (Stage
@@ -1098,16 +1706,19 @@ function tradeStock(p, vendorId) {
 // they want, or not at the show)
 function sellAtShow(p, vendorId, items, now) {
     var s = showState(p), v = (s.stock || []).filter(function (t) { return t.id === vendorId; })[0];
-    if (!atShow(p, now) || !v) return 0;
+    if (!atShow(p, now) || !v || tableClosed(p, vendorId)) return 0;
     var total = 0;
     p.show.sold = p.show.sold || {};
     items.forEach(function (it) {
-        var o = showOffer(p, v, it);
+        var o = offerAsked(p, vendorId, it) && showOffer(p, v, it);
         if (!o || p.show.sold[it.id]) return;
         total += o.cash;
         p.show.sold[it.id] = { vendor: vendorId, price: o.cash, value: it.value, card: it.card, grade: it.grade || 0, at: now };
     });
-    if (total) earn(p, total, "show");
+    if (total) {
+        earn(p, total, "show");
+        showTick(p, "");
+    }
     return total;
 }
 
@@ -1137,8 +1748,9 @@ function tradeQuote(p, vendor, listing, items) {
 function tradeAtShow(p, vendorId, listingId, items, now) {
     var s = showState(p), x = showListing(p, listingId);
     var v = (s.stock || []).filter(function (t) { return t.id === vendorId; })[0];
-    if (!atShow(p, now) || !x || !v || listingId.split("-")[0] !== vendorId || s.bought[listingId]) return null;
-    var wanted = items.filter(function (it) { return showOffer(p, v, it); });
+    if (!atShow(p, now) || !x || !v || listingId.split("-")[0] !== vendorId || s.bought[listingId] || tableClosed(p, vendorId)
+        || showTaken(p, listingId)) return null;
+    var wanted = items.filter(function (it) { return offerAsked(p, vendorId, it) && showOffer(p, v, it); });
     var q = tradeQuote(p, v, x, wanted);
     if (!q || (q.pay && !spend(p, q.pay, "show"))) return null;
     if (q.change) earn(p, q.change, "show");
@@ -1146,6 +1758,7 @@ function tradeAtShow(p, vendorId, listingId, items, now) {
                                  trade: { credit: q.credit, change: q.change, value: wanted.reduce(function (n, it) { return n + it.value; }, 0),
                                           gave: wanted.map(function (it) { return { id: it.id, card: it.card, grade: it.grade || 0, value: it.value }; }) } };
     takeSealed(p, x, q.pay, now);
+    showTick(p, listingId);
     return { listing: x, gave: wanted };
 }
 
@@ -1155,6 +1768,17 @@ function leaveShow(p, now) {
     var s = showState(p);
     if (!s.day || s.left) return null;
     p.show.left = now;
+    // reputation: the visit and your deals (anyone's: it's about being around)
+    addRep(p, SHOW_REP.visit + Math.min(SHOW_REP.deals, Object.keys(s.bought).length * SHOW_REP.deal), now);
+    // your deals with the regulars (what they keep for you next time)
+    Object.keys(s.bought).forEach(function (id) {
+        var v = showVendor(p, id);
+        if (!v || !v.rid) return;
+        p.showRegulars = p.showRegulars || {};
+        var r = p.showRegulars[v.rid] = p.showRegulars[v.rid] || { deals: 0, last: 0 };
+        r.deals++;
+        r.last = now;
+    });
     var items = Object.keys(s.bought).map(function (id) {
         var b = s.bought[id], t = b.trade;   // a trade: what you gave counts at market, less the change
         return { listing: showListing(p, id), vendor: showVendor(p, id), trade: t || null,
@@ -1173,13 +1797,23 @@ function leaveShow(p, now) {
         steals: items.filter(function (it) { return !it.listing.fake && it.paid < SHOW_STEAL * it.listing.value; }).length,
         vendors: (s.stock || []).map(function (v) { return { name: v.name, kind: v.kind }; }),
         sold: sold,
+        reports: Object.keys(s.reports || {}).map(function (vid) {
+            var r = s.reports[vid];
+            return { ok: r.ok, bounty: r.bounty, listing: showListing(p, r.listing),
+                     vendor: (s.stock || []).filter(function (t) { return t.id === vid; })[0] || null };
+        }),
+        rep: p.show.rep || 0,
+        // what the crowd got before you did: things you'd looked at closely, asked or haggled about
+        beaten: Object.keys(s.taken || {}).filter(function (id) {
+            return (s.checked || {})[id] || (s.asked || {})[id] || (s.haggled || {})[id];
+        }).map(function (id) { return { listing: showListing(p, id), who: s.taken[id].who, vendor: showVendor(p, id) }; }),
         soldFor: sold.reduce(function (n, x) { return n + x.price; }, 0),
         soldWorth: sold.reduce(function (n, x) { return n + x.value; }, 0)
     };
     // the genuine promos and vintage cards you brought home (their posters)
     var real = items.filter(function (it) { return !it.listing.fake && !it.listing.sealed; }).map(function (it) { return it.listing; });
     var tally = function (fn) { return real.filter(fn).length; };
-    recap.done = record(p, { type: "show", fakes: recap.fakes, steals: recap.steals,
+    recap.done = record(p, { type: "show", fakes: recap.fakes, steals: recap.steals, bought: items.length, expo: !!s.expo,
                              vintage: tally(function (x) { return Tiers.isVintage(x.card); }),
                              promos: tally(function (x) { return ["PROMO", "V_PROMO", "V_HB_PROMO"].indexOf(x.card.tier) >= 0; }),
                              rookie: tally(function (x) { return x.card.set === "HYPERBATTLE" && x.card.id === "C01"; }),
@@ -1355,6 +1989,14 @@ var ACHIEVEMENTS = [
     a("show10",   "Show Regular",          "Visit 10 card shows",                  3e8,   20000, null, function (p) { return p.stats.shows; }, 10),
     a("sharpeye", "Sharp Eye",             "Buy a card at a show for under 75% of its market price", 1e8, 10000, null, function (p) { return p.stats.showSteals; }, 1),
     a("burned",   "Got Burned",            "Buy a fake at a card show",            1e7,   500,   null, function (p) { return p.stats.fakes; }, 1),
+    a("security", "Show Security",         "Get 5 scammers thrown out of card shows", 5e8, 40000, null, function (p) { return p.stats.showReports || 0; }, 5),
+    a("untouchable", "Untouchable",        "Leave 10 card shows having bought something, and not one fake", 4e8, 30000, null,
+      function (p) { return p.stats.cleanShows || 0; }, 10),
+    a("expo3",    "Expo Regular",          "Go to 3 Grand Line Expos",             6e8,   40000, null, function (p) { return p.stats.expos || 0; }, 3),
+    a("gavel",    "Gavel",                 "Win an auction at the Grand Line Expo", 2e9,  150000, null, function (p) { return p.stats.auctionsWon || 0; }, 1),
+    a("sweep",    "Clean Sweep",           "Leave an expo with 3 or more purchases and not one fake", 1e9, 80000, null,
+      function (p) { return p.stats.cleanExpos || 0; }, 1),
+    a("showlegend", "Show Legend",         "Become a Legend at the card shows",    5e9,   300000, function (p) { return showLevel(p) >= 4; }),
     a("vintage5", "Vintage Collector",     "Bring home 5 genuine vintage cards from card shows", 2e8, 15000, null, function (p) { return p.stats.vintage; }, 5),
     a("goldrare", "First Edition",         "Bring home a genuine 2005-06 Gold Rare", 5e8, 30000, null, function (p) { return p.stats.goldRares; }, 1),
     a("promo25",  "Promo Hunter",          "Bring home 25 genuine promos from card shows", 8e8, 50000, null, function (p) { return p.stats.promos; }, 25),
@@ -1522,7 +2164,7 @@ function fresh(now) {
                  bySet: {},                       // set -> { packs, boxes, cases, pulled, completion, groups, present, value }
                  backfilled: 1,                   // 0: the set boards still need back-dating from the collection (see backfill)
                  spent: 0, bought: 0, boughtValue: 0, graded: 0, gem10: 0, sealedOpened: 0,
-                 seasonsDone: 0, weeklyDone: 0, shows: 0, showSteals: 0, fakes: 0,
+                 seasonsDone: 0, weeklyDone: 0, shows: 0, showSteals: 0, fakes: 0, showReports: 0, falseReports: 0, cleanShows: 0, expos: 0, cleanExpos: 0, auctionsWon: 0,
                  vintage: 0, promos: 0, goldRares: 0, grails: 0, rookie: 0 },
         achievements: {},              // id -> date unlocked
         collections: {},               // saved collection id -> { day, bounty, reward, gem } (rewarded once)
@@ -1712,7 +2354,7 @@ function earn(p, amount, source, unstated) {
 
 var EARNINGS = [["income", "Passive income"], ["sell", "Selling cards"], ["posters", "Wanted posters"],
                 ["setPosters", "Set wanted posters"], ["sets", "Saved sets"], ["bounties", "Daily bounties"], ["streak", "Daily streak"],
-                ["focus", "Focus sessions"], ["sealed", "Selling sealed"], ["show", "Selling at card shows"], ["season", "Season rewards"], ["other", "Other"]];
+                ["focus", "Focus sessions"], ["sealed", "Selling sealed"], ["show", "Selling at card shows"], ["showBounty", "Card show bounties"], ["season", "Season rewards"], ["other", "Other"]];
 var SPENDING = [["packs", "Packs"], ["boxes", "Boxes"], ["cases", "Cases"], ["shop", "Card shop"], ["show", "Card shows"], ["grading", "Grading"],
                 ["sealed", "Sealed products"], ["ship", "Ship"], ["crew", "Crew"], ["cosmetics", "Cosmetics"], ["other", "Other"]];
 var LEDGER_DAYS = 14;   // days kept day by day
@@ -1810,8 +2452,18 @@ function record(p, ev) {
     } else if (ev.type === "graded") {
         s.graded++;
         if (ev.grade === 10) s.gem10++;
+    } else if (ev.type === "auction") {    // won an auction at the expo
+        s.auctionsWon = (s.auctionsWon || 0) + 1;
+    } else if (ev.type === "report") {     // reported a listing to show security
+        if (ev.ok) s.showReports = (s.showReports || 0) + 1;
+        else s.falseReports = (s.falseReports || 0) + 1;
     } else if (ev.type === "show") {       // left a card show (fakes and steals only come out then)
         s.shows++;
+        if (ev.bought && !ev.fakes) s.cleanShows = (s.cleanShows || 0) + 1;
+        if (ev.expo) {
+            s.expos = (s.expos || 0) + 1;
+            if (ev.bought >= 3 && !ev.fakes) s.cleanExpos = (s.cleanExpos || 0) + 1;
+        }
         s.showSteals += ev.steals || 0;
         s.fakes += ev.fakes || 0;
         s.vintage += ev.vintage || 0;

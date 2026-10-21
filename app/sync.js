@@ -176,7 +176,7 @@ function mergeShop(b, l, r) {
 }
 
 // the card show: the later show; the same show, its stock as first dealt, both sides'
-// purchases and trades, sales, haggles, checks and questions, in when either walked in, out when either left
+// purchases and trades, sales, offers asked for, haggles, checks and questions, in when either walked in, out when either left
 function mergeShow(b, l, r) {
     if (!isObject(l)) return r;
     if (!isObject(r)) return l;
@@ -186,7 +186,21 @@ function mergeShow(b, l, r) {
              stock: (l.entered && r.entered ? (l.entered <= r.entered ? l : r) : l.entered ? l : r).stock || l.stock || r.stock,
              bought: Object.assign({}, r.bought || {}, l.bought || {}), haggled: Object.assign({}, r.haggled || {}, l.haggled || {}),
              checked: mergeChecked(l.checked, r.checked), asked: Object.assign({}, r.asked || {}, l.asked || {}),
-             sold: Object.assign({}, r.sold || {}, l.sold || {}), looks: Math.max(l.looks || 0, r.looks || 0) };
+             sold: Object.assign({}, r.sold || {}, l.sold || {}), offers: Object.assign({}, r.offers || {}, l.offers || {}),
+             reports: Object.assign({}, r.reports || {}, l.reports || {}), rep: Math.max(l.rep || 0, r.rep || 0),
+             taken: Object.assign({}, r.taken || {}, l.taken || {}), clock: Math.max(l.clock || 0, r.clock || 0),
+             news: (l.news || []).length >= (r.news || []).length ? l.news : r.news, early: !!(l.early || r.early), paid: l.paid || r.paid || 0,
+             expo: !!(l.expo || r.expo), authed: Object.assign({}, r.authed || {}, l.authed || {}),
+             auction: auctionAhead(l.auction, r.auction),
+             looks: Math.max(l.looks || 0, r.looks || 0) };
+}
+
+// the auction further along: decided beats open beats not open; then the higher bid
+function auctionAhead(l, r) {
+    if (!isObject(l)) return r || null;
+    if (!isObject(r)) return l;
+    var rank = function (a) { return (a.state === "won" || a.state === "lost" ? 2 : a.state === "open" ? 1 : 0) * 1e12 + (a.bid || 0); };
+    return rank(l) >= rank(r) ? l : r;
 }
 
 // what was checked of each listing, on either device
@@ -237,7 +251,8 @@ var PROGRESS_RULES = [
     ["stats.bySet.*.present", preferLocal], ["stats.bySet.*.value", preferLocal],
     // the Port
     ["ship.level", max], ["crew.*", earliest], ["shop", mergeShop], ["show", mergeShow],
-    ["showBinder", pickLater("at")], ["showNotes", pickLater("at")],
+    ["showBinder", pickLater("at")], ["showNotes", pickLater("at")], ["showTutorial.*", earliest],
+    ["showRegulars.*.deals", max], ["showRegulars.*.last", max], ["showRep", pickLater("at")],
     ["weekly", mergeWeekly], ["season", mergeSeason], ["seasonOf.done.*", earliest], ["seasonOf.tiers.*", earliest],
     ["titles.*", preferLocal], ["seasons.*", preferLocal],
     ["cosmetics.owned.*", earliest], ["cosmetics.backdrop", preferLocal], ["cosmetics.slab", preferLocal]
