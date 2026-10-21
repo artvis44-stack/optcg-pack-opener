@@ -86,7 +86,9 @@ Item {
         delegate: Item {
             id: cell
             required property var modelData
-            readonly property bool sold: stall.owner.bought(modelData.id)
+            readonly property bool mine: stall.owner.bought(modelData.id)
+            readonly property var gone: mine ? null : stall.owner.taken(modelData.id)   // another buyer's
+            readonly property bool sold: mine || !!gone
             readonly property bool slab: !!modelData.grade && !modelData.sealed
             width: grid.cellWidth
             height: grid.cellHeight
@@ -145,12 +147,12 @@ Item {
                     width: tag.implicitWidth + 14
                     height: tag.implicitHeight + 4
                     radius: 3
-                    color: cell.sold ? "#c8433a" : "#fff6d8"
+                    color: cell.mine ? "#2f6b46" : cell.sold ? "#c8433a" : "#fff6d8"
                     border.color: "#40000000"
                     Text {
                         id: tag
                         anchors.centerIn: parent
-                        text: cell.sold ? "SOLD" : stall.price(cell.modelData)
+                        text: cell.mine ? "YOURS" : cell.sold ? "SOLD" : stall.price(cell.modelData)
                         color: cell.sold ? "white" : "#1a1a1a"
                         font { pixelSize: 14; weight: Font.Black }
                     }
@@ -169,8 +171,8 @@ Item {
                 id: hover
                 anchors.fill: parent
                 hoverEnabled: true
-                cursorShape: Qt.PointingHandCursor
-                onClicked: stall.picked(cell.modelData.id)
+                cursorShape: cell.gone ? Qt.ArrowCursor : Qt.PointingHandCursor
+                onClicked: if (!cell.gone) stall.picked(cell.modelData.id)
             }
         }
     }

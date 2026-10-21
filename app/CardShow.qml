@@ -11,11 +11,13 @@ import "progress.js" as Progress
 // No market prices anywhere while you're here: you have to know what things are worth.
 // Click something to pick it up: check it (the loupe, the light, the back... a few
 // checks a visit, Progress.checkListing), ask the vendor about it, haggle once, buy.
-// You find out who was who when you leave (Esc), and the recap shows what you really got.
+// Nobody tells you who was who: when you leave (Esc), the recap shows what each card you got was
+// really worth, and who sold it to you. Working out the rest (and who the regulars are) is up to you.
 // Robin's notes stay at the Port: study them before you go, but in here it's on you.
 // Your own notes come along (Notes), and so does your show binder (Your binder: the cards
 // you brought, ShowBinderView): sell them to a vendor or trade them for something on their
-// table, or for one of the cards they keep under it for trades only.
+// table, or for one of the cards they keep under it for trades only. The first visit opens
+// with a tour (ShowGuide).
 Item {
     id: show
 
@@ -30,15 +32,33 @@ Item {
     property var visited: ({})           // stalls you've walked up to this visit
     property bool binderOpen: false      // your show binder, open
     property bool notesOpen: false       // your notes, open
+    property bool auctionOpen: false     // the expo's auction, open
+    readonly property bool expo: !!s.expo
+    readonly property var auction: Progress.showAuction(p)
+    // the first visit: a tour of how it all works (ShowGuide), until you've been through it
+    readonly property bool touring: visible && !recap && !!stage && !stage.offTheRecord && !Progress.showTutorialSeen(p, "hall")
 
     readonly property var stall: stallId ? stock.filter(t => t.id === stallId)[0] || null : null
     readonly property var listing: inspected ? Progress.showListing(p, inspected) : null
     readonly property var vendor: inspected ? Progress.showVendor(p, inspected) : null
-    readonly property int checksLeft: Math.max(0, Progress.SHOW_CHECK_BUDGET - (s.looks || 0))
+    readonly property int checksLeft: Math.max(0, Progress.checkBudget(p) - (s.looks || 0))
+    readonly property int level: Progress.showLevel(p)
+    property string confirmReport: ""    // the listing you're about to report (asks once more first)
+    // the crowd: how soon it's in (in your actions), and the latest the hall's talking about
+    readonly property int clock: s.clock || 0
+    readonly property int crowdIn: Math.max(0, Progress.crowdStart(p) - clock)
+    readonly property var news: (s.news || []).length ? s.news[s.news.length - 1] : null
+    readonly property string crowdText: news && clock - news.tick < 4 ? news.text
+        : crowdIn > 0 ? "Quiet in here: the crowd's in after " + crowdIn + " more thing" + (crowdIn > 1 ? "s" : "") + " you do (checks, questions, offers, deals)."
+        : "The crowd's in, and they're buying. The best deals go first."
+    function taken(id) { return Progress.showTaken(p, id); }
 
     function back() {
-        if (recap) stage.closeShow();
+        if (touring) stage.markShowTutorial("hall");
+        else if (recap) stage.closeShow();
         else if (notesOpen) notesOpen = false;
+        else if (auctionOpen) auctionOpen = false;
+        else if (confirmReport) confirmReport = "";
         else if (inspected) inspected = "";
         else if (binderOpen) binderOpen = false;
         else if (stallId) stallId = "";
@@ -61,7 +81,7 @@ Item {
         visited = v;
     }
 
-    onVisibleChanged: if (visible) { inspected = ""; stallId = ""; confirmLeave = false; binderOpen = false; notesOpen = false; }
+    onVisibleChanged: if (visible) { inspected = ""; stallId = ""; confirmLeave = false; binderOpen = false; notesOpen = false; auctionOpen = false; }
 
     // trade for a listing: your binder opens with it as what you're after
     function tradeFor(id) {
@@ -102,19 +122,16 @@ Item {
         return cloths[h % cloths.length];
     }
 
-    function countText(t) {
-        var raw = t.listings.filter(x => !x.grade && !x.sealed).length, slabs = t.listings.filter(x => x.grade).length;
-        var sealed = t.listings.filter(x => x.sealed).length, out = [];
+    function countText(t) {   // what's still out (not what the crowd's taken)
+        var left = t.listings.filter(x => !taken(x.id)), out = [];
+        var raw = left.filter(x => !x.grade && !x.sealed).length, slabs = left.filter(x => x.grade).length;
+        var sealed = left.filter(x => x.sealed).length;
         if (raw) out.push(raw + " card" + (raw > 1 ? "s" : ""));
         if (slabs) out.push(slabs + " slab" + (slabs > 1 ? "s" : ""));
         if (sealed) out.push(sealed + " sealed");
         return out.join(" · ");
     }
 
-    readonly property var kindName: ({ honest: "an honest dealer", bargain: "a bargain table", premium: "a premium dealer",
-                                       vintage: "a vintage specialist", carddass: "a Carddass specialist", scammer: "a SCAMMER" })
-    readonly property var kindColor: ({ honest: "#7fd1b9", bargain: "#ffd56b", premium: "#c8a0ff", vintage: "#e8c48a",
-                                        carddass: "#9ad8ff", scammer: "#ff8a7a" })
     readonly property var gradeName: ({ crude: "a crude fake", decent: "a decent fake", good: "a good fake" })
 
     // ---- the hall: a warm ceiling, rows of lights ----------------------------------------
@@ -190,13 +207,14 @@ Item {
         spacing: 6
         Text {
             anchors.horizontalCenter: parent.horizontalCenter
-            text: show.stall && !show.recap ? show.stall.name : "The Card Show"
+            text: show.stall && !show.recap ? show.stall.name : show.expo ? "The Grand Line Expo" : "The Card Show"
             color: "#ff9ad5"
             font { pixelSize: 30; weight: Font.Black; italic: true }
         }
         Text {
             anchors.horizontalCenter: parent.horizontalCenter
-            text: Progress.format(show.p.berries) + "   ·   checks left: " + show.checksLeft + " / " + Progress.SHOW_CHECK_BUDGET
+            text: Progress.format(show.p.berries) + "   ·   checks left: " + show.checksLeft + " / " + Progress.checkBudget(show.p)
+                  + "   ·   " + Progress.SHOW_LEVELS[show.level].name
                   + "   ·   bought " + Object.keys(show.s.bought || {}).length
             color: "#fff6e0"
             font { pixelSize: 16; weight: Font.Bold }
@@ -204,8 +222,14 @@ Item {
         Text {
             anchors.horizontalCenter: parent.horizontalCenter
             visible: !show.recap
-            text: show.stall ? "\"" + show.stall.blurb + "\""
-                : "No prices to look up in here: know your market. Some vendors are honest, some aren't."
+            readonly property int deals: show.stall ? Progress.regularDeals(show.p, show.stall.rid) : 0
+            readonly property string closed: show.stall ? Progress.tableClosed(show.p, show.stall.id) : ""
+            text: closed === "removed" ? "Taken down by show security. Nothing here's for sale any more."
+                : closed === "refused" ? "\"After what you pulled? Not today.\" They won't deal with you for the rest of the show."
+                : show.stall ? "\"" + show.stall.blurb + "\""
+                               + (deals >= Progress.SHOW_FAMILIAR.trade ? "   ·   \"Good to see you again!\" (" + deals + " deals)"
+                                  : deals ? "   ·   you've dealt with them " + (deals > 1 ? deals + " times" : "once") : "")
+                : show.crowdText
             color: show.stall ? "#e8d8b8" : "#9aa0ad"
             font { pixelSize: 13; italic: !!show.stall }
         }
@@ -231,6 +255,22 @@ Item {
                 fontSize: 13
                 accent: "#f4ecd6"
                 onClicked: show.notesOpen = true
+            }
+            PillButton {
+                visible: !show.recap && !!show.auction
+                readonly property var a: show.auction
+                text: !a ? "" : !a.state ? "Auction (in " + Math.max(0, Progress.SHOW_AUCTION.at - show.clock) + ")"
+                      : a.state === "open" ? "Auction: on now!" : a.state === "won" ? "Auction: won" : "Auction: over"
+                fontSize: 13
+                accent: "#ffd56b"
+                onClicked: show.auctionOpen = true
+            }
+            PillButton {
+                visible: !show.recap && show.clock === 0 && !show.s.early
+                text: "Early entry  " + Progress.format(Progress.earlyFee(show.p))
+                fontSize: 13
+                accent: "#ffb347"
+                onClicked: show.stage.buyEarlyEntry()
             }
             PillButton {
                 text: show.confirmLeave ? "Leave? You can't come back until the next show. Yes, leave" : "Leave the show"
@@ -385,6 +425,20 @@ Item {
                         font { pixelSize: 13; weight: Font.Black }
                     }
                 }
+                Rectangle {   // taken down by security
+                    visible: Progress.tableClosed(show.p, booth.modelData.id) === "removed"
+                    anchors { left: table.left; right: table.right; verticalCenter: table.verticalCenter }
+                    height: 30
+                    color: "#e8c800"
+                    opacity: 0.92
+                    z: 2
+                    Text {
+                        anchors.centerIn: parent
+                        text: "REMOVED BY SECURITY"
+                        color: "#14171f"
+                        font { pixelSize: 12; weight: Font.Black; letterSpacing: 2 }
+                    }
+                }
                 Rectangle {   // you've been here / bought here
                     visible: booth.been || booth.boughtHere > 0
                     anchors { right: parent.right; rightMargin: 6; top: table.top; topMargin: -10 }
@@ -497,6 +551,8 @@ Item {
                     readonly property var haggled: lst ? (show.s.haggled || {})[lst.id] : null
                     readonly property var seen: lst ? Progress.showSeen(show.p, lst.id) : ({})
                     readonly property bool asked: !!lst && !!(show.s.asked || {})[lst.id]
+                    readonly property string closed: lst ? Progress.tableClosed(show.p, lst.id.split("-")[0]) : ""
+                    readonly property var gone: lst && !sold ? show.taken(lst.id) : null
                     Text {
                         width: parent.width
                         wrapMode: Text.WordWrap
@@ -529,7 +585,8 @@ Item {
                         readonly property var b: info.sold ? show.s.bought[info.lst.id] : null
                         text: !info.lst ? "" : b ? (b.trade ? "Traded for it" + (b.price ? " (and " + Progress.format(b.price) + ")" : "") : "Bought for " + Progress.format(b.price))
                               : info.lst.tradeOnly ? "Under the table: trade only, " + Progress.format(info.lst.ask) + " in trade"
-                              : "Asking " + show.priceText(info.lst)
+                              : info.gone ? "Gone: " + info.gone.who + " bought it"
+                              : (info.lst.saved ? "Saved for you: " : "Asking ") + show.priceText(info.lst)
                         color: "#ffd56b"
                         font { pixelSize: 22; weight: Font.Black }
                     }
@@ -613,7 +670,7 @@ Item {
                     // haggle and buy
                     Row {
                         spacing: 8
-                        visible: !info.sold && !info.haggled && !info.lst.tradeOnly
+                        visible: !info.sold && !info.haggled && !!info.lst && !info.lst.tradeOnly && !info.closed && !info.gone
                         Text {
                             anchors.verticalCenter: parent.verticalCenter
                             text: "Make an offer (once):"
@@ -646,13 +703,13 @@ Item {
                     Row {
                         spacing: 10
                         PillButton {
-                            visible: !info.sold && !!info.lst && !info.lst.tradeOnly
+                            visible: !info.sold && !!info.lst && !info.lst.tradeOnly && !info.closed && !info.gone
                             text: "Buy  " + (info.lst ? Progress.format(Progress.showPrice(show.p, info.lst)) : "")
                             enabledLook: !!info.lst && show.p.berries >= Progress.showPrice(show.p, info.lst)
                             onClicked: show.stage.buyAtShow(show.inspected)
                         }
                         PillButton {
-                            visible: !info.sold
+                            visible: !info.sold && !info.closed && !info.gone
                             text: "Trade for it"
                             accent: "#7fd1b9"
                             onClicked: show.tradeFor(show.inspected)
@@ -661,6 +718,48 @@ Item {
                             text: "Put it down"
                             accent: "#9aa0ad"
                             onClicked: show.inspected = ""
+                        }
+                    }
+                    // the expo's authentication booth
+                    Text {
+                        readonly property var verdict: info.lst ? Progress.authResult(show.p, info.lst.id) : undefined
+                        visible: verdict !== undefined
+                        text: verdict ? "Authentication booth: FAKE." : "Authentication booth: genuine."
+                        color: verdict ? "#ff8a7a" : "#7fd1b9"
+                        font { pixelSize: 14; weight: Font.Black }
+                    }
+                    PillButton {
+                        visible: show.expo && !!info.lst && !info.sold && !info.gone && !info.closed && !info.lst.auction
+                                 && Progress.authResult(show.p, info.lst.id) === undefined
+                        text: info.lst ? "Authentication booth  " + Progress.format(Progress.authFee(info.lst)) : ""
+                        fontSize: 12
+                        accent: "#9ad8ff"
+                        onClicked: show.stage.authenticate(info.lst.id)
+                    }
+                    // report it to security: once you've checked something about it
+                    Text {
+                        readonly property var r: info.lst ? (show.s.reports || {})[info.lst.id.split("-")[0]] : null
+                        visible: !!r && r.listing === info.lst.id
+                        width: parent.width
+                        wrapMode: Text.WordWrap
+                        text: !r ? "" : r.ok ? "You reported it: a fake. Security took the table down, and you got a " + Progress.format(r.bounty) + " bounty."
+                                              : "You reported it, and it was real. They won't deal with you today."
+                        color: r && r.ok ? "#7fd1b9" : "#ff8a7a"
+                        font { pixelSize: 13; weight: Font.Bold }
+                    }
+                    Row {
+                        spacing: 10
+                        visible: !!info.lst && Progress.canReport(show.p, info.lst.id)
+                        PillButton {
+                            readonly property bool sure: !!info.lst && show.confirmReport === info.lst.id
+                            text: sure ? "Sure? If it's real, they're done with you. Report" : "Report it to security"
+                            fontSize: 12
+                            accent: "#ff8a7a"
+                            onClicked: {
+                                if (!sure) { show.confirmReport = info.lst.id; return; }
+                                show.confirmReport = "";
+                                show.stage.reportListing(info.lst.id);
+                            }
                         }
                     }
                 }
@@ -717,25 +816,62 @@ Item {
                     Text {
                         x: 14
                         anchors.verticalCenter: parent.verticalCenter
-                        width: parent.width * 0.5
+                        width: parent.width - outcome.width - 42
                         elide: Text.ElideRight
                         text: Tiers.displayName(line.l.card) + "  ·  " + show.fromText(line.l.card)
                               + (line.l.grade ? "  ·  graded " + line.l.grade : "")
-                              + "  ·  from " + (line.modelData.vendor ? line.modelData.vendor.name : "")
+                              + "  ·  from " + (line.modelData.vendor ? line.modelData.vendor.name : line.l.auction ? "the auction" : "")
                         color: "#e8e8ee"
                         font { pixelSize: 14; weight: Font.Bold }
                     }
                     Text {
+                        id: outcome
                         anchors { right: parent.right; rightMargin: 14; verticalCenter: parent.verticalCenter }
                         text: (line.modelData.trade ? "traded, " + Progress.format(line.modelData.paid) : "paid " + Progress.format(line.modelData.paid)) + "   ·   "
                               + (line.l.fake ? (line.l.sealed ? "RESEALED: " : "FAKE: ") + (show.gradeName[line.l.fakeGrade] || "a fake")
                                  : "worth " + Progress.format(line.l.value)
+                                   + "  (" + (line.l.value >= line.modelData.paid ? "+" : "−")
+                                   + Progress.format(Math.abs(line.l.value - line.modelData.paid)) + ")"
                                    + (!line.l.grade && line.l.cond && line.l.claim === Progress.SHOW_CLAIM.pristine
                                       && line.l.cond !== "pristine" ? "  (really " + Progress.CONDITION[line.l.cond].name + ")" : ""))
                         color: line.l.fake ? "#ff8a7a" : line.modelData.paid <= line.l.value ? "#7fd1b9" : "#ffb347"
                         font { pixelSize: 14; weight: Font.Bold }
                     }
                 }
+            }
+            Text {   // what the crowd got first
+                visible: !!recapCol.r && (recapCol.r.beaten || []).length > 0
+                width: parent.width
+                wrapMode: Text.WordWrap
+                text: !recapCol.r || !(recapCol.r.beaten || []).length ? ""
+                      : "Beaten to it: " + recapCol.r.beaten.map(b => (b.listing ? Tiers.displayName(b.listing.card) : "a card")
+                                                                    + (b.vendor ? " at " + b.vendor.name : "")).join(", ") + "."
+                color: "#ffb347"
+                font { pixelSize: 14; weight: Font.Bold }
+            }
+            Repeater {   // what you reported
+                model: recapCol.r ? recapCol.r.reports || [] : []
+                Text {
+                    required property var modelData
+                    width: recapCol.width
+                    wrapMode: Text.WordWrap
+                    text: (modelData.ok ? "You got " + (modelData.vendor ? modelData.vendor.name : "a table") + " thrown out for a fake "
+                                          + (modelData.listing ? Tiers.displayName(modelData.listing.card) : "") + ": " + Progress.format(modelData.bounty) + " bounty."
+                                        : "You reported a real " + (modelData.listing ? Tiers.displayName(modelData.listing.card) : "card")
+                                          + " at " + (modelData.vendor ? modelData.vendor.name : "a table") + ".")
+                    color: modelData.ok ? "#7fd1b9" : "#ff8a7a"
+                    font { pixelSize: 14; weight: Font.Bold }
+                }
+            }
+            Text {   // your name at the shows
+                visible: !!recapCol.r
+                readonly property int lv: Progress.showLevel(show.p)
+                readonly property var next: Progress.SHOW_LEVELS[lv + 1] || null
+                text: !recapCol.r ? "" : "Reputation " + (recapCol.r.rep >= 0 ? "+" : "−") + Math.abs(recapCol.r.rep) + "   ·   "
+                      + Progress.SHOW_LEVELS[lv].name + (next ? "  (" + Progress.showRep(show.p) + " / " + next.points + " to " + next.name + ")" : "")
+                color: "#c8a0ff"
+                font { pixelSize: 15; weight: Font.Bold }
+                topPadding: 4
             }
             Text {   // what you sold, and to whom
                 visible: !!recapCol.r && (recapCol.r.sold || []).length > 0
@@ -777,21 +913,6 @@ Item {
                     }
                 }
             }
-            Text {
-                text: "Who was who"
-                color: "#ffd56b"
-                font { pixelSize: 18; weight: Font.Black }
-                topPadding: 8
-            }
-            Repeater {
-                model: recapCol.r ? recapCol.r.vendors : []
-                Text {
-                    required property var modelData
-                    text: modelData.name + ": " + show.kindName[modelData.kind]
-                    color: show.kindColor[modelData.kind]
-                    font { pixelSize: 14; weight: Font.Bold }
-                }
-            }
             PillButton {
                 text: "Done"
                 onClicked: show.stage.closeShow()
@@ -818,6 +939,23 @@ Item {
         vendor: show.stall
         onClose: show.binderOpen = false
         onInspect: id => show.inspected = id
+    }
+
+    ShowAuction {   // the expo's auction
+        anchors.fill: parent
+        visible: show.auctionOpen && !show.recap
+        stage: show.stage
+        hall: show
+        onClose: show.auctionOpen = false
+    }
+
+    ShowGuide {   // the first visit's tour, over everything
+        anchors.fill: parent
+        z: 10
+        visible: show.touring
+        stage: show.stage
+        hall: show
+        onDone: show.stage.markShowTutorial("hall")
     }
 
     Rectangle {   // your notes

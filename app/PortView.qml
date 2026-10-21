@@ -17,6 +17,21 @@ Item {
     property var inspected: null     // a card or slab shown big
     property bool notes: false       // Robin's notes, open
     property bool binderPicker: false   // filling your show binder
+    property bool showGuide: false      // the first trip to the show: what to get ready (ShowPrepGuide)
+
+    // the first time you head for the show: the card shop tab, with a word on getting ready
+    function openShowGuide() {
+        tab = "shop";
+        inspected = null;
+        notes = false;
+        binderPicker = false;
+        body.contentY = 0;
+        showGuide = true;
+    }
+    function closeShowGuide() {
+        showGuide = false;
+        stage.markShowTutorial("prep");
+    }
 
     function step(d) {
         var ids = tabs.map(t => t[0]);
@@ -25,7 +40,8 @@ Item {
     }
 
     function back() {
-        if (binderPicker) binderPicker = false;
+        if (showGuide) closeShowGuide();
+        else if (binderPicker) binderPicker = false;
         else if (notes) notes = false;
         else if (inspected) inspected = null;
         else stage.togglePort();
@@ -36,6 +52,7 @@ Item {
         inspected = null;
         notes = false;
         binderPicker = false;
+        showGuide = false;
         now = Date.now();
         loadPool();
         if (tab === "cosmetics") fetchPlaymats();
@@ -335,14 +352,22 @@ Item {
                 Note {
                     width: parent.width
                     readonly property string next: Progress.nextShowDay(port.p, port.now)
-                    text: Progress.canEnterShow(port.p, port.now)
-                          ? "It's in town today! Thirteen tables of chase cards, raw and graded, at prices you'll have to judge "
-                            + "yourself: once you're in, nothing shows a market price. Haggle, look closely, and watch out for fakes."
-                          : "You've been to today's. There's one every day: the next one is tomorrow (" + next + ")."
+                    readonly property string expo: Progress.nextExpoDay(port.now)
+                    readonly property bool expoToday: expo === Progress.dayOf(port.now)
+                    text: (Progress.canEnterShow(port.p, port.now)
+                           ? expoToday ? "It's the Grand Line Expo today! Twenty-four tables, the rarest dealers in the trade, "
+                                         + "grails for sure, the auction and the authentication booth, and a big crowd. Nothing "
+                                         + "shows a market price in there, not even on your own cards."
+                           : "It's in town today! Sixteen tables of chase cards, raw and graded, at prices you'll have to judge "
+                             + "yourself: once you're in, nothing shows a market price, not even on your own cards. Haggle, look "
+                             + "closely, and watch out for fakes."
+                           : "You've been to today's. There's one every day: the next one is tomorrow (" + next + ").")
+                          + (expoToday ? "" : "  The next Grand Line Expo is on " + expo + ".")
                 }
                 PillButton {
                     visible: Progress.canEnterShow(port.p, port.now) && !port.stage.offTheRecord
-                    text: "Go to the card show (K)"
+                    text: "Go to the " + (Progress.isExpoDay(Progress.dayOf(port.now)) ? "expo" : "card show") + " (K)  ·  "
+                          + Progress.format(Progress.entryFee(port.now)) + " entry"
                     accent: "#ff9ad5"
                     onClicked: port.stage.toggleShow()
                 }
@@ -400,6 +425,58 @@ Item {
                         height: 260
                         stage: port.stage
                         visible: !!port.stage && !port.stage.offTheRecord
+                    }
+                }
+                Panel {   // your name at the shows
+                    id: repPanel
+                    width: parent.width
+                    height: repCol.height + 24
+                    readonly property int lv: Progress.showLevel(port.p)
+                    readonly property int pts: Progress.showRep(port.p)
+                    readonly property var next: Progress.SHOW_LEVELS[lv + 1] || null
+                    Column {
+                        id: repCol
+                        x: 16; y: 12
+                        width: parent.width - 32
+                        spacing: 8
+                        Text {
+                            text: "Your name at the shows  ·  " + Progress.SHOW_LEVELS[repPanel.lv].name + "  ·  " + repPanel.pts + " points"
+                            color: "#c8a0ff"
+                            font { pixelSize: 17; weight: Font.Black }
+                        }
+                        Rectangle {   // on the way to the next level
+                            visible: !!repPanel.next
+                            width: parent.width
+                            height: 8
+                            radius: 4
+                            color: "#2c3550"
+                            Rectangle {
+                                readonly property int from: Progress.SHOW_LEVELS[repPanel.lv].points
+                                width: repPanel.next ? parent.width * Math.min(1, (repPanel.pts - from) / (repPanel.next.points - from)) : 0
+                                height: parent.height
+                                radius: 4
+                                color: "#c8a0ff"
+                            }
+                        }
+                        Note {
+                            width: parent.width
+                            text: "A point for every show you go to and for every deal you make there (up to "
+                                  + Progress.SHOW_REP.deals + " a show), +" + Progress.SHOW_REPORT.points + " for every scammer you get "
+                                  + "thrown out, " + Progress.SHOW_REPORT.falsePoints + " for reporting a real card."
+                        }
+                        Repeater {
+                            model: Progress.SHOW_LEVELS.slice(1)
+                            Text {
+                                required property var modelData
+                                required property int index
+                                readonly property bool have: repPanel.lv >= index + 1
+                                width: repCol.width
+                                wrapMode: Text.WordWrap
+                                text: (have ? "✓  " : "") + modelData.name + " (" + modelData.points + "):  " + modelData.perk
+                                color: have ? "#e8e8ee" : "#7a8090"
+                                font { pixelSize: 13; weight: have ? Font.Bold : Font.Normal }
+                            }
+                        }
                     }
                 }
                 Item { width: 1; height: 8 }
@@ -831,5 +908,16 @@ Item {
         visible: port.binderPicker
         stage: port.stage
         onClose: port.binderPicker = false
+    }
+
+    ShowPrepGuide {   // the first trip to the show
+        anchors.fill: parent
+        visible: port.showGuide
+        stage: port.stage
+        onLater: port.closeShowGuide()
+        onReady: {
+            port.closeShowGuide();
+            port.stage.toggleShow();
+        }
     }
 }

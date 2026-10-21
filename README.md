@@ -59,6 +59,7 @@ The app is split into a platform-independent part (`app/`) and a thin host.
 - `app/CardShow.qml`, `app/StallTable.qml`: the daily card show (the hall map, a vendor's table, checking and haggling, the recap)
 - `app/ShowBinderPicker.qml`, `app/ShowBinderView.qml`, `app/ShowNotes.qml`: your show binder (filling it in the Port; selling
   and trading it at the show) and your show notes
+- `app/ShowPrepGuide.qml`, `app/ShowGuide.qml`: the first visit's walkthroughs (getting ready in the Port, then a tour of the hall)
 - `app/PatchNotes.qml`: what's new after a Mac update (the notes `mac/update.py` saves)
 - `app/vintage.json`, `app/DrawnFace.qml`: the 2005-06 CCG's cards (list, prices, pictures, sealed prices), and the drawn face of a card or sealed product with no picture
 - `app/hyperbattle.json`: Carddass Hyper Battle's cards, sets and sealed products (its pictures: a release asset)
@@ -159,14 +160,52 @@ there are wanted posters for them
 - **Card shop.** Eight deals a day from your downloaded sets at market price + 10% (once each), random
   each day; they can be cards you already have, and each deal says how many you own. You can't
   order cards from the binder: the shop and the card show are the only places to buy cards.
-- **The card show** (K, or the Port's card shop tab). Every day, one visit a show. You walk in to a map of the hall: fifteen stalls (about 290
+- **The card show** (K, or the Port's card shop tab). Every day, one visit a show. The first time,
+  K takes you to the Port's card shop tab instead, with a word on why you'd fill a show binder and
+  write notes before going (the show is real berries and has no price tags); go in when you're ready.
+  Inside, a short tour covers the hall, buying and haggling, who's behind the tables, spotting a fake
+  (a real slab next to a scammer's copy) and selling and trading. Skip it any time; it doesn't come back. You walk in to a map of the hall: fifteen stalls (about 290
   cards, slabs and sealed products), honest or not, all looking alike from the aisle. Click one to walk
   over to its table: everything it has (sealed product, slabs, raw cards) laid out big in one grid,
   with a price sticker and its name under each. Once you walk in, the app shows no prices at
   all (no binder, vault, port or wanted board, and the desktop showcase hides its price) until you
   leave: you have to know the market. Vendors are honest dealers, bargain tables, premium dealers,
-  vintage specialists or scammers, and you only find out which after you leave.
-  - **Checking.** Pick something up and check it, twenty checks a visit: a raw card under the loupe,
+  vintage specialists or scammers, and nobody ever tells you which: the recap when you leave shows
+  what each card you got was really worth (up or down on what you paid) and who sold it to you.
+  It's ฿2,500 at the door, once a show.
+  - **The regulars.** The honest, premium and vintage tables come from a cast of 38 named dealers who
+  come back show after show, some most weeks and some rarely, each with their own habits (what they
+  stock, how they price, how many slabs), so what you learn about them is worth writing down. Eight
+  more only ever come to the monthly expo. Scammers keep a name for a few shows and then move on,
+  sometimes under a regular's name with a letter off ("Sabaody Singels"). Regulars remember you: after
+  3 deals with one they keep an extra card under the table for you, after 6 they take every 5% offer,
+  and after 10 they save the best thing they brought for you.
+  - **Reporting a fake.** Once you've checked something about a listing you can report it to show
+  security, one report a table. A fake: the table's taken down (nothing more from it, not even what's
+  under it) and you get a bounty, a quarter of what they asked (at least ฿2,000). A real card: that
+  vendor won't deal with you for the rest of the show, and the honest tables haggle harder that day.
+  - **Other buyers.** The hall has a clock that moves with what you do: a check, a question, an
+  offer, a deal or a report (walking round, looking and reading are free). After a few of those the
+  crowd comes in and buys off the tables, the best deals and the biggest cards first (they don't
+  check, so fakes go too; not what's under the table, saved for you, or in your hands). Gone cards
+  get a SOLD sticker, the hall talks about the big ones, and the recap lists what you were beaten
+  to. An early entry ticket (฿5,000, only before you do anything; free for Insiders) keeps the crowd
+  out a while longer.
+  - **The Grand Line Expo.** On the 1st of every month, in place of that day's show: 24 tables, ฿15,000
+  at the door (early entry ฿10,000), ten more checks, twice the crowd, two or three grails for sure,
+  and four of the eight expo-only regulars, whose tables hold only the rarest cards in your sets
+  (mostly gem mint). The auction: one gem-mint lot, authenticated by the house, opens a few actions in;
+  the room bids among itself, then it's you against whoever's left, a step (5% of value) at a time,
+  plus a 10% buyer's premium if you win. Their limits are hidden; from Regular up you can read their
+  style (cautious, steady, stubborn). The authentication booth tells you for sure whether a listing's
+  real, for 4% of what it looks to be worth (at least ฿1,500). Posters: Expo Regular, Gavel, Clean Sweep.
+  - **Your name at the shows.** Reputation: a point a visit, a point a deal (up to 5 a show), +5 for a
+  scammer thrown out, −8 for reporting a real card. Familiar Face (40) gets two more checks a visit,
+  Regular (120) gets offers taken more often, Insider (300) gets an extra card under every regular's
+  table, Legend (700) makes fakes give themselves away in one more check. The Port's card shop tab
+  shows where you are. Posters: Show Security (5 scammers thrown out), Untouchable (10 shows with
+  purchases and no fakes), Show Legend.
+  - **Checking.** Pick something up and check it, twenty-five checks a visit (asking a vendor for offers on your binder cards uses one too): a raw card under the loupe,
   under the light, its back, its stock, its corners and edges (its real condition: a scammer's "pack
   fresh" never is); a slab's label, its cert (looked up), its case, the card inside; a sealed
   product's crimp or shrink wrap, its print, its weight. A scammer's stock is about half fakes, and a
@@ -176,12 +215,15 @@ there are wanted posters for them
   give a straight answer, scammers mostly don't (sometimes they lie convincingly), and they get pushy
   if you inspect too much at their stall.
   - **Your show binder.** In the Port's card shop tab, fill a binder with up to 15 of your cards (raw
-  copies or slabs, not ones in a display case) and it comes along to the show ("Your binder"), with
-  each card's market price showing: they're yours, you know what they're worth. At a table, pick
-  cards to see the vendor's offer for each, cash and trade credit, by who they are: honest dealers
-  pay about 80-90% of market in cash and about market in trade, a kid or an estate table guesses,
-  premium dealers only want slabs and big cards, the vintage tables only their own game, and
-  scammers lowball everything (12-40% cash) and keep the change on a trade. Sell them, or trade them
+  copies or slabs, not ones in a display case) and it comes along to the show ("Your binder"). Like
+  everything in there it shows no market price: write down what your cards are worth before you go.
+  At a table, pick cards and ask what the vendor would give (one check for the lot): cash and trade
+  credit for each, by who they are, in ranges that overlap so an offer alone doesn't give a vendor
+  away. Honest dealers pay about 70-90% of market in cash and about market in trade, a kid or an
+  estate table guesses, premium dealers only want slabs and big cards, the vintage tables only their
+  own game, and anyone can be overstocked on a set (they say so, and offer less). Scammers pay 35-80%
+  in cash but offer 105-140% in trade, since they pay in fakes, and keep the change: a trade offer
+  that's too good is the warning sign. Sell them, or trade them
   (adding berries if you're short; an honest vendor gives you change) for something on the table or
   under it: every vendor keeps one to three cards for trades only, never on display (a scammer's are
   mostly fakes). The recap lists what you sold and to whom.
