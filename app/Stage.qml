@@ -167,7 +167,24 @@ Item {
             showReturn = "pack";
             phase = "show";
         }
+        loadPatchNotes();
         backgroundDownload.start();
+    }
+
+    // ---- what's new: the patch notes of an update (mac/update.py saves them), shown once ----
+    readonly property string patchNotesPath: dataDir + "/patch-notes.json"
+    property var patchNotes: null       // { from, to, releases: [{ version, date, notes }] } while it's up
+    function loadPatchNotes() {
+        try {
+            var n = JSON.parse(host.readText(patchNotesPath) || "null");
+            if (n && !n.seen && (n.releases || []).length) patchNotes = n;
+        } catch (e) {}
+    }
+    function dismissPatchNotes() {
+        if (!patchNotes) return;
+        host.writeText(patchNotesPath, JSON.stringify(Object.assign({}, patchNotes, { seen: true }), null, 1));
+        patchNotes = null;
+        stage.forceActiveFocus();
     }
 
     // ---- updates (the Mac app: mac/update.py, which a LaunchAgent also runs every few hours) ----
@@ -204,6 +221,7 @@ Item {
             updateState = code === 0 ? "updated" : "failed";
             toast(code === 0 ? "Updated to " + updateLatest + ". Close the pack opener and open it again to use it."
                              : "The update didn't work; it'll try again by itself in a few hours.");
+            if (code === 0) loadPatchNotes();   // what's new, right away
         });
     }
     Timer {   // see if there's one a little after opening
@@ -981,18 +999,26 @@ Item {
             if (l) toast("Not enough berries: that's " + Progress.format(Progress.showPrice(progress, l)) + ".");
             return false;
         }
-        var it = x.listing, col = readCollection(), c = it.card;
+        var it = x.listing, c = it.card, paid = Progress.showState(progress).bought[id].price;
+        receiveFromShow(it, id, paid, null);
+        prog(p => Progress.record(p, { type: "bought", count: 1, value: paid }));
+        sfx("coin");
+        toast(it.sealed ? "Bought a sealed " + c.name + " for " + Progress.format(paid) + ". It's in the port's Sealed tab."
+                        : "Bought " + Tiers.displayName(c) + (it.grade ? " (graded " + it.grade + ")" : "") + " for " + Progress.format(paid));
+        return true;
+    }
+
+    // a listing from the show into the collection (a fake goes with the fakes, but you don't know
+    // that yet; a sealed product's already with your sealed products). col: the collection to
+    // change (null: read it, and write it after)
+    function receiveFromShow(it, id, paid, col) {
+        if (it.sealed) return;
+        var own = !col, c = it.card;
+        if (own) col = readCollection();
         var id36 = Date.now().toString(36) + Math.floor(Math.random() * 1e6).toString(36);
-        if (it.sealed) {   // Progress.buyAtShow put it with your sealed products
-            prog(p => Progress.record(p, { type: "bought", count: 1, value: Progress.showState(p).bought[id].price }));
-            sfx("coin");
-            toast("Bought a sealed " + c.name + " for " + Progress.format(Progress.showState(progress).bought[id].price)
-                  + ". It's in the port's Sealed tab.");
-            return true;
-        }
         if (it.fake) {
             col.fakes = col.fakes || {};
-            col.fakes[id36] = { card: c, key: it.key, grade: it.grade, paid: Progress.showState(progress).bought[id].price,
+            col.fakes[id36] = { card: c, key: it.key, grade: it.grade, paid: paid,
                                 day: Progress.showState(progress).day, vendor: (Progress.showVendor(progress, id) || {}).name || "" };
         } else if (it.grade) {
             col.graded = col.graded || {};
@@ -1002,11 +1028,134 @@ Item {
             if (!e) e = col.cards[it.key] = { id: c.id, name: c.name, tier: c.tier, count: 0, first: new Date().toISOString() };
             Progress.addCopy(e, it.cond || null);
         }
+        if (own) writeCollection(col);
+    }
+
+    // ---- your show binder: up to 15 cards you bring to sell or trade (filled in the Port) ----
+
+    // what's in it, as cards: [{ id, key, slabId, card, grade, value (฿ at market, in its slab) }];
+    // anything you no longer have (sold, or out for grading) drops out
+    readonly property var showBinderItems: {
+        var out = [], used = {}, g = collection.graded || {}, m = markets;
+        Progress.showBinder(progress).forEach(b => {
+            if (b.slabId) {
+                var s = g[b.slabId];
+                if (!s || lockedSlabs[b.slabId]) return;
+                var sc = localCard(s);
+                out.push({ id: b.id, key: s.key || cardKey(sc), slabId: b.slabId, card: sc, grade: s.grade,
+                           value: Progress.slabValue(s, m[s.set]) });
+                return;
+            }
+            var e = collection.cards[b.key];
+            used[b.key] = (used[b.key] || 0) + 1;
+            if (!e || e.count < used[b.key]) return;
+            var cut = b.key.indexOf(":"), set = b.key.slice(0, cut);
+            var card = { id: e.id, name: e.name, tier: e.tier, set: set, image: cacheRoot + "/" + set + "/" + b.key.slice(cut + 1) };
+            out.push({ id: b.id, key: b.key, slabId: "", card: card, grade: 0, value: Progress.cardValue(card, m[set]) });
+        });
+        return out;
+    }
+    // how many copies of a raw card are in it
+    function inShowBinder(key) {
+        return Progress.showBinder(progress).filter(b => !b.slabId && b.key === key).length;
+    }
+    function slabInShowBinder(slabId) {
+        return Progress.showBinder(progress).some(b => b.slabId === slabId);
+    }
+    // put a card in (key: a raw copy of it) or a slab (slabId); false when it's full or it can't go in
+    function addToShowBinder(key, slabId) {
+        if (offTheRecord || atShow) return false;
+        var items = Progress.showBinder(progress);
+        if (items.length >= Progress.SHOW_BINDER_SIZE) {
+            toast("Your show binder is full: " + Progress.SHOW_BINDER_SIZE + " cards.");
+            return false;
+        }
+        if (slabId ? slabInShowBinder(slabId) || lockedSlabs[slabId] : inShowBinder(key) >= ((collection.cards[key] || {}).count || 0))
+            return false;
+        var id = Date.now().toString(36) + Math.floor(Math.random() * 1e6).toString(36);
+        prog(p => { Progress.setShowBinder(p, items.concat([slabId ? { id: id, slabId: slabId } : { id: id, key: key }]), Date.now()); return []; });
+        return true;
+    }
+    function removeFromShowBinder(ids) {
+        if (offTheRecord) return;
+        prog(p => { Progress.setShowBinder(p, Progress.showBinder(p).filter(b => ids.indexOf(b.id) < 0), Date.now()); return []; });
+    }
+    function loadShowBinderMarkets() {
+        showBinderItems.forEach(it => { if (!markets[it.card.set]) loadMarket(it.card.set); });
+    }
+
+    // your notes for the show (the Port and the show both have them)
+    function saveShowNotes(text) {
+        if (offTheRecord || text === Progress.showNotes(progress)) return;
+        prog(p => { Progress.setShowNotes(p, text, Date.now()); return []; });
+    }
+
+    // take one copy of a raw card off an entry: an unchecked one first, else the worst you have
+    function takeAnyCopy(e) {
+        if (Progress.takeCopy(e, "unchecked")) return;
+        for (var i = Progress.CONDITIONS.length - 1; i >= 0; i--)
+            if (Progress.takeCopy(e, Progress.CONDITIONS[i].id)) return;
+        e.count--;
+    }
+    // binder cards gone to a vendor: out of the collection and the binder
+    function giveAway(items, col) {
+        items.forEach(it => {
+            if (it.slabId) {
+                if (col.graded) delete col.graded[it.slabId];
+                return;
+            }
+            var e = col.cards[it.key];
+            if (!e) return;
+            takeAnyCopy(e);
+            if (e.count <= 0) delete col.cards[it.key];
+        });
+        if (col.graded && !Object.keys(col.graded).length) delete col.graded;
+    }
+
+    // sell binder cards (ids) to the vendor of this stall: ฿ you got
+    function sellAtShow(vendorId, ids) {
+        var items = showBinderItems.filter(it => ids.indexOf(it.id) >= 0), total = 0;
+        if (!items.length) return 0;
+        var v = (Progress.showState(progress).stock || []).filter(t => t.id === vendorId)[0];
+        if (!v) return 0;
+        var wanted = items.filter(it => Progress.showOffer(progress, v, it));
+        if (!wanted.length) {
+            toast("\"Not really what I buy.\"");
+            return 0;
+        }
+        prog(p => { total = Progress.sellAtShow(p, vendorId, wanted, Date.now()); return []; });
+        if (!total) return 0;
+        var col = readCollection();
+        giveAway(wanted, col);
         writeCollection(col);
-        prog(p => Progress.record(p, { type: "bought", count: 1, value: Progress.showState(p).bought[id].price }));
+        removeFromShowBinder(wanted.map(it => it.id));
+        prog(p => Progress.record(p, { type: "sell", count: wanted.length, value: total }));
+        refreshValue();
+        refreshRegistry();
         sfx("coin");
-        toast("Bought " + Tiers.displayName(c) + (it.grade ? " (graded " + it.grade + ")" : "") + " for "
-              + Progress.format(Progress.showState(progress).bought[id].price));
+        toast("Sold " + wanted.length + " card" + (wanted.length > 1 ? "s" : "") + " to " + v.name + " for " + Progress.format(total));
+        return total;
+    }
+
+    // trade binder cards (ids), plus berries if they come up short, for a vendor's listing
+    function tradeAtShow(vendorId, listingId, ids) {
+        var items = showBinderItems.filter(it => ids.indexOf(it.id) >= 0), r = null;
+        if (!items.length) return false;
+        prog(p => { r = Progress.tradeAtShow(p, vendorId, listingId, items, Date.now()); return []; });
+        if (!r) {
+            toast("No deal: they don't want those, or you're short on berries.");
+            return false;
+        }
+        var b = Progress.showState(progress).bought[listingId], col = readCollection();
+        giveAway(r.gave, col);
+        receiveFromShow(r.listing, listingId, b.price + b.trade.value - b.trade.change, col);
+        writeCollection(col);
+        removeFromShowBinder(r.gave.map(it => it.id));
+        refreshValue();
+        refreshRegistry();
+        sfx("epic");
+        toast("Traded " + r.gave.length + " card" + (r.gave.length > 1 ? "s" : "") + " for " + Tiers.displayName(r.listing.card)
+              + (b.price ? " (and " + Progress.format(b.price) + ")" : "") + (b.trade.change ? ", got " + Progress.format(b.trade.change) + " back" : ""));
         return true;
     }
 
@@ -1773,6 +1922,12 @@ Item {
     }
 
     Keys.onPressed: event => {
+        if (patchNotes) {   // what's new is up: Esc, Enter or Space puts it away, nothing else gets through
+            if (event.key === Qt.Key_Escape || event.key === Qt.Key_Return || event.key === Qt.Key_Enter || event.key === Qt.Key_Space)
+                dismissPatchNotes();
+            event.accepted = true;
+            return;
+        }
         if (phase === "sync" && event.key !== Qt.Key_Escape && event.key !== Qt.Key_Y) return;   // typing in the account screen
         switch (event.key) {
         case Qt.Key_Escape:
@@ -2616,6 +2771,14 @@ Item {
             color: "#fff6e0"
             font.pixelSize: 15
         }
+    }
+
+    PatchNotes {   // what's new, after an update: over everything
+        anchors.fill: parent
+        z: 310
+        visible: !!stage.patchNotes
+        notes: stage.patchNotes
+        onClose: stage.dismissPatchNotes()
     }
 
     Rectangle {

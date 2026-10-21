@@ -2,7 +2,7 @@ import QtQuick
 import "tiers.js" as Tiers
 import "progress.js" as Progress
 
-// Nico Robin's notes (a crew perk, from the Port and at the card show): what every vintage
+// Nico Robin's notes (a crew perk, from the Port; not at the card show): what every vintage
 // card and sealed vintage product is worth if it's genuine, raw and slabbed (Stage.robinNotes:
 // the prices the show's vendors price from). Filter by game, sort, search by name, set or
 // number; click a line to see the card big beside the list.

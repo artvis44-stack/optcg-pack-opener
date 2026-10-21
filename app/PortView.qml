@@ -16,6 +16,7 @@ Item {
     property real now: Date.now()
     property var inspected: null     // a card or slab shown big
     property bool notes: false       // Robin's notes, open
+    property bool binderPicker: false   // filling your show binder
 
     function step(d) {
         var ids = tabs.map(t => t[0]);
@@ -24,7 +25,8 @@ Item {
     }
 
     function back() {
-        if (notes) notes = false;
+        if (binderPicker) binderPicker = false;
+        else if (notes) notes = false;
         else if (inspected) inspected = null;
         else stage.togglePort();
     }
@@ -33,6 +35,7 @@ Item {
         if (!visible) return;
         inspected = null;
         notes = false;
+        binderPicker = false;
         now = Date.now();
         loadPool();
         if (tab === "cosmetics") fetchPlaymats();
@@ -342,6 +345,62 @@ Item {
                     text: "Go to the card show (K)"
                     accent: "#ff9ad5"
                     onClicked: port.stage.toggleShow()
+                }
+                Item { width: 1; height: 4 }
+                Row {   // getting ready: your show binder and your notes
+                    width: parent.width
+                    spacing: 16
+                    Panel {
+                        id: binderPanel
+                        width: (parent.width - 16) / 2
+                        height: 260
+                        readonly property var items: port.stage ? port.stage.showBinderItems : []
+                        Column {
+                            x: 16; y: 12
+                            width: parent.width - 32
+                            spacing: 8
+                            Text {
+                                text: "Your show binder  ·  " + binderPanel.items.length + " / " + Progress.SHOW_BINDER_SIZE
+                                color: "#7fd1b9"
+                                font { pixelSize: 17; weight: Font.Black }
+                            }
+                            Note {
+                                width: parent.width
+                                text: binderPanel.items.length
+                                      ? "Worth " + Progress.format(binderPanel.items.reduce((n, it) => n + it.value, 0)) + " at market. "
+                                        + "Take it to the show to sell or trade: every vendor makes an offer, honest or not."
+                                      : "Bring up to " + Progress.SHOW_BINDER_SIZE + " cards to the show to sell or trade with the vendors. "
+                                        + "Some cards are only ever traded, never put out for sale."
+                            }
+                            Row {   // a peek at what's in it
+                                spacing: -18
+                                Repeater {
+                                    model: binderPanel.items.slice(0, 12)
+                                    Card {
+                                        required property var modelData
+                                        width: 58
+                                        card: modelData.card
+                                        faceUp: true
+                                        dropShadow: true
+                                    }
+                                }
+                            }
+                            PillButton {
+                                text: port.stage && port.stage.atShow ? "You're at the show: it's in your bag"
+                                      : binderPanel.items.length ? "Change what's in it" : "Choose cards"
+                                fontSize: 13
+                                accent: "#7fd1b9"
+                                enabledLook: !!port.stage && !port.stage.atShow && !port.stage.offTheRecord
+                                onClicked: if (enabledLook) port.binderPicker = true
+                            }
+                        }
+                    }
+                    ShowNotes {
+                        width: (parent.width - 16) / 2
+                        height: 260
+                        stage: port.stage
+                        visible: !!port.stage && !port.stage.offTheRecord
+                    }
                 }
                 Item { width: 1; height: 8 }
                 Heading { text: "Today's deals" }
@@ -765,5 +824,12 @@ Item {
         visible: port.notes
         stage: port.stage
         onClose: port.notes = false
+    }
+
+    ShowBinderPicker {   // filling your show binder
+        anchors.fill: parent
+        visible: port.binderPicker
+        stage: port.stage
+        onClose: port.binderPicker = false
     }
 }

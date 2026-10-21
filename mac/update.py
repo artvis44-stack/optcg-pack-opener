@@ -5,7 +5,9 @@ Checks the latest GitHub release; if it's newer than this copy, downloads the
 release's optcg.bundle, fast-forwards the repo to it, refreshes the Python
 packages, restarts the desktop showcase on the new code and shows a
 notification. A pack opener that's open is left alone (the next launch runs
-the new version).
+the new version). The patch notes of what was installed (every release since
+the last one, newest first) go in patch-notes.json, which the pack opener
+shows the next time it opens.
 
 usage: update.py            check and update if there's a newer release
        update.py --force    reinstall the latest release even if it's not newer
@@ -37,6 +39,7 @@ VENV_PY = HERE / ".venv" / "bin" / "python"
 DATA = Path.home() / "Library" / "Application Support" / "optcg"
 LOG = Path.home() / "Library" / "Logs" / "optcg-update.log"
 INSTALLED = DATA / "installed-version"   # what this updater last put in place
+PATCH_NOTES = DATA / "patch-notes.json"   # what's new: the pack opener shows it once
 
 
 def log(msg):
@@ -135,6 +138,25 @@ def restart_showcase():
     log("started the desktop companion")
 
 
+def save_patch_notes(have, latest, release, tok):
+    """What's new since `have`: every release after it up to `latest`, newest first. The
+    pack opener shows it next time it opens (and marks it seen)."""
+    notes = []
+    try:
+        for r in json.load(api_get(f"https://api.github.com/repos/{REPO}/releases?per_page=30", tok)):
+            if not r.get("draft") and version(have) < version(r["tag_name"]) <= version(latest):
+                notes.append({"version": r["tag_name"], "date": (r.get("published_at") or "")[:10], "notes": (r.get("body") or "").strip()})
+    except (OSError, ValueError, KeyError) as e:
+        log(f"couldn't list the releases for the patch notes: {e}")
+    if not any(n["version"] == latest for n in notes):
+        notes.append({"version": latest, "date": (release.get("published_at") or "")[:10], "notes": (release.get("body") or "").strip()})
+    notes.sort(key=lambda n: version(n["version"]), reverse=True)
+    try:
+        PATCH_NOTES.write_text(json.dumps({"from": have, "to": latest, "at": int(time.time()), "seen": False, "releases": notes}, indent=1))
+    except OSError as e:
+        log(f"couldn't save the patch notes: {e}")
+
+
 def check(release):
     """--check: one line of JSON for the pack opener"""
     if isinstance(release, str):
@@ -202,6 +224,7 @@ def main():
     restart_showcase()
     DATA.mkdir(parents=True, exist_ok=True)
     INSTALLED.write_text(latest)
+    save_patch_notes(have, latest, release, tok)
     log(f"updated to {latest}")
     notify(f"Updated to {latest}")
     return 0

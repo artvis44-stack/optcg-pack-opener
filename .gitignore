@@ -5,3 +5,4 @@ mac/.venv/
 *.db
 *.db-wal
 *.db-shm
+.claude/worktrees/

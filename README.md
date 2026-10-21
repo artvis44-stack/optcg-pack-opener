@@ -57,6 +57,9 @@ The app is split into a platform-independent part (`app/`) and a thin host.
 - `app/Pack.qml`, `app/PackFace.qml`: the booster wrapper (official photo, or the drawn fallback) and the tear animation
 - `app/BoxView.qml`: box mode (the sealed display box, the grid of 24 packs, the box summary)
 - `app/CardShow.qml`, `app/StallTable.qml`: the daily card show (the hall map, a vendor's table, checking and haggling, the recap)
+- `app/ShowBinderPicker.qml`, `app/ShowBinderView.qml`, `app/ShowNotes.qml`: your show binder (filling it in the Port; selling
+  and trading it at the show) and your show notes
+- `app/PatchNotes.qml`: what's new after a Mac update (the notes `mac/update.py` saves)
 - `app/vintage.json`, `app/DrawnFace.qml`: the 2005-06 CCG's cards (list, prices, pictures, sealed prices), and the drawn face of a card or sealed product with no picture
 - `app/hyperbattle.json`: Carddass Hyper Battle's cards, sets and sealed products (its pictures: a release asset)
 - `app/collections.js`, `app/SetsView.qml`, `app/DisplayCase.qml`: the collections to complete with graded cards, the vault's Sets tab, and the display cases saved sets go in
@@ -150,8 +153,8 @@ there are wanted posters for them
   the last, up to ฿60M): more passive income, free packs faster and more of them. Recruit the
   Straw Hats, each with a perk: Zoro doubles focus berries, Nami +25% income, Usopp better hit odds
   in single packs, Sanji cheaper packs, Chopper saves a streak that missed one day, Robin knows
-  the vintage market (her notes, from the Port or at the card show, price every vintage card and
-  sealed product, raw and graded; she won't appraise a listing for you at the show), Franky cheaper boxes and cases, Brook +10% when selling, Jinbe a fourth
+  the vintage market (her notes, in the Port, price every vintage card and sealed product, raw
+  and graded; they stay home when you go to the card show), Franky cheaper boxes and cases, Brook +10% when selling, Jinbe a fourth
   daily bounty, Luffy (Gear 5) god packs twice as likely.
 - **Card shop.** Eight deals a day from your downloaded sets at market price + 10% (once each), random
   each day; they can be cards you already have, and each deal says how many you own. You can't
@@ -172,6 +175,18 @@ there are wanted posters for them
   quirk that can look suspicious. You can ask the vendor about something once: honest dealers mostly
   give a straight answer, scammers mostly don't (sometimes they lie convincingly), and they get pushy
   if you inspect too much at their stall.
+  - **Your show binder.** In the Port's card shop tab, fill a binder with up to 15 of your cards (raw
+  copies or slabs, not ones in a display case) and it comes along to the show ("Your binder"), with
+  each card's market price showing: they're yours, you know what they're worth. At a table, pick
+  cards to see the vendor's offer for each, cash and trade credit, by who they are: honest dealers
+  pay about 80-90% of market in cash and about market in trade, a kid or an estate table guesses,
+  premium dealers only want slabs and big cards, the vintage tables only their own game, and
+  scammers lowball everything (12-40% cash) and keep the change on a trade. Sell them, or trade them
+  (adding berries if you're short; an honest vendor gives you change) for something on the table or
+  under it: every vendor keeps one to three cards for trades only, never on display (a scammer's are
+  mostly fakes). The recap lists what you sold and to whom.
+  - **Show notes.** A notepad for the show (in the Port's card shop tab, and "Notes" at the show):
+  prices you looked up, what you're after, which tables to watch. It's saved as you type and syncs.
   - **Vintage and promos.** Promotion cards (optcgapi's list, the ones with a picture) and the
   2005-06 English One Piece CCG (The Quest Begins, Passage to the Grand Line and six promos,
   `app/vintage.json`) are only sold here. Two vintage specialists a show, and now and then a
@@ -324,10 +339,14 @@ the checkout, refreshes the Python packages if needed, restarts the desktop show
 notification (log: `~/Library/Logs/optcg-update.log`). To update right away, use the button at the
 end of the pack opener's top bar (or press U): it checks a few seconds after the opener opens, says
 "update to vX (U)" when there's one, installs it, and the next time you open the pack opener it's
-the new version. Double-click `mac/Update OPTCG.command` in Finder works too. If the repo is private, put a GitHub token in
+the new version. Double-click `mac/Update OPTCG.command` in Finder works too. After an update the
+pack opener shows what's new once, the next time it opens (or straight away when you updated with
+the button): the notes of every release since the version you had, from GitHub (saved in
+`~/Library/Application Support/optcg/patch-notes.json`). If the repo is private, put a GitHub token in
 `~/Library/Application Support/optcg/github-token`.
 
-Publishing a release from here: `tools/release.sh v1.3.0 "what changed"`.
+Publishing a release from here: `tools/release.sh v1.3.0 "what changed"` (the notes are the patch
+notes Macs show after updating; Markdown works).
 
 With PyObjC the overlay has no Dock icon, takes focus from the app you were in, sits above the menu
 bar and shows over full-screen apps. Python from python.org needs its "Install Certificates" step

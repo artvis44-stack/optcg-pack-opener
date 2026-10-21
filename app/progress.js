@@ -356,7 +356,7 @@ var DIAMOND_LABEL = { id: "diamond", name: "Diamond Label", top: "#f4fdff", bott
 // (CardShow.qml: a floor plan you walk around, then each stall's table), one visit a
 // show. Once you're in, the app shows no prices (no binder, vault, port or wanted board
 // until you leave): you have to know the market. Nico Robin (crew) knows the vintage
-// market: her notes come along (she won't appraise a listing for you). Vendors are honest, bargain tables,
+// market, but her notes stay at the Port (study them before you go). Vendors are honest, bargain tables,
 // premium dealers, vintage specialists or scammers; which is which you only know for
 // sure after you leave.
 //
@@ -597,6 +597,31 @@ var SHOW_TALK = {
               "\"Want a closer look at anything? Go ahead.\""]
 };
 var SHOW_PUSHY = 3;                         // checks at a scammer's stall before they start pushing
+
+// ---- your show binder: cards you bring to sell or trade ----
+// You fill it in the Port before you go (SHOW_BINDER_SIZE cards: raw copies or slabs). At a
+// stall each card gets the vendor's offer: cash (what they'd pay) and trade credit (what it's
+// worth to them against their own stock), as a share of its market price, by who they are.
+// Honest dealers pay fairly (dealers keep a margin on cash, trade at about market), a kid or
+// an estate table guesses, premium dealers only want slabs and big cards, the vintage tables
+// only their own game, and scammers lowball everything and keep the change. Every vendor
+// also has a few cards under the table (SHOW_TRADE_ONLY): not on display, not for sale,
+// only for a trade (a scammer's are mostly fakes).
+var SHOW_BINDER_SIZE = 15;
+var SHOW_NOTES_MAX = 4000;                  // characters in your show notes
+// kind -> cash [min, max] and trade [min, max] × market; wants: "" anything, "high" slabs and
+// cards worth SHOW_PREMIUM_MIN+, "ccg" / "hb" that vintage game only; change: whether a trade
+// worth more than what you take gets you the difference (at their cash rate)
+var SHOW_DEALS = {
+    honest:  { cash: [0.78, 0.9],  trade: [0.95, 1.05], wants: "",     change: true },
+    bargain: { cash: [0.45, 0.75], trade: [0.75, 1.3],  wants: "",     change: true },
+    premium: { cash: [0.7, 0.85],  trade: [0.9, 1.0],   wants: "high", change: true },
+    vintage: { cash: [0.82, 0.95], trade: [1.0, 1.1],   wants: "ccg",  change: true },
+    carddass:{ cash: [0.82, 0.95], trade: [1.0, 1.1],   wants: "hb",   change: true },
+    scammer: { cash: [0.12, 0.4],  trade: [0.25, 0.55], wants: "",     change: false }
+};
+var SHOW_PREMIUM_MIN = 15000;
+var SHOW_TRADE_ONLY = [1, 3];               // cards under the table, per vendor
 
 function isShowSet(set) {
     return !!SHOW_SETS[set];
@@ -885,6 +910,21 @@ function makeShowStock(day, pool, sealed) {
             if (t2 && product) t2.listings.unshift(hbListing(t2, product));
         }
     }
+    // under the table: a few cards each vendor only trades (dealt last, so the rest of the hall
+    // is what it was before there were any)
+    hall.forEach(function (t) {
+        var n = SHOW_TRADE_ONLY[0] + Math.floor(rnd() * (SHOW_TRADE_ONLY[1] - SHOW_TRADE_ONLY[0] + 1));
+        t.trade = [];
+        for (var i = 0; i < n; i++) {
+            var x = t.vintage ? pickVintage[t.vintage]()
+                  : pickSpecial && (!pickModern || rnd() < SHOW_SPECIAL_SHARE * 2) ? pickSpecial() : pickModern();
+            if (!x) continue;
+            used[x.key] = true;
+            var it = listing(t.kind, x, t.id + "-t" + i);
+            it.tradeOnly = true;
+            t.trade.push(it);
+        }
+    });
     return hall;
 }
 
@@ -901,9 +941,11 @@ function enterShow(p, now, pool, sealed) {
 
 function showListing(p, id) {
     var s = showState(p);
-    for (var v = 0; v < (s.stock || []).length; v++)
-        for (var i = 0; i < s.stock[v].listings.length; i++)
-            if (s.stock[v].listings[i].id === id) return s.stock[v].listings[i];
+    for (var v = 0; v < (s.stock || []).length; v++) {
+        var all = s.stock[v].listings.concat(s.stock[v].trade || []);
+        for (var i = 0; i < all.length; i++)
+            if (all[i].id === id) return all[i];
+    }
     return null;
 }
 
@@ -984,18 +1026,127 @@ function vendorMood(p, vendorId) {
 // Returns the listing, or null (not here, sold, or you can't afford it).
 function buyAtShow(p, id, now) {
     var s = showState(p), x = showListing(p, id);
-    if (!atShow(p, now) || !x || s.bought[id]) return null;
+    if (!atShow(p, now) || !x || x.tradeOnly || s.bought[id]) return null;
     var price = showPrice(p, x);
     if (!spend(p, price, "show")) return null;
     p.show.bought[id] = { price: price, at: now };
-    if (x.sealed) {   // to the Port's sealed products (a resealed one's found out when you leave)
-        var sid = now.toString(36) + Math.floor(Math.random() * 1e6).toString(36);
-        p.sealed[sid] = { set: x.sealed.line === "hb" ? "HYPERBATTLE" : "VINTAGE", setName: x.sealed.origin, kind: x.sealed.kind,
-                          boxes: 0, vintage: true, line: x.sealed.line || "ccg", name: x.sealed.name || "", cards: x.sealed.cards || null,
-                          packs: x.sealed.packs, packsTotal: x.sealed.packs, resealed: !!x.fake,
-                          paid: price, at: now, rate: SEALED_RATE[1] };
-    }
+    takeSealed(p, x, price, now);
     return x;
+}
+
+// a sealed product from the show goes to the Port's sealed products (a resealed one's found
+// out when you leave)
+function takeSealed(p, x, paid, now) {
+    if (!x.sealed) return;
+    var sid = now.toString(36) + Math.floor(Math.random() * 1e6).toString(36);
+    p.sealed[sid] = { set: x.sealed.line === "hb" ? "HYPERBATTLE" : "VINTAGE", setName: x.sealed.origin, kind: x.sealed.kind,
+                      boxes: 0, vintage: true, line: x.sealed.line || "ccg", name: x.sealed.name || "", cards: x.sealed.cards || null,
+                      packs: x.sealed.packs, packsTotal: x.sealed.packs, resealed: !!x.fake,
+                      paid: paid, at: now, rate: SEALED_RATE[1] };
+}
+
+// ---- selling and trading your show binder ----
+
+// your show binder: [{ id, key, slabId (a slab) }] (what's in it; Stage resolves them)
+function showBinder(p) {
+    return (p.showBinder && p.showBinder.items) || [];
+}
+
+function setShowBinder(p, items, now) {
+    p.showBinder = { at: now, items: items.slice(0, SHOW_BINDER_SIZE) };
+}
+
+function showNotes(p) {
+    return (p.showNotes && p.showNotes.text) || "";
+}
+
+function setShowNotes(p, text, now) {
+    p.showNotes = { at: now, text: String(text || "").slice(0, SHOW_NOTES_MAX) };
+}
+
+function showDeal(vendor) {
+    return SHOW_DEALS[vendor.kind] || SHOW_DEALS.honest;
+}
+
+// does this vendor want it? item: { card, grade, value (฿ at market, in its slab if it's one) }
+function vendorWants(vendor, item) {
+    var w = showDeal(vendor).wants;
+    if (vendor.kind === "scammer") return true;   // they'll take anything, at their price
+    if (w === "high") return !!item.grade || item.value >= SHOW_PREMIUM_MIN;
+    if (w === "ccg") return item.card.set === "VINTAGE";
+    if (w === "hb") return item.card.set === "HYPERBATTLE";
+    return true;
+}
+
+// what a vendor offers for one of your cards: { cash, credit } (฿), or null (not interested).
+// The same all day: asking again doesn't change it
+function showOffer(p, vendor, item) {
+    if (!vendor || !item || !(item.value > 0) || !vendorWants(vendor, item)) return null;
+    var d = showDeal(vendor), rnd = hash("offer " + showState(p).day + " " + vendor.id + " " + item.key + " " + (item.grade || 0));
+    var cash = between(rnd, d.cash[0], d.cash[1]), credit = between(rnd, d.trade[0], d.trade[1]);
+    return { cash: roundPrice(item.value * cash), credit: roundPrice(item.value * credit) };
+}
+
+// a vendor's cards under the table
+function tradeStock(p, vendorId) {
+    var v = (showState(p).stock || []).filter(function (t) { return t.id === vendorId; })[0];
+    return v ? v.trade || [] : [];
+}
+
+// sell some of your binder to a vendor: items [{ id, key, card, grade, value }] (Stage
+// resolves them and takes them out of the collection after). Returns ฿ paid, or 0 (nothing
+// they want, or not at the show)
+function sellAtShow(p, vendorId, items, now) {
+    var s = showState(p), v = (s.stock || []).filter(function (t) { return t.id === vendorId; })[0];
+    if (!atShow(p, now) || !v) return 0;
+    var total = 0;
+    p.show.sold = p.show.sold || {};
+    items.forEach(function (it) {
+        var o = showOffer(p, v, it);
+        if (!o || p.show.sold[it.id]) return;
+        total += o.cash;
+        p.show.sold[it.id] = { vendor: vendorId, price: o.cash, value: it.value, card: it.card, grade: it.grade || 0, at: now };
+    });
+    if (total) earn(p, total, "show");
+    return total;
+}
+
+// what a trade comes to: { credit (what your cards count for), price (theirs), pay (฿ you add),
+// change (฿ they give back), ok }, or null (they don't want any of it)
+function tradeQuote(p, vendor, listing, items) {
+    if (!vendor || !listing) return null;
+    var credit = 0, cashValue = 0, wanted = 0;
+    items.forEach(function (it) {
+        var o = showOffer(p, vendor, it);
+        if (!o) return;
+        wanted++;
+        credit += o.credit;
+        cashValue += o.cash;
+    });
+    if (!wanted) return null;
+    var price = listing.tradeOnly ? listing.ask : showPrice(p, listing);
+    var over = credit - price;
+    // change for the difference, at their cash rate (a scammer keeps it)
+    var change = over > 0 && showDeal(vendor).change ? roundPrice(over * cashValue / Math.max(1, credit)) : 0;
+    return { credit: credit, price: price, pay: Math.max(0, price - credit), change: over > 0 ? change : 0, wanted: wanted,
+             ok: p.berries >= Math.max(0, price - credit) };
+}
+
+// trade your cards (and berries, if they're short) for one of a vendor's listings, on display
+// or under the table. Returns the listing (the caller moves the cards), or null
+function tradeAtShow(p, vendorId, listingId, items, now) {
+    var s = showState(p), x = showListing(p, listingId);
+    var v = (s.stock || []).filter(function (t) { return t.id === vendorId; })[0];
+    if (!atShow(p, now) || !x || !v || listingId.split("-")[0] !== vendorId || s.bought[listingId]) return null;
+    var wanted = items.filter(function (it) { return showOffer(p, v, it); });
+    var q = tradeQuote(p, v, x, wanted);
+    if (!q || (q.pay && !spend(p, q.pay, "show"))) return null;
+    if (q.change) earn(p, q.change, "show");
+    p.show.bought[listingId] = { price: q.pay, at: now,
+                                 trade: { credit: q.credit, change: q.change, value: wanted.reduce(function (n, it) { return n + it.value; }, 0),
+                                          gave: wanted.map(function (it) { return { id: it.id, card: it.card, grade: it.grade || 0, value: it.value }; }) } };
+    takeSealed(p, x, q.pay, now);
+    return { listing: x, gave: wanted };
 }
 
 // leave: the visit is over. Returns the recap: { items: [{ listing, vendor, paid }], paid,
@@ -1005,15 +1156,25 @@ function leaveShow(p, now) {
     if (!s.day || s.left) return null;
     p.show.left = now;
     var items = Object.keys(s.bought).map(function (id) {
-        return { listing: showListing(p, id), vendor: showVendor(p, id), paid: s.bought[id].price };
+        var b = s.bought[id], t = b.trade;   // a trade: what you gave counts at market, less the change
+        return { listing: showListing(p, id), vendor: showVendor(p, id), trade: t || null,
+                 paid: b.price + (t ? t.value - t.change : 0) };
     }).filter(function (it) { return it.listing; });
+    var sold = Object.keys(s.sold || {}).map(function (id) {
+        var x = s.sold[id];
+        return { card: x.card, grade: x.grade, value: x.value, price: x.price,
+                 vendor: (s.stock || []).filter(function (t) { return t.id === x.vendor; })[0] || null };
+    });
     var recap = {
         items: items,
         paid: items.reduce(function (n, it) { return n + it.paid; }, 0),
         worth: items.reduce(function (n, it) { return n + it.listing.value; }, 0),
         fakes: items.filter(function (it) { return it.listing.fake; }).length,
         steals: items.filter(function (it) { return !it.listing.fake && it.paid < SHOW_STEAL * it.listing.value; }).length,
-        vendors: (s.stock || []).map(function (v) { return { name: v.name, kind: v.kind }; })
+        vendors: (s.stock || []).map(function (v) { return { name: v.name, kind: v.kind }; }),
+        sold: sold,
+        soldFor: sold.reduce(function (n, x) { return n + x.price; }, 0),
+        soldWorth: sold.reduce(function (n, x) { return n + x.value; }, 0)
     };
     // the genuine promos and vintage cards you brought home (their posters)
     var real = items.filter(function (it) { return !it.listing.fake && !it.listing.sealed; }).map(function (it) { return it.listing; });
@@ -1551,7 +1712,7 @@ function earn(p, amount, source, unstated) {
 
 var EARNINGS = [["income", "Passive income"], ["sell", "Selling cards"], ["posters", "Wanted posters"],
                 ["setPosters", "Set wanted posters"], ["sets", "Saved sets"], ["bounties", "Daily bounties"], ["streak", "Daily streak"],
-                ["focus", "Focus sessions"], ["sealed", "Selling sealed"], ["season", "Season rewards"], ["other", "Other"]];
+                ["focus", "Focus sessions"], ["sealed", "Selling sealed"], ["show", "Selling at card shows"], ["season", "Season rewards"], ["other", "Other"]];
 var SPENDING = [["packs", "Packs"], ["boxes", "Boxes"], ["cases", "Cases"], ["shop", "Card shop"], ["show", "Card shows"], ["grading", "Grading"],
                 ["sealed", "Sealed products"], ["ship", "Ship"], ["crew", "Crew"], ["cosmetics", "Cosmetics"], ["other", "Other"]];
 var LEDGER_DAYS = 14;   // days kept day by day
