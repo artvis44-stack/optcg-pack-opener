@@ -176,7 +176,7 @@ function mergeShop(b, l, r) {
 }
 
 // the card show: the later show; the same show, its stock as first dealt, both sides'
-// purchases, haggles, checks and questions, in when either walked in, out when either left
+// purchases and trades, sales, haggles, checks and questions, in when either walked in, out when either left
 function mergeShow(b, l, r) {
     if (!isObject(l)) return r;
     if (!isObject(r)) return l;
@@ -186,7 +186,7 @@ function mergeShow(b, l, r) {
              stock: (l.entered && r.entered ? (l.entered <= r.entered ? l : r) : l.entered ? l : r).stock || l.stock || r.stock,
              bought: Object.assign({}, r.bought || {}, l.bought || {}), haggled: Object.assign({}, r.haggled || {}, l.haggled || {}),
              checked: mergeChecked(l.checked, r.checked), asked: Object.assign({}, r.asked || {}, l.asked || {}),
-             looks: Math.max(l.looks || 0, r.looks || 0) };
+             sold: Object.assign({}, r.sold || {}, l.sold || {}), looks: Math.max(l.looks || 0, r.looks || 0) };
 }
 
 // what was checked of each listing, on either device
@@ -237,6 +237,7 @@ var PROGRESS_RULES = [
     ["stats.bySet.*.present", preferLocal], ["stats.bySet.*.value", preferLocal],
     // the Port
     ["ship.level", max], ["crew.*", earliest], ["shop", mergeShop], ["show", mergeShow],
+    ["showBinder", pickLater("at")], ["showNotes", pickLater("at")],
     ["weekly", mergeWeekly], ["season", mergeSeason], ["seasonOf.done.*", earliest], ["seasonOf.tiers.*", earliest],
     ["titles.*", preferLocal], ["seasons.*", preferLocal],
     ["cosmetics.owned.*", earliest], ["cosmetics.backdrop", preferLocal], ["cosmetics.slab", preferLocal]

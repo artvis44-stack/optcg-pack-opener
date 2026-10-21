@@ -13,6 +13,9 @@ import "progress.js" as Progress
 // checks a visit, Progress.checkListing), ask the vendor about it, haggle once, buy.
 // You find out who was who when you leave (Esc), and the recap shows what you really got.
 // Robin's notes stay at the Port: study them before you go, but in here it's on you.
+// Your own notes come along (Notes), and so does your show binder (Your binder: the cards
+// you brought, ShowBinderView): sell them to a vendor or trade them for something on their
+// table, or for one of the cards they keep under it for trades only.
 Item {
     id: show
 
@@ -25,6 +28,8 @@ Item {
     property string inspected: ""        // the listing in your hands
     property bool confirmLeave: false
     property var visited: ({})           // stalls you've walked up to this visit
+    property bool binderOpen: false      // your show binder, open
+    property bool notesOpen: false       // your notes, open
 
     readonly property var stall: stallId ? stock.filter(t => t.id === stallId)[0] || null : null
     readonly property var listing: inspected ? Progress.showListing(p, inspected) : null
@@ -33,7 +38,9 @@ Item {
 
     function back() {
         if (recap) stage.closeShow();
+        else if (notesOpen) notesOpen = false;
         else if (inspected) inspected = "";
+        else if (binderOpen) binderOpen = false;
         else if (stallId) stallId = "";
         else if (!confirmLeave) confirmLeave = true;
         else leave();
@@ -54,7 +61,14 @@ Item {
         visited = v;
     }
 
-    onVisibleChanged: if (visible) { inspected = ""; stallId = ""; confirmLeave = false; }
+    onVisibleChanged: if (visible) { inspected = ""; stallId = ""; confirmLeave = false; binderOpen = false; notesOpen = false; }
+
+    // trade for a listing: your binder opens with it as what you're after
+    function tradeFor(id) {
+        inspected = "";
+        binderOpen = true;
+        binderView.target = id;
+    }
 
     // a listing as a card the Card / Slab components draw (a fake looks a little off: how
     // much, and which of a slab's checks show it, come with it)
@@ -205,6 +219,18 @@ Item {
                 fontSize: 13
                 accent: "#ffd56b"
                 onClicked: show.stallId = ""
+            }
+            PillButton {
+                text: "Your binder  " + (show.stage ? show.stage.showBinderItems.length : 0)
+                fontSize: 13
+                accent: "#7fd1b9"
+                onClicked: show.binderOpen = true
+            }
+            PillButton {
+                text: "Notes"
+                fontSize: 13
+                accent: "#f4ecd6"
+                onClicked: show.notesOpen = true
             }
             PillButton {
                 text: show.confirmLeave ? "Leave? You can't come back until the next show. Yes, leave" : "Leave the show"
@@ -500,7 +526,10 @@ Item {
                         font.pixelSize: 14
                     }
                     Text {
-                        text: info.lst ? (info.sold ? "Bought for " + Progress.format(show.s.bought[info.lst.id].price) : "Asking " + show.priceText(info.lst)) : ""
+                        readonly property var b: info.sold ? show.s.bought[info.lst.id] : null
+                        text: !info.lst ? "" : b ? (b.trade ? "Traded for it" + (b.price ? " (and " + Progress.format(b.price) + ")" : "") : "Bought for " + Progress.format(b.price))
+                              : info.lst.tradeOnly ? "Under the table: trade only, " + Progress.format(info.lst.ask) + " in trade"
+                              : "Asking " + show.priceText(info.lst)
                         color: "#ffd56b"
                         font { pixelSize: 22; weight: Font.Black }
                     }
@@ -584,7 +613,7 @@ Item {
                     // haggle and buy
                     Row {
                         spacing: 8
-                        visible: !info.sold && !info.haggled
+                        visible: !info.sold && !info.haggled && !info.lst.tradeOnly
                         Text {
                             anchors.verticalCenter: parent.verticalCenter
                             text: "Make an offer (once):"
@@ -617,10 +646,16 @@ Item {
                     Row {
                         spacing: 10
                         PillButton {
-                            visible: !info.sold
+                            visible: !info.sold && !!info.lst && !info.lst.tradeOnly
                             text: "Buy  " + (info.lst ? Progress.format(Progress.showPrice(show.p, info.lst)) : "")
                             enabledLook: !!info.lst && show.p.berries >= Progress.showPrice(show.p, info.lst)
                             onClicked: show.stage.buyAtShow(show.inspected)
+                        }
+                        PillButton {
+                            visible: !info.sold
+                            text: "Trade for it"
+                            accent: "#7fd1b9"
+                            onClicked: show.tradeFor(show.inspected)
                         }
                         PillButton {
                             text: "Put it down"
@@ -692,12 +727,52 @@ Item {
                     }
                     Text {
                         anchors { right: parent.right; rightMargin: 14; verticalCenter: parent.verticalCenter }
-                        text: "paid " + Progress.format(line.modelData.paid) + "   ·   "
+                        text: (line.modelData.trade ? "traded, " + Progress.format(line.modelData.paid) : "paid " + Progress.format(line.modelData.paid)) + "   ·   "
                               + (line.l.fake ? (line.l.sealed ? "RESEALED: " : "FAKE: ") + (show.gradeName[line.l.fakeGrade] || "a fake")
                                  : "worth " + Progress.format(line.l.value)
                                    + (!line.l.grade && line.l.cond && line.l.claim === Progress.SHOW_CLAIM.pristine
                                       && line.l.cond !== "pristine" ? "  (really " + Progress.CONDITION[line.l.cond].name + ")" : ""))
                         color: line.l.fake ? "#ff8a7a" : line.modelData.paid <= line.l.value ? "#7fd1b9" : "#ffb347"
+                        font { pixelSize: 14; weight: Font.Bold }
+                    }
+                }
+            }
+            Text {   // what you sold, and to whom
+                visible: !!recapCol.r && (recapCol.r.sold || []).length > 0
+                width: parent.width
+                wrapMode: Text.WordWrap
+                topPadding: 8
+                readonly property int net: recapCol.r ? (recapCol.r.soldFor || 0) - (recapCol.r.soldWorth || 0) : 0
+                text: !recapCol.r || !(recapCol.r.sold || []).length ? ""
+                      : "You sold " + recapCol.r.sold.length + " card" + (recapCol.r.sold.length > 1 ? "s" : "") + " for "
+                        + Progress.format(recapCol.r.soldFor) + ", worth " + Progress.format(recapCol.r.soldWorth) + " at market"
+                color: "#ffd56b"
+                font { pixelSize: 18; weight: Font.Black }
+            }
+            Repeater {
+                model: recapCol.r ? recapCol.r.sold || [] : []
+                Rectangle {
+                    id: soldLine
+                    required property var modelData
+                    width: recapCol.width
+                    height: 40
+                    radius: 8
+                    color: "#101a16"
+                    border.color: "#2c4a3a"
+                    Text {
+                        x: 14
+                        anchors.verticalCenter: parent.verticalCenter
+                        width: parent.width * 0.55
+                        elide: Text.ElideRight
+                        text: Tiers.displayName(soldLine.modelData.card) + (soldLine.modelData.grade ? "  ·  graded " + soldLine.modelData.grade : "")
+                              + "  ·  to " + (soldLine.modelData.vendor ? soldLine.modelData.vendor.name : "")
+                        color: "#e8e8ee"
+                        font { pixelSize: 14; weight: Font.Bold }
+                    }
+                    Text {
+                        anchors { right: parent.right; rightMargin: 14; verticalCenter: parent.verticalCenter }
+                        text: "got " + Progress.format(soldLine.modelData.price) + "   ·   worth " + Progress.format(soldLine.modelData.value)
+                        color: soldLine.modelData.price >= soldLine.modelData.value * 0.75 ? "#7fd1b9" : "#ff8a7a"
                         font { pixelSize: 14; weight: Font.Bold }
                     }
                 }
@@ -728,9 +803,39 @@ Item {
         anchors { bottom: parent.bottom; bottomMargin: 12; horizontalCenter: parent.horizontalCenter }
         text: show.recap ? "Esc or Done: back"
               : show.inspected ? "Move the mouse to tilt it   ·   click outside or Esc: put it down"
-              : show.stall ? "Click something to pick it up   ·   Esc: back to the hall"
+              : show.stall ? "Click something to pick it up   ·   Your binder: sell or trade here   ·   Esc: back to the hall"
               : "Click a stall to walk over   ·   Esc: leave the show"
         color: "#9aa0ad"
         font.pixelSize: 14
+    }
+
+    ShowBinderView {   // your show binder: sell and trade
+        id: binderView
+        anchors.fill: parent
+        visible: show.binderOpen && !show.recap && !show.inspected
+        stage: show.stage
+        hall: show
+        vendor: show.stall
+        onClose: show.binderOpen = false
+        onInspect: id => show.inspected = id
+    }
+
+    Rectangle {   // your notes
+        anchors.fill: parent
+        visible: show.notesOpen && !show.recap
+        color: "#cc05070d"
+        MouseArea {
+            anchors.fill: parent
+            onClicked: show.notesOpen = false
+        }
+        ShowNotes {
+            anchors.centerIn: parent
+            width: Math.min(parent.width * 0.9, 640)
+            height: Math.min(parent.height * 0.8, 620)
+            stage: show.stage
+            closable: true
+            onClose: show.notesOpen = false
+            MouseArea { anchors.fill: parent; z: -1 }   // clicks on the paper don't close it
+        }
     }
 }
