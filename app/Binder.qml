@@ -152,12 +152,14 @@ Item {
     onCardColorChanged: loadMeta()
     onSortByChanged: if (sortBy === "value") stage.loadAllMarkets()
 
-    // the sets you own cards from, in release order
+    // every set in release order, then the card show's own (vintage, promos)
+    readonly property var setOrder: stage ? Object.keys(stage.sets).concat(Object.keys(Progress.SHOW_SETS).filter(id => !stage.sets[id])) : []
+    // the sets you own cards from, in that order (any other set last)
     readonly property var ownedSets: {
         if (!stage) return [];
         var seen = {};
         stage.allOwned.forEach(it => seen[it.card.set] = true);
-        return Object.keys(stage.sets).filter(id => seen[id]);
+        return setOrder.filter(id => seen[id]).concat(Object.keys(seen).filter(id => setOrder.indexOf(id) < 0).sort());
     }
     property var inspected: null
     property var grading: null          // the card in the grading dialog
@@ -187,7 +189,7 @@ Item {
 
     readonly property var entries: {
         var meta = binder.meta;   // re-filter once card types / colours are loaded
-        var list = all.filter(it => matches(it)), order = stage ? Object.keys(stage.sets) : [];
+        var list = all.filter(it => matches(it)), order = ownedSets;
         var has = it => it.count > 0 || it.slabs.length > 0;
         var byRarity = (a, b) => Tiers.tierOf(b.card).rank - Tiers.tierOf(a.card).rank;
         var byNumber = (a, b) => order.indexOf(a.card.set) - order.indexOf(b.card.set) || a.card.id.localeCompare(b.card.id);
