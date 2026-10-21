@@ -551,14 +551,6 @@ Item {
             visible: !!parent.entry
             onClicked: binder.stage.showcase(binder.inspected)
         }
-        PillButton {   // the card shop: order any card, at a markup
-            visible: !!binder.inspected && !binder.stage.offTheRecord
-            readonly property int price: binder.inspected ? Math.round(binder.stage.cardValue(binder.inspected) * Progress.ORDER_MARKUP) : 0
-            text: "Buy one (" + Progress.format(price) + ")"
-            accent: "#ffd56b"
-            enabledLook: binder.stage.progress.berries >= price
-            onClicked: binder.keepScroll(() => binder.stage.buyCard(binder.inspected, price, false))
-        }
     }
 
     Row {   // sell: how many copies
@@ -605,7 +597,8 @@ Item {
             onClicked: binder.sellCount = sellRow.have - 1
         }
         PillButton {
-            text: (sellRow.n === sellRow.have ? (sellRow.have === 1 ? "Sell your only copy" : "Sell every copy") : "Sell " + sellRow.n)
+            readonly property string raw: binder.inspected && (binder.stage.slabsByKey[binder.stage.cardKey(binder.inspected)] || []).length ? " raw" : ""
+            text: (sellRow.n === sellRow.have ? (sellRow.have === 1 ? "Sell your only" + raw + " copy" : "Sell every" + raw + " copy") : "Sell " + sellRow.n + raw)
                   + " (+" + Progress.format(sellRow.n * (binder.inspected ? binder.stage.sellPrice(binder.inspected) : 0)) + ")"
             accent: sellRow.n === sellRow.have ? "#ff8a7a" : "#7fd1b9"
             onClicked: {
@@ -629,7 +622,7 @@ Item {
         readonly property var slabs: binder.stage.slabsByKey[key] || []
         PillButton {
             visible: !!binder.stage.collection.cards[parent.key]
-            text: "Grade a copy…"
+            text: "Grade / pre-grade…"
             accent: "#c8a0ff"
             onClicked: binder.grading = binder.inspected
         }
@@ -640,6 +633,22 @@ Item {
             onClicked: {
                 binder.inspected = null;
                 binder.stage.toggleVault();
+            }
+        }
+        Repeater {   // sell a slab at its graded price, the most valuable first
+            model: parent.slabs.filter(s => !binder.stage.lockedSlabs[s.slabId])   // not ones in a display case
+                               .sort((a, b) => binder.stage.slabValue(b) - binder.stage.slabValue(a)).slice(0, 3)
+            PillButton {
+                required property var modelData
+                text: "Sell the graded " + (modelData.diamond ? "◆" : "") + modelData.grade
+                      + " (+" + Progress.format(binder.stage.slabValue(modelData)) + ")"
+                accent: modelData.diamond ? "#7ae8ff" : "#7fd1b9"
+                onClicked: {
+                    var c = binder.inspected, id = modelData.slabId;
+                    binder.keepScroll(() => binder.stage.sellSlab(id));
+                    var k = binder.stage.cardKey(c);
+                    if (!binder.stage.collection.cards[k] && !(binder.stage.slabsByKey[k] || []).length) binder.inspected = null;
+                }
             }
         }
     }
@@ -661,10 +670,13 @@ Item {
         y: 56   // under the wallet line
         readonly property var c: binder.inspected
         readonly property var owned: c ? binder.stage.collection.cards[binder.stage.cardKey(c)] : null
+        readonly property var conds: Progress.conditions(owned)
         readonly property var slabs: c ? binder.stage.slabsByKey[binder.stage.cardKey(c)] || [] : []
         text: c ? Tiers.displayName(c) + "  ·  " + c.id + "  ·  " + Tiers.tierOf(c).label
                   + (owned ? "  ·  ×" + owned.count + "  ·  first pulled " + (owned.first || "").slice(0, 10) : "")
-                  + (slabs.length ? "  ·  " + slabs.length + " graded" : "") : ""
+                  + (owned && owned.cond ? "  ·  " + Progress.CONDITIONS.filter(x => conds[x.id] > 0).map(x => x.name + " " + conds[x.id]).join(", ") : "")
+                  + "  ·  " + Progress.format(binder.stage.cardValue(c)) + " raw"
+                  + (slabs.length ? "  ·  " + slabs.length + " graded, best " + Progress.format(Math.max.apply(null, slabs.map(s => binder.stage.slabValue(s)))) : "") : ""
         color: c ? Tiers.tierOf(c).color : "white"
         style: Text.Outline; styleColor: "#000000"
         font { pixelSize: 20; weight: Font.Bold }
@@ -692,6 +704,15 @@ Item {
             readonly property var c: binder.grading
             readonly property int value: c ? binder.stage.cardValue(c) : 0
             readonly property bool rush: Progress.eventIs(binder.stage.progress, "grading")
+            // which copy goes: "unchecked" or a condition; the best one there is unless you pick
+            readonly property var counts: Progress.conditions(c ? binder.stage.collection.cards[binder.stage.cardKey(c)] : null)
+            readonly property var have: ["unchecked"].concat(Progress.CONDITIONS.map(x => x.id)).filter(id => counts[id] > 0)
+            property string pick: ""
+            onCChanged: pick = ""
+            readonly property string chosen: pick && counts[pick] > 0 ? pick
+                                           : have.filter(id => id !== "unchecked")[0] || (have.length ? "unchecked" : "")
+            readonly property var cond: Progress.CONDITION[chosen] || null
+            readonly property var odds: Progress.serviceOdds(chosen, "value")
 
             Card {
                 x: 22; y: 22
@@ -718,15 +739,70 @@ Item {
                     wrapMode: Text.WordWrap
                     text: "Worth " + Progress.format(dialog.value) + " raw. One copy goes off and comes back in a slab, graded 1 to 10: "
                           + "a 10 is worth ×" + Progress.GRADE_MULT[10] + ", a 9 ×" + Progress.GRADE_MULT[9] + ", an 8 ×" + Progress.GRADE_MULT[8]
-                          + ", lower grades less." + (dialog.rush ? "  Grading Rush this week: every service at the Value price, back in half the time." : "")
+                          + ", lower grades less. How it grades depends on the copy's condition: a pre-grade tells you, prep makes it better."
+                          + (dialog.rush ? "  Grading Rush this week: every service at the Value price, back in half the time." : "")
                     color: "#c8ccd6"
                     font.pixelSize: 13
                 }
-                Row {   // the odds, as a bar
+                Flow {   // your copies, by condition: click one to send that one
+                    width: parent.width
+                    spacing: 8
+                    Repeater {
+                        model: dialog.have
+                        Rectangle {
+                            required property string modelData
+                            readonly property bool on: dialog.chosen === modelData
+                            readonly property color tint: Progress.CONDITION[modelData] ? Progress.CONDITION[modelData].color : "#9aa0ad"
+                            width: chipText.width + 24
+                            height: chipText.height + 12
+                            radius: height / 2
+                            color: on ? tint : "#1b2236"
+                            border.color: tint
+                            Text {
+                                id: chipText
+                                anchors.centerIn: parent
+                                text: (Progress.CONDITION[modelData] ? Progress.CONDITION[modelData].name : "Unchecked") + "  ×" + dialog.counts[modelData]
+                                color: parent.on ? "#14171f" : parent.tint
+                                font { pixelSize: 13; weight: Font.Bold }
+                            }
+                            MouseArea {
+                                anchors.fill: parent
+                                cursorShape: Qt.PointingHandCursor
+                                onClicked: dialog.pick = parent.modelData
+                            }
+                        }
+                    }
+                    PillButton {   // look an unchecked copy over
+                        visible: dialog.counts.unchecked > 0
+                        readonly property int fee: Progress.preGradeFee(dialog.value)
+                        text: "Pre-grade a copy (" + Progress.format(fee) + ")"
+                        fontSize: 12
+                        accent: "#7fd1b9"
+                        enabledLook: binder.stage.progress.berries >= fee
+                        onClicked: {
+                            var got = binder.stage.preGradeCard(dialog.c);
+                            if (got) dialog.pick = got;
+                        }
+                    }
+                    PillButton {   // prep the chosen copy a level up
+                        visible: !!dialog.cond && dialog.cond.rank > 0
+                        readonly property int fee: Progress.prepFee(dialog.value)
+                        text: dialog.cond ? "Prep it to " + Progress.CONDITIONS[Math.max(0, dialog.cond.rank - 1)].name
+                                            + " (" + Progress.format(fee) + ", " + Math.round(Progress.PREP_SLIP * 100) + "% it slips)" : ""
+                        fontSize: 12
+                        accent: "#ffd56b"
+                        enabledLook: binder.stage.progress.berries >= fee
+                        onClicked: {
+                            var from = dialog.chosen;
+                            if (binder.stage.prepCard(dialog.c, from)) dialog.pick = "";
+                        }
+                    }
+                }
+                Row {   // the odds of the chosen copy, as a bar
                     width: parent.width
                     height: 34
                     Repeater {
-                        model: Progress.GRADE_ODDS.filter(g => g[0] >= 6).concat([[5, Progress.GRADE_ODDS.filter(g => g[0] <= 5).reduce((n, g) => n + g[1], 0)]])
+                        model: dialog.odds.filter(g => g[0] >= 6 && g[1] > 0).concat([[5, dialog.odds.filter(g => g[0] <= 5).reduce((n, g) => n + g[1], 0)]]).filter(g => g[1] > 0)
                         Rectangle {
                             required property var modelData
                             width: dialogCol.width * modelData[1]
@@ -755,11 +831,12 @@ Item {
                             readonly property int fee: dialog.c ? Progress.gradingFee(modelData.id, dialog.value, binder.stage.progress) : 0
                             readonly property real hours: modelData.hours * (dialog.rush ? 0.5 : 1)
                             readonly property bool afford: binder.stage.progress.berries >= fee
-                            width: (dialogCol.width - 20) / 3
-                            height: 118
+                            readonly property real ten: (Progress.serviceOdds(dialog.chosen, modelData.id).filter(g => g[0] === 10)[0] || [10, 0])[1]
+                            width: (dialogCol.width - 30) / 4
+                            height: 156
                             radius: 10
                             color: "#1a2136"
-                            border.color: modelData.id === "express" ? "#ffd56b" : "#2c3550"
+                            border.color: modelData.id === "elite" ? "#ffd700" : modelData.id === "express" ? "#ffd56b" : "#2c3550"
                             Column {
                                 x: 12; y: 10
                                 width: parent.width - 24
@@ -775,6 +852,13 @@ Item {
                                     font.pixelSize: 12
                                 }
                                 Text {
+                                    text: (modelData.bestOf ? "graded twice, the best kept  ·  " : "") + Math.round(parent.parent.ten * 100) + "% a 10"
+                                    width: parent.width
+                                    wrapMode: Text.WordWrap
+                                    color: modelData.bestOf ? "#ffd700" : "#9aa0ad"
+                                    font.pixelSize: 11
+                                }
+                                Text {
                                     text: Progress.format(parent.parent.fee)
                                     color: parent.parent.afford ? "#ffd56b" : "#ff8a7a"
                                     font { pixelSize: 18; weight: Font.Black }
@@ -787,7 +871,7 @@ Item {
                                     onClicked: {
                                         var c = binder.grading;
                                         var sent = false;
-                                        binder.keepScroll(() => sent = binder.stage.gradeCard(c, modelData.id));
+                                        binder.keepScroll(() => sent = binder.stage.gradeCard(c, modelData.id, dialog.chosen));
                                         if (!sent) return;
                                         binder.grading = null;
                                         if (!binder.stage.collection.cards[binder.stage.cardKey(c)] && !(binder.stage.slabsByKey[binder.stage.cardKey(c)] || []).length)

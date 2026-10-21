@@ -2,16 +2,29 @@
 """Download OPTCG set data + card images into the local cache.
 
 Usage: fetch_cards.py [SET_ID]   one set (default OP-17), e.g. OP-05, EB-01, PRB-02
+       fetch_cards.py VINTAGE    the card show's vintage cards (app/vintage.json) and their photos
+       fetch_cards.py PROMO      the card show's promos: every promo card optcgapi lists
+       fetch_cards.py HYPERBATTLE  the card show's Carddass Hyper Battle cards (app/hyperbattle.json):
+                                 their pictures, one zip from the repo's releases
        fetch_cards.py all        every set in app/sets.json (~40 MB each)
        fetch_cards.py list       the known sets and whether they're downloaded
        fetch_cards.py previews   just the pack/box photos of every set (for the set picker)
+       fetch_cards.py background [PLAYMATS_JSON]
+                                 everything still missing, quietly: card backs, pack photos,
+                                 the playmats ([[id, tcgplayer id, page], ...]), then every
+                                 set newest first (English, then Japanese). The desktop
+                                 companion runs this, so picking a set is instant.
 
 Writes $XDG_CACHE_HOME/optcg/<SET_ID>/cards.json, one image per card, and the
 set's pack/box photos; the card backs (shared by all sets) go in assets/.
 Card data comes from the community API at optcgapi.com, product and DON!!
-photos from Bandai / TCGplayer. Card art belongs to Bandai / Eiichiro Oda --
+photos from Bandai / TCGplayer. Japanese sets (sets.json "lang": "jp") come
+from Bandai's Japanese card list, through the punk-records scrape of it or,
+failing that, the official page itself; English names and rarities come from
+the matching English set where it has the card. Card art belongs to Bandai / Eiichiro Oda --
 this is a personal cache, don't redistribute it.
 """
+import fcntl
 import glob
 import json
 import os
@@ -22,15 +35,25 @@ import sys
 import tempfile
 import urllib.parse
 import urllib.request
+import zipfile
 from concurrent.futures import ThreadPoolExecutor
 
 API = "https://optcgapi.com/api/sets/{}/"
+PROMO_API = "https://optcgapi.com/api/allPromos/"
+# pictures of the 2005-06 CCG cards (app/vintage.json): Card Game Collector's scans, else PriceCharting photos
+VINTAGE_SCAN = "https://cgc.chakra42.net/images/one-piece-ccg-2005/{}"
+VINTAGE_IMG = "https://storage.googleapis.com/images.pricecharting.com/{}/1600.jpg"
 # Bandai's own product shots, where a set's product page has them
 OFFICIAL_URL = "https://en.onepiece-cardgame.com/products/boosters/{}/images/others/{}.webp"
 # The official rule manual has flat scans of the card backs
 RULES_PDF = "https://en.onepiece-cardgame.com/pdf/rule_manual.pdf"
 # TCGplayer product photos: sealed packs/boxes and DON!! cards (ids in app/sets.json)
 TCGPLAYER_IMG = "https://tcgplayer-cdn.tcgplayer.com/product/{}_in_1000x1000.jpg"
+# Japanese card lists: the punk-records scrape (JSON), else Bandai's own page;
+# a set's "series" id in sets.json picks it (550101 = OP-01)
+JP_DATA = "https://raw.githubusercontent.com/buhbbl/punk-records/HEAD/japanese/data/{}.json"
+JP_CARDLIST = "https://www.onepiece-cardgame.com/cardlist/?series={}"
+JP_SITE = "https://www.onepiece-cardgame.com/cardlist/"
 UA = {"User-Agent": "Mozilla/5.0 (optcg-pack-widget/1.0)"}
 
 HERE = os.path.dirname(os.path.realpath(__file__))
@@ -80,6 +103,118 @@ def tier_of(card):
     return rarity
 
 
+# punk-records rarity names, and the official list's short ones
+JP_RARITY = {"Leader": "L", "Common": "C", "Uncommon": "UC", "Rare": "R", "SuperRare": "SR",
+             "SecretRare": "SEC", "TreasureRare": "TR", "Special": "SP", "Promo": "R",
+             "L": "L", "C": "C", "UC": "UC", "R": "R", "SR": "SR", "SEC": "SEC", "TR": "TR",
+             "SPカード": "SP", "SP": "SP", "P": "R"}
+JP_COLOR = {"赤": "Red", "緑": "Green", "青": "Blue", "紫": "Purple", "黒": "Black", "黄": "Yellow"}
+# the tag an English name gets for a tier (Tiers.displayName strips it again)
+TIER_TAG = {"AA": "Parallel", "L_AA": "Parallel", "SEC_AA": "Parallel", "MANGA": "Manga",
+            "SUPER": "Super Alternate Art", "SUPER_L": "Super Alternate Art", "SP": "SP", "TR": "TR"}
+
+
+def jp_tier(card_id, rarity, premium=False):
+    """Pull tier of a Japanese printing from its rarity and its parallel number
+    (OP01-120_p2): the first parallel is the alternate art, later ones of an
+    SR / SEC the rarer treatments (manga, super parallel). Premium boosters
+    are reprints that are nearly all parallels, so there an SR's is just one."""
+    m = re.search(r"_p(\d+)$", card_id)
+    if rarity in ("SP", "TR") or not m:
+        return rarity
+    if rarity == "L":
+        return "L_AA"
+    if rarity == "SEC":
+        return "SEC_AA" if m.group(1) == "1" else "MANGA"
+    if rarity == "SR" and m.group(1) != "1" and not premium:
+        return "SUPER"
+    return "AA"
+
+
+def jp_card_list(series):
+    """[{id, rarity, type, color, name, url}] of a Japanese set, from the
+    punk-records JSON, else parsed off Bandai's card list page."""
+    try:
+        raw = json.loads(fetch(JP_DATA.format(series)))
+        out = [{"id": c["id"], "rarity": JP_RARITY.get(c.get("rarity"), "C"),
+                "type": c.get("category") or "", "color": " ".join(c.get("colors") or []),
+                "name": c.get("name") or c["id"],
+                "url": (c.get("img_full_url") or "").split("?")[0]} for c in raw]
+        if out:
+            return out
+    except Exception as e:
+        print(f"punk-records has no {series} ({e}); reading Bandai's card list", flush=True)
+    return parse_jp_cardlist(fetch(JP_CARDLIST.format(series)).decode("utf-8", "replace"))
+
+
+def parse_jp_cardlist(html):
+    out = []
+    for block in re.findall(r'<dl class="modalCol" id="([^"]+)">(.*?)</dl>', html, re.S):
+        card_id, body = block
+        info = re.search(r'<div class="infoCol">\s*<span>([^<]*)</span>\s*\|\s*<span>([^<]*)</span>\s*\|\s*<span>([^<]*)</span>', body)
+        img = re.search(r'data-src="([^"]+)"', body)
+        name = re.search(r'<div class="cardName">([^<]*)</div>', body)
+        color = re.search(r'<div class="color"><h3>[^<]*</h3>([^<]*)</div>', body)
+        if not (info and img):
+            continue
+        out.append({"id": card_id, "rarity": JP_RARITY.get(info.group(2).strip(), "C"),
+                    "type": info.group(3).strip().title(),
+                    "color": " ".join(JP_COLOR.get(c, c) for c in (color.group(1) if color else "").strip().split("/") if c),
+                    "name": name.group(1).strip() if name else card_id,
+                    "url": urllib.parse.urljoin(JP_SITE, img.group(1)).split("?")[0]})
+    return out
+
+
+def english_cards(en_sets):
+    """The English printings, for names and tiers: {image id: card}. The
+    set's English counterparts (sets.json "en") come from the local download
+    if there is one, else optcgapi; any other English set you've downloaded
+    helps too (the SPs reprint older sets' cards)."""
+    out = {}
+    local = [s for s, i in SETS.items() if i.get("lang") != "jp" and s not in en_sets
+             and os.path.exists(os.path.join(ROOT, s, "cards.json"))]
+    for en in list(en_sets) + local:
+        try:
+            with open(os.path.join(ROOT, en, "cards.json")) as f:
+                cards = json.load(f)["cards"]
+        except Exception:
+            if en in local:
+                continue
+            try:
+                cards = [{"id": c["card_image_id"], "name": c["card_name"], "tier": tier_of(c)}
+                         for c in json.loads(fetch(API.format(en)))]
+            except Exception as e:
+                print(f"no English names from {en} ({e})", flush=True)
+                continue
+        for c in cards:
+            if c.get("tier") and c.get("type") != "DON!!":
+                out.setdefault(c["id"], c)
+    return out
+
+
+def jp_cards(set_id, info):
+    """A Japanese set's cards (still to download) in the cards.json format."""
+    en = english_cards(info.get("en", []))
+    base_names = {}
+    for cid, c in en.items():
+        if "_p" not in cid:
+            base_names.setdefault(cid, re.sub(r"\s*\([^)]*\)", "", c["name"]).strip())
+    cards, seen = [], set()
+    for c in jp_card_list(info["series"]):
+        if c["id"] in seen or not c["url"]:
+            continue
+        seen.add(c["id"])
+        match = en.get(c["id"])
+        tier = match["tier"] if match else jp_tier(c["id"], c["rarity"], info.get("family") == "premium")
+        base = base_names.get(c["id"].split("_")[0])
+        name = match["name"] if match else \
+            (base + (f" ({TIER_TAG[tier]})" if tier in TIER_TAG and "_p" in c["id"] else "")) if base else c["name"]
+        cards.append({"id": c["id"], "name": name, "nameJp": c["name"], "rarity": c["rarity"], "tier": tier,
+                      "color": c["color"], "type": c["type"],
+                      "url": c["url"]})
+    return cards
+
+
 def fetch(url):
     with urllib.request.urlopen(urllib.request.Request(url, headers=UA), timeout=30) as r:
         return r.read()
@@ -114,34 +249,101 @@ def download(card, cache):
     return card
 
 
+# bump when cut_out changes: product photos cut out by an older one are redone
+CUT_OUT = "cut2"
+
+
+def cut_out(src, out):
+    """A product photo on white -> the product alone: flood the background away from the
+    corners, twice. A loose flood clears the JPEG noise around the product but runs into
+    a white product (OP-05's pack and box) and eats holes in it; a tight one (pure white
+    only) keeps those but leaves a speckled fringe. Keep what either keeps, the tight
+    one opened first so its thin fringe goes and only solid product is left."""
+    with tempfile.TemporaryDirectory() as tmp:
+        loose, tight, keep = (os.path.join(tmp, n + ".png") for n in ("loose", "tight", "keep"))
+        for fuzz, mask in (("6%", loose), ("1%", tight)):
+            magick(src, "-bordercolor", "white", "-border", "1", "-fuzz", fuzz, "-fill", "none",
+                   "-floodfill", "+0+0", "white", "-shave", "1x1", "-alpha", "extract", mask)
+        magick(tight, "-morphology", "Open", "Disk:6", loose, "-compose", "lighten", "-composite", keep)
+        magick(src, keep, "-alpha", "off", "-compose", "CopyOpacity", "-composite", "-trim", "+repage", out)
+
+
 def fetch_product_images(set_id, info, cache):
-    """Sealed pack and box photos -> <set>/pack.png, <set>/box.png"""
-    for name, official, tcg in (("pack", "product_pack", info["pack"]), ("box", "product_booster", info["box"])):
+    """Sealed pack and box photos -> <set>/pack.png, <set>/box.png. A photo URL in sets.json
+    (packPhoto / boxPhoto: the Japanese products) beats Bandai's English shots, which beat
+    TCGplayer's; <name>.src remembers which one is on disk, so a new one replaces it."""
+    for name, official, tcg in (("pack", "product_pack", info.get("pack")), ("box", "product_booster", info.get("box"))):
         dest = os.path.join(cache, name + ".png")
-        if os.path.exists(dest):
+        photo = info.get(name + "Photo")
+        if photo:
+            url = photo
+        elif "official" in info:
+            url = OFFICIAL_URL.format(info["official"], official)
+        elif tcg:
+            url = TCGPLAYER_IMG.format(tcg)
+        else:
+            continue
+        # Bandai's own shots are cut out already; the rest are photos on white
+        studio = url.startswith(("https://en.onepiece-cardgame.com/", "https://www.onepiece-cardgame.com/"))
+        made = url if studio else url + " " + CUT_OUT
+        src_file = os.path.join(cache, name + ".src")
+        had = open(src_file).read().strip() if os.path.exists(src_file) else None
+        if os.path.exists(dest) and (had == made or (studio and had is None and not photo)):
             continue
         try:
-            if "official" in info:
-                data, studio = fetch(OFFICIAL_URL.format(info["official"], official)), True
-            else:
-                data, studio = fetch(TCGPLAYER_IMG.format(tcg)), False
+            data = fetch(url)
         except Exception as e:
             print(f"no {name} image for {set_id} ({e}); using the drawn one")
             continue
-        raw = os.path.join(cache, name + ".src")
+        # this process's own temp files (the set picker and the background download
+        # can both be at it), swapped in whole
+        raw = os.path.join(cache, f"{name}.{os.getpid()}.src")
+        out = os.path.join(cache, f"{name}.{os.getpid()}.png")
         with open(raw, "wb") as f:
             f.write(data)
         if not shutil.which("magick"):
-            os.replace(raw, dest)   # Qt sniffs the format; untrimmed is fine
+            os.replace(raw, out)   # Qt sniffs the format; untrimmed is fine
         elif studio:
-            magick(raw, "-trim", "+repage", dest)
+            magick(raw, "-trim", "+repage", out)
         else:
-            # product photo on white: flood the background away from the corners
-            magick(raw, "-bordercolor", "white", "-border", "1", "-fuzz", "6%", "-fill", "none",
-                   "-floodfill", "+0+0", "white", "-shave", "1x1", "-trim", "+repage", dest)
+            cut_out(raw, out)
         if os.path.exists(raw):
             os.remove(raw)
+        os.replace(out, dest)
+        with open(src_file, "w") as f:
+            f.write(made + "\n")
         print(name, "image ->", dest)
+
+
+def fix_card_photos(set_id, info, cache):
+    """Cards whose optcgapi picture is wrong (sets.json "cardPhotos": card id -> TCGplayer
+    product): TCGplayer's photo goes over it, under the same file name, so the copies in
+    collections keep their key. <image>.src remembers which one is on disk."""
+    fixes = info.get("cardPhotos") or {}
+    path = os.path.join(cache, "cards.json")
+    if not fixes or not os.path.exists(path):
+        return
+    with open(path) as f:
+        cards = json.load(f)["cards"]
+    for card in cards:
+        tcg = fixes.get(card["id"])
+        if not tcg:
+            continue
+        url, dest = TCGPLAYER_IMG.format(tcg), card["image"]
+        src_file = dest + ".src"
+        if os.path.exists(src_file) and open(src_file).read().strip() == url:
+            continue
+        try:
+            data = fetch(url)
+        except Exception as e:
+            print(f"no photo for {card['id']} ({e})", flush=True)
+            continue
+        with open(dest + ".part", "wb") as f:
+            f.write(data)
+        os.replace(dest + ".part", dest)
+        with open(src_file, "w") as f:
+            f.write(url + "\n")
+        print(card["id"], "photo ->", dest, flush=True)
 
 
 def fetch_don_cards(set_id, info, cache):
@@ -216,15 +418,45 @@ def fetch_card_backs():
         print(("card back -> " if os.path.exists(path) else "couldn't find card back for ") + path)
 
 
+def lock(path, wait_message=None):
+    """An exclusive lock on path (held until the process exits or the file is
+    closed); waits for whoever holds it, saying so. None if wait_message is
+    None and it's taken."""
+    f = open(path, "w")
+    try:
+        fcntl.flock(f, fcntl.LOCK_EX | fcntl.LOCK_NB)
+    except BlockingIOError:
+        if wait_message is None:
+            f.close()
+            return None
+        print(wait_message, flush=True)
+        fcntl.flock(f, fcntl.LOCK_EX)
+    return f
+
+
 def fetch_set(set_id):
     if set_id not in SETS:
         sys.exit(f"unknown set {set_id}; known: {', '.join(SETS)}")
     info = SETS[set_id]
     cache = os.path.join(ROOT, set_id)
     os.makedirs(cache, exist_ok=True)
+    # one download of a set at a time: the pack opener's waits for the background one
+    held = lock(os.path.join(cache, ".lock"), f"{set_id} is downloading in the background, nearly there...")
+    try:
+        fetch_set_locked(set_id, info, cache)
+    finally:
+        held.close()
+
+
+def fetch_set_locked(set_id, info, cache):
     fetch_product_images(set_id, info, cache)
     fetch_card_backs()
     out_path = os.path.join(cache, "cards.json")
+    if info.get("lang") == "jp":
+        cards = jp_cards(set_id, info)
+        if not cards:
+            sys.exit(f"no cards found for {set_id}")
+        return save_set(set_id, info, cache, cards)
     try:
         raw = json.loads(fetch(API.format(set_id)))
     except Exception as e:
@@ -257,7 +489,12 @@ def fetch_set(set_id):
             "type": c.get("card_type") or "",
             "url": c["card_image"],
         })
+    save_set(set_id, info, cache, cards)
 
+
+def save_set(set_id, info, cache, cards):
+    """Download the cards' images and write <set>/cards.json."""
+    out_path = os.path.join(cache, "cards.json")
     print(f"{set_id}: {len(cards)} cards, downloading images to {cache}", flush=True)
     with ThreadPoolExecutor(max_workers=8) as pool:
         done = []
@@ -272,7 +509,170 @@ def fetch_set(set_id):
     out = {"set": set_id, "set_name": info["name"], "cards": cards}
     with open(out_path, "w") as f:
         json.dump(out, f, indent=1)
+    fix_card_photos(set_id, info, cache)
     print("done")
+
+
+def vintage_cards(data, cache):
+    """app/vintage.json's cards as cards.json has them: each Character card's holo
+    foil printing is a card of its own (id + "-F", tier V_FOIL), with the same picture."""
+    out = []
+    for c in data["cards"]:
+        card = {"id": c["id"], "name": c["name"], "rarity": c["rarity"], "tier": c["tier"], "color": "",
+                "type": "Character", "origin": c["set"], "character": c.get("character", ""),
+                "year": data.get("sets", {}).get(c["set"], 0), "image": os.path.join(cache, c["id"] + ".jpg")}
+        out.append(card)
+        if c.get("foil"):
+            out.append(dict(card, id=c["id"] + "-F", tier="V_FOIL", image=os.path.join(cache, c["id"] + "-F.jpg")))
+    return out
+
+
+def fetch_vintage():
+    """The card show's vintage cards: VINTAGE/cards.json from app/vintage.json, and their
+    pictures (the app draws a card face for the few there are none of)."""
+    with open(os.path.join(HERE, "app", "vintage.json")) as f:
+        data = json.load(f)
+    cache = os.path.join(ROOT, "VINTAGE")
+    os.makedirs(cache, exist_ok=True)
+
+    def one(c):
+        dest = os.path.join(cache, c["id"] + ".jpg")
+        if c.get("file"):   # a picture that comes with the app (app/pictures/vintage)
+            src = os.path.join(HERE, "app", c["file"])
+            if not (os.path.exists(dest) and open(src, "rb").read() == open(dest, "rb").read()):
+                shutil.copyfile(src, dest)
+                if os.path.exists(dest[:-4] + "-F.jpg"):
+                    os.remove(dest[:-4] + "-F.jpg")   # the foil copy is made again below
+        url = VINTAGE_SCAN.format(c["scan"]) if c.get("scan") else VINTAGE_IMG.format(c["photo"]) if c.get("photo") else ""
+        if url and not (os.path.exists(dest) and os.path.getsize(dest) > 0):
+            try:
+                img = fetch(url)
+                with open(dest + ".part", "wb") as f:
+                    f.write(img)
+                os.replace(dest + ".part", dest)
+            except Exception as e:
+                print(f"{c['id']}: no picture ({e})", flush=True)
+        foil = os.path.join(cache, c["id"] + "-F.jpg")
+        if c.get("foil") and os.path.exists(dest) and not os.path.exists(foil):
+            shutil.copyfile(dest, foil)   # the same art; the app's foil shader does the rest
+
+    with ThreadPoolExecutor(max_workers=6) as pool:
+        list(pool.map(one, data["cards"]))
+    cards = vintage_cards(data, cache)
+    with open(os.path.join(cache, "cards.json"), "w") as f:
+        json.dump({"set": "VINTAGE", "set_name": "One Piece CCG (2005-06)", "cards": cards}, f, indent=1)
+    have = sum(1 for c in cards if os.path.exists(c["image"]))
+    print(f"VINTAGE: {len(cards)} cards, {have} pictures")
+
+
+# bump when fetch_promos changes what it writes: the background run fetches the promos again
+PROMO_VERSION = 2
+
+
+def fetch_promos():
+    """The card show's promos: PROMO/cards.json and their pictures, named after their
+    (unique) image ids. Promos optcgapi has no picture of are left out (a card show
+    table of drawn stand-ins looks broken)."""
+    cache = os.path.join(ROOT, "PROMO")
+    os.makedirs(cache, exist_ok=True)
+    out_path = os.path.join(cache, "cards.json")
+    try:
+        raw = json.loads(fetch(PROMO_API))
+    except Exception as e:
+        if os.path.exists(out_path):
+            print(f"optcgapi unreachable ({e}); keeping the cached promos")
+            return
+        raise
+    cards, seen = [], set()
+    for c in raw:
+        cid = c["card_image_id"]
+        if cid in seen:
+            continue
+        seen.add(cid)
+        cards.append({"id": cid, "name": c["card_name"], "rarity": c["rarity"], "tier": "PROMO",
+                      "color": c.get("card_color") or "", "type": c.get("card_type") or "",
+                      "url": c.get("card_image") or "",
+                      "image": os.path.join(cache, re.sub(r"[^A-Za-z0-9_.-]", "_", cid) + ".jpg")})
+    print(f"PROMO: {len(cards)} cards, downloading images to {cache}", flush=True)
+
+    def one(card):
+        url, dest = card.pop("url"), card["image"]
+        if url and not (os.path.exists(dest) and os.path.getsize(dest) > 0):
+            try:
+                data = fetch(url)
+                with open(dest + ".part", "wb") as f:
+                    f.write(data)
+                os.replace(dest + ".part", dest)
+            except Exception as e:
+                print(f"{card['id']}: {e}", flush=True)
+        return card
+
+    with ThreadPoolExecutor(max_workers=8) as pool:
+        cards = [c for c in pool.map(one, cards) if os.path.exists(c["image"])]
+    with open(out_path, "w") as f:
+        json.dump({"set": "PROMO", "set_name": "Promotion Cards", "version": PROMO_VERSION, "cards": cards}, f, indent=1)
+    print(f"done: {len(cards)} promos with a picture")
+
+
+def promo_version():
+    """The version of the cached PROMO/cards.json (0: none, or from before versions)."""
+    try:
+        with open(os.path.join(ROOT, "PROMO", "cards.json")) as f:
+            return json.load(f).get("version", 0)
+    except (OSError, ValueError):
+        return 0
+
+
+def hyper_wanted():
+    """The picture version app/hyperbattle.json asks for."""
+    with open(os.path.join(HERE, "app", "hyperbattle.json")) as f:
+        return json.load(f).get("picturesVersion", 1)
+
+
+def hyper_version():
+    """The picture version of the cached HYPERBATTLE/cards.json (0: none)."""
+    try:
+        with open(os.path.join(ROOT, "HYPERBATTLE", "cards.json")) as f:
+            return json.load(f).get("picturesVersion", 0)
+    except (OSError, ValueError):
+        return 0
+
+
+def fetch_hyperbattle():
+    """The card show's Hyper Battle cards: their pictures (a zip published with the repo's
+    releases, app/hyperbattle.json "pictures"), unpacked to HYPERBATTLE/, then cards.json
+    (written last: the app waits for it before the show stocks them)."""
+    with open(os.path.join(HERE, "app", "hyperbattle.json")) as f:
+        data = json.load(f)
+    cache = os.path.join(ROOT, "HYPERBATTLE")
+    os.makedirs(cache, exist_ok=True)
+    version = data.get("picturesVersion", 1)
+    if hyper_version() < version:
+        print(f"HYPERBATTLE: downloading the pictures ({data['pictures']})", flush=True)
+        with tempfile.TemporaryDirectory() as tmp:
+            zpath = os.path.join(tmp, "pictures.zip")
+            with open(zpath, "wb") as f:
+                f.write(fetch(data["pictures"]))
+            with zipfile.ZipFile(zpath) as z:
+                for name in z.namelist():
+                    base = os.path.basename(name)
+                    if not re.fullmatch(r"[A-Za-z0-9_.-]+\.jpg", base):   # only the pictures, flat
+                        continue
+                    with z.open(name) as src, open(os.path.join(cache, base), "wb") as dst:
+                        shutil.copyfileobj(src, dst)
+    years = {s["name"]: s.get("year", 2000) for s in data.get("sets", [])}
+    cards = [{"id": c["id"], "name": c["name"], "rarity": c["rarity"], "tier": c["tier"], "color": "",
+              "type": c.get("type", ""), "origin": c["set"], "year": years.get(c["set"], 2000),
+              "image": os.path.join(cache, c["key"] + ".jpg")} for c in data["cards"]]
+    with open(os.path.join(cache, "cards.json"), "w") as f:
+        json.dump({"set": "HYPERBATTLE", "set_name": "Carddass Hyper Battle (1999-2002)", "picturesVersion": version,
+                   "cards": cards}, f, indent=1)
+    have = sum(1 for c in cards if os.path.exists(c["image"]))
+    print(f"HYPERBATTLE: {len(cards)} cards, {have} pictures")
+
+
+# the card show's sets, outside sets.json (no packs)
+SHOW_SETS = {"VINTAGE": fetch_vintage, "PROMO": fetch_promos, "HYPERBATTLE": fetch_hyperbattle}
 
 
 def official_image(page):
@@ -314,16 +714,70 @@ def fetch_playmat(mat_id, tcg, page):
         except Exception as e:
             print(f"{mat_id}: {src} failed ({e})", flush=True)
             continue
-        with open(dest + ".part", "wb") as f:
+        part = f"{dest}.{os.getpid()}.part"   # the pack opener may be fetching it too
+        with open(part, "wb") as f:
             f.write(data)
-        os.replace(dest + ".part", dest)
+        os.replace(part, dest)
         print("playmat ->", dest)
         return
     print(f"{mat_id}: no picture found")
 
 
+def background(playmats):
+    """Download whatever's missing, gently, newest sets first; skips (exits)
+    if another background run is going."""
+    os.makedirs(ROOT, exist_ok=True)
+    held = lock(os.path.join(ROOT, ".background.lock"))
+    if not held:
+        print("another background download is running")
+        return
+    try:
+        os.nice(10)
+    except OSError:
+        pass
+    try:
+        fetch_card_backs()
+    except Exception as e:
+        print(f"card backs: {e}", flush=True)
+    for set_id, info in SETS.items():
+        cache = os.path.join(ROOT, set_id)
+        os.makedirs(cache, exist_ok=True)
+        try:
+            fetch_product_images(set_id, info, cache)
+            fix_card_photos(set_id, info, cache)   # downloaded sets get the fixes too
+        except Exception as e:
+            print(f"{set_id} photos: {e}", flush=True)
+    for set_id, fetch_show_set in SHOW_SETS.items():   # small, and the card show wants them
+        if set_id == "PROMO" and promo_version() >= PROMO_VERSION:
+            continue
+        if set_id == "HYPERBATTLE" and hyper_version() >= hyper_wanted():
+            continue
+        try:
+            fetch_show_set()
+        except Exception as e:
+            print(f"{set_id}: {e}", flush=True)
+    for mat in playmats:
+        try:
+            fetch_playmat(*[str(x or "") for x in mat[:3]])
+        except (Exception, SystemExit) as e:
+            print(f"playmat {mat}: {e}", flush=True)
+    en = [s for s, i in SETS.items() if i.get("lang") != "jp"]
+    jp = [s for s, i in SETS.items() if i.get("lang") == "jp"]
+    for set_id in en[::-1] + jp[::-1]:
+        if os.path.exists(os.path.join(ROOT, set_id, "cards.json")):
+            continue
+        try:
+            fetch_set(set_id)
+        except (Exception, SystemExit) as e:   # one set failing shouldn't stop the rest
+            print(f"{set_id}: {e}", flush=True)
+    print("background downloads done", flush=True)
+
+
 def main():
     arg = sys.argv[1] if len(sys.argv) > 1 else "OP-17"
+    if arg == "background":
+        background(json.loads(sys.argv[2]) if len(sys.argv) > 2 else [])
+        return
     if arg == "--playmat":   # --playmat <id> <tcgplayer id or ""> <official page or "">
         fetch_playmat(sys.argv[2], sys.argv[3] if len(sys.argv) > 3 else "", sys.argv[4] if len(sys.argv) > 4 else "")
         return
@@ -339,6 +793,8 @@ def main():
     elif arg == "all":
         for set_id in SETS:
             fetch_set(set_id)
+    elif arg in SHOW_SETS:
+        SHOW_SETS[arg]()
     else:
         fetch_set(arg)
 

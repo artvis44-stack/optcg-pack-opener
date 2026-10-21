@@ -8,6 +8,7 @@ Item {
     property string setCode
     property string setName
     property string packImage
+    property int cardCount: 12
     property real time: 0
     property bool tearing: false
     readonly property real seam: 0.09
@@ -62,7 +63,7 @@ Item {
                 y: -pack.height * pack.seam
                 width: pack.width; height: pack.height
                 artSource: pack.artSource; setCode: pack.setCode; setName: pack.setName
-                packImage: pack.packImage
+                packImage: pack.packImage; cardCount: pack.cardCount
                 tilt: Qt.vector2d(pack.tx, pack.ty); time: pack.time
             }
         }
@@ -76,7 +77,7 @@ Item {
             PackFace {
                 width: pack.width; height: pack.height
                 artSource: pack.artSource; setCode: pack.setCode; setName: pack.setName
-                packImage: pack.packImage
+                packImage: pack.packImage; cardCount: pack.cardCount
                 tilt: Qt.vector2d(pack.tx, pack.ty); time: pack.time
             }
         }

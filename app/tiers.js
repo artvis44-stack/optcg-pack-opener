@@ -47,8 +47,67 @@ var info = {
     TR:      { label: "Treasure Rare",          holo: 1.0,  gold: 1.0, rank: 12, color: "#ffe08a" },
     MANGA:   { label: "Manga Rare",             holo: 1.0,  gold: 0.2, rank: 13, color: "#ffffff" },
     SIGNED:  { label: "Gold-Stamped Signature", holo: 1.0,  gold: 1.0, rank: 13, color: "#ffd700" },
-    SUPER:   { label: "Super Alternate Art",    holo: 1.0,  gold: 0.8, rank: 14, color: "#ffd700" }
+    SUPER:   { label: "Super Alternate Art",    holo: 1.0,  gold: 0.8, rank: 14, color: "#ffd700" },
+
+    // never in packs: the card show's promos and vintage cards (the 2005-06 CCG, app/vintage.json)
+    PROMO:   { label: "Promo",                  holo: 0.6,  gold: 0.2, rank: 5,  color: "#7fe0ff" },
+    V_C:     { label: "Vintage",                holo: 0.0,  gold: 0.0, rank: 2,  color: "#d9c39a" },
+    V_FOIL:  { label: "Vintage Foil",           holo: 0.6,  gold: 0.0, rank: 3,  color: "#e8d7b0" },
+    V_SR:    { label: "Vintage Super Rare",     holo: 0.75, gold: 0.1, rank: 7,  color: "#d6a8ff" },
+    V_SILVER:{ label: "Vintage Silver Rare",    holo: 0.85, gold: 0.0, rank: 10, color: "#dfe6ee" },
+    V_GOLD:  { label: "Vintage Gold Rare",      holo: 0.9,  gold: 1.0, rank: 13, color: "#ffd24a" },
+    V_PROMO: { label: "Vintage Promo",          holo: 0.7,  gold: 0.5, rank: 13, color: "#ffb36b" },
+    // Carddass Hyper Battle (Japan, 1999-2002, app/hyperbattle.json)
+    V_HB:        { label: "Hyper Battle",             holo: 0.0,  gold: 0.0, rank: 2,  color: "#f0c890" },
+    V_HB_HOLO:   { label: "Hyper Battle Holo",        holo: 0.85, gold: 0.1, rank: 7,  color: "#9ad8ff" },
+    V_HB_GOLD:   { label: "Hyper Battle Gold Stamp",  holo: 0.5,  gold: 1.0, rank: 10, color: "#ffd24a" },
+    V_HB_SECRET: { label: "Hyper Battle Secret Rare", holo: 1.0,  gold: 0.6, rank: 12, color: "#ff9ad5" },
+    V_HB_PROMO:  { label: "Hyper Battle Promo",       holo: 0.5,  gold: 0.3, rank: 11, color: "#ffb36b" },
+    // a sealed 2005-06 product on a show table (never a card in the collection)
+    SEALED_PACK: { label: "Sealed Booster Pack", holo: 0.3, gold: 0.0, rank: 6, color: "#ffb36b" },
+    SEALED_BOX:  { label: "Sealed Booster Box",  holo: 0.3, gold: 0.0, rank: 9, color: "#ffb36b" }
 };
+
+// the tiers of cards from the card show only (no packs, no set to open)
+var SHOW_ONLY_TIERS = ["PROMO", "V_C", "V_FOIL", "V_SR", "V_SILVER", "V_GOLD", "V_PROMO",
+                       "V_HB", "V_HB_HOLO", "V_HB_GOLD", "V_HB_SECRET", "V_HB_PROMO"];
+
+function isVintage(card) {
+    return !!card && String(card.tier).indexOf("V_") === 0;
+}
+
+// ---- vintage packs (the 2005-06 CCG) ------------------------------------------------
+//
+// A booster was 10 cards: 5 commons, 3 uncommons, a holo foil of a Character card
+// and a rare slot; a box was 12 packs. Retailers' and collectors' odds: a Super
+// Rare (The Quest Begins) or Silver Rare (Passage to the Grand Line) in about 1
+// pack in 12, a Gold Rare in 1 in 48; otherwise the rare slot is a Rare.
+// cards: the vintage cards of one set (each with .rarity, as app/vintage.json);
+// resealed: a pack someone searched and glued shut again (the show's scammers):
+// its rare slot and foil were swapped for an uncommon and a common.
+var VINTAGE_PACK = { commons: 5, uncommons: 3, silverOdds: 1 / 12, goldOdds: 1 / 48, packsPerBox: 12 };
+
+function makeVintagePack(cards, resealed) {
+    var of = function (rarities, foil) {
+        return cards.filter(function (c) { return rarities.indexOf(c.rarity) >= 0 && (c.tier === "V_FOIL") === !!foil; });
+    };
+    var take = function (list, n, out) {
+        var pool = shuffle(list.slice());
+        for (var i = 0; i < n && pool.length; i++) out.push(pool[i % pool.length]);
+        return out;
+    };
+    var commons = of(["Common"]), uncommons = of(["Uncommon"]);
+    var pack = take(commons, VINTAGE_PACK.commons, []);
+    take(uncommons, VINTAGE_PACK.uncommons + (resealed ? 1 : 0), pack);
+    if (resealed) return take(commons, 1, pack);
+    var foils = of(["Common", "Uncommon", "Rare"], true);
+    if (foils.length) pack.push(pick(foils));
+    var r = Math.random();
+    var hit = r < VINTAGE_PACK.goldOdds ? of(["Gold Rare"])
+            : r < VINTAGE_PACK.goldOdds + VINTAGE_PACK.silverOdds ? of(["Silver Rare", "Super Rare"]) : [];
+    pack.push(pick(hit.length ? hit : of(["Rare"])));
+    return pack;
+}
 
 // premium tiers that take the hit slot
 var HIT_TIERS = ["AA", "TEX", "SEC", "L_AA", "SEC_AA", "SP", "TR", "SUPER_L", "SP_GOLD", "MANGA", "SIGNED", "SUPER"];
@@ -79,18 +138,51 @@ var FAMILIES = {
     }
 };
 
+// Japanese boosters (sets.json "lang": "jp"): the same cards (Japanese text),
+// a different product. Packs are 6 cards: commons, an uncommon, and one slot
+// that's a Rare or better in about half the packs (an Uncommon otherwise).
+// A box has ~3-4 SRs, 4 Leaders and only 1-2 hits: the box patterns the JP
+// community tallies are "2 parallels" 25%, "1 parallel" 42%, "1 SEC" 33%,
+// so every box has one. A case (carton) is 12 boxes; premium boosters are
+// 10 packs of 10 a box. No box toppers, no DON!! cards in these packs. All
+// community estimates (toreca-begin, note.com tallies, torecamap): Bandai
+// publishes none.
+var FAMILIES_JP = {
+    main: {
+        packsPerBox: 24, boxes: 12,
+        slots: ["C", "C", "C", "C", "UC", "HIT"],
+        srPerBox: 3.5, leadersPerBox: 4, donPerBox: 0, rPerBox: 7.5, hitsPerBox: [1, 2],
+        fixed:   { AA: 8, SEC: 4, L_AA: 2, SEC_AA: 1, SP: 1 },
+        lottery: { TR: 0.75, MANGA: 0.1, SUPER: 0.1, SUPER_L: 0.1, SP_GOLD: 0.05, PANDA: 0 }
+    },
+    extra: {
+        packsPerBox: 24, boxes: 12,
+        slots: ["C", "C", "C", "C", "C", "HIT"],
+        srPerBox: 3, leadersPerBox: 2, donPerBox: 0, rPerBox: 9, hitsPerBox: [1, 2],
+        fixed:   { AA: 8, SEC: 3, L_AA: 1, SEC_AA: 1, SP: 1 },
+        lottery: { MANGA: 0.1, TR: 0.3 }
+    },
+    premium: {
+        packsPerBox: 10, boxes: 10,
+        slots: ["C", "C", "C", "UC", "UC", "UC", "R", "FOIL", "RARE", "HIT"],
+        srPerBox: 3.5, leadersPerBox: 0, donPerBox: 0, hitsPerBox: [2, 4],
+        fixed:   { AA: 20, TEX: 6, SEC: 10, SEC_AA: 3, L_AA: 2 },
+        lottery: { SP: 1, MANGA: 0.5 }
+    }
+};
+
 // The full config for a set: its family's defaults with the set's overrides
 // (from sets.json) merged in.
 function setConfig(setInfo) {
     var family = (setInfo && setInfo.family) || "main";
-    var fam = FAMILIES[family];
+    var fam = (setInfo && setInfo.lang === "jp" ? FAMILIES_JP : FAMILIES)[family];
     var cfg = {
         family: family,
         era: (setInfo && setInfo.era) || "random",
         packsPerBox: fam.packsPerBox, boxes: fam.boxes, slots: fam.slots,
         fixed: Object.assign({}, fam.fixed), lottery: Object.assign({}, fam.lottery)
     };
-    ["srPerBox", "leadersPerBox", "donPerBox", "goldDonPerBox", "donFront", "hitsPerBox"].forEach(function (k) {
+    ["srPerBox", "leadersPerBox", "donPerBox", "goldDonPerBox", "donFront", "hitsPerBox", "rPerBox", "packsPerBox", "boxes", "slots"].forEach(function (k) {
         cfg[k] = setInfo && setInfo[k] !== undefined ? setInfo[k] : fam[k];
     });
     var over = (setInfo && setInfo.case) || {};
@@ -99,6 +191,9 @@ function setConfig(setInfo) {
         else cfg.lottery[t] = over[t];
     });
     cfg.packsPerCase = cfg.packsPerBox * cfg.boxes;
+    cfg.lang = (setInfo && setInfo.lang) || "en";
+    cfg.boxUsd = setInfo && setInfo.boxUsd;   // the market price of a real sealed box (for reference)
+    cfg.boxJpy = setInfo && setInfo.boxJpy;
     return cfg;
 }
 
@@ -175,23 +270,39 @@ function buildPack(byTier, cfg, spec) {
     if (spec.don) slots.splice(lastC--, 1);           // the DON!! takes a common's place...
     if (spec.leader) slots[lastC] = spec.leader;      // ...and a Leader replaces another
     slots.forEach(function (s) {
-        add(s === "RARE" ? (spec.rare || "R") : s === "HIT" ? (spec.hit || "R") : s);
+        add(s === "RARE" ? (spec.rare || "R") : s === "HIT" ? hitOrRare(byTier, cfg, spec.hit) : s);
     });
     if (spec.don && !cfg.donFront) add(spec.don);     // ...at the very back
     return out;
 }
 
+// The hit slot without a hit: a Rare. Japanese packs have only rPerBox Rares
+// a box there, so the rest of those packs get an Uncommon instead.
+function hitOrRare(byTier, cfg, hit) {
+    if (hit && hit !== "R") return hit;
+    if (cfg.rPerBox === undefined || !byTier.UC) return "R";
+    var open = cfg.packsPerBox - cfg.srPerBox - (cfg.hitsPerBox ? (cfg.hitsPerBox[0] + cfg.hitsPerBox[1]) / 2 : 1);
+    return Math.random() < cfg.rPerBox / Math.max(1, open) ? "R" : "UC";
+}
+
 // srScale / premiumScale: how much likelier a hit is in a pack that may hold
 // one (dead Leader packs push the box's hits into the other packs)
 // boost: { tier: factor } for single tiers (a weekly event)
+// If luck pushes the chances past HIT_CAP together, they're all scaled down
+// alike, so every tier keeps its share (otherwise the rarest ones, rolled last,
+// would never come up).
+var HIT_CAP = 0.95;
 function rollHit(byTier, cfg, srScale, premiumScale, boost) {
-    var r = Math.random();
-    var acc = byTier.SR ? srScale * cfg.srPerBox / cfg.packsPerBox : 0;
-    if (r < acc) return "SR";
-    for (var i = 0; i < HIT_TIERS.length; i++) {
-        if (!byTier[HIT_TIERS[i]]) continue;
-        acc += premiumScale * ((boost && boost[HIT_TIERS[i]]) || 1) * caseAmount(cfg, HIT_TIERS[i]) / cfg.packsPerCase;
-        if (r < acc) return HIT_TIERS[i];
+    var odds = [["SR", byTier.SR ? srScale * cfg.srPerBox / cfg.packsPerBox : 0]];
+    HIT_TIERS.forEach(function (t) {
+        if (byTier[t]) odds.push([t, premiumScale * ((boost && boost[t]) || 1) * caseAmount(cfg, t) / cfg.packsPerCase]);
+    });
+    var total = odds.reduce(function (n, o) { return n + o[1]; }, 0);
+    var scale = total > HIT_CAP ? HIT_CAP / total : 1;
+    var r = Math.random(), acc = 0;
+    for (var i = 0; i < odds.length; i++) {
+        acc += odds[i][1] * scale;
+        if (r < acc) return odds[i][0];
     }
     return "R";
 }
@@ -314,18 +425,10 @@ function godPackName(pack, setInfo) {
 
 // A whole case: { boxes: [boxes][packs][cards], toppers: [one card per box or null] }
 // opts: as for makePack (a case's hits are fixed, so only godBoost counts)
-function makeCase(cards, setInfo, opts) {
-    var cfg = setConfig(setInfo);
-    var byTier = group(cards);
-    var B = cfg.boxes, P = cfg.packsPerBox, b, i;
-    // the "mapped" era places hits in a fixed pattern per set (same every case);
-    // which card lands there is still random
-    var place = cfg.era === "mapped" ? seededRandom((setInfo && setInfo.name) || "") : Math.random;
-    var boxes = [];
-    for (b = 0; b < B; b++) boxes.push({ hits: [], srs: [], leaders: [], dons: [], pandas: 0 });
-
-    // premium hits
-    var hits = [];
+// a case's premium hits into its boxes (each { hits: [] }); place: the random
+// source for the mapped era's fixed pattern
+function dealHits(cfg, byTier, boxes, place) {
+    var B = boxes.length, hits = [];
     HIT_TIERS.forEach(function (t) {
         if (!byTier[t]) return;
         var n = cfg.fixed[t] !== undefined ? Math.round(cfg.fixed[t]) : poisson(cfg.lottery[t] || 0);
@@ -350,6 +453,18 @@ function makeCase(cards, setInfo, opts) {
             }
         }
     }
+}
+
+function makeCase(cards, setInfo, opts) {
+    var cfg = setConfig(setInfo);
+    var byTier = group(cards);
+    var B = cfg.boxes, P = cfg.packsPerBox, b, i;
+    // the "mapped" era places hits in a fixed pattern per set (same every case);
+    // which card lands there is still random
+    var place = cfg.era === "mapped" ? seededRandom((setInfo && setInfo.name) || "") : Math.random;
+    var boxes = [];
+    for (b = 0; b < B; b++) boxes.push({ hits: [], srs: [], leaders: [], dons: [], pandas: 0 });
+    dealHits(cfg, byTier, boxes, place);
 
     // SRs: an even number of copies of each, dealt round-robin
     var srCards = byTier.SR || [];
@@ -419,6 +534,122 @@ function makeCase(cards, setInfo, opts) {
     // box toppers (OP-01/02): one per box, outside the packs
     var toppers = boxes.map(function () { return byTier.TOPPER ? pick(byTier.TOPPER) : null; });
     return { boxes: dealt, toppers: toppers };
+}
+
+// What one box of the set holds, from dealing its hits round a case the way
+// makeCase does, many times over (not from the box you're about to open): for
+// each hit tier the set has, the chance of at least one in a box.
+// godBoost: Progress.packOptions(...).godBoost
+function boxChances(cards, setInfo, godBoost) {
+    var cfg = setConfig(setInfo), byTier = group(cards), B = cfg.boxes, CASES = 2000, seen = {}, hits = [], b, k;
+    for (k = 0; k < CASES; k++) {
+        var boxes = [];
+        for (b = 0; b < B; b++) boxes.push({ hits: [] });
+        dealHits(cfg, byTier, boxes, cfg.era === "mapped" ? seededRandom((setInfo && setInfo.name) || "") : Math.random);
+        boxes.forEach(function (box) {
+            box.hits.filter(function (t, i) { return box.hits.indexOf(t) === i; })
+                    .forEach(function (t) { seen[t] = (seen[t] || 0) + 1; });
+        });
+    }
+    var add = function (t, p) { if (p > 0) hits.push({ tier: t, chance: Math.min(1, p) }); };
+    Object.keys(seen).forEach(function (t) { add(t, seen[t] / (CASES * B)); });
+    if (byTier.DON && byTier.DON_GOLD)
+        add("DON_GOLD", cfg.goldDonPerBox ? 1 : 1 - Math.pow(1 - 1 / B, Math.round(cfg.fixed.DON_GOLD || 0)));
+    hits.sort(function (x, y) { return info[y.tier].rank - info[x.tier].rank; });
+    return {
+        hits: hits,
+        god: 1 - Math.exp(-((godBoost || 1) * godPacksPerCase(setInfo)) / B),
+        packs: cfg.packsPerBox,
+        srs: byTier.SR ? cfg.srPerBox : 0,
+        leaders: byTier.L ? cfg.leadersPerBox : 0,
+        topper: !!byTier.TOPPER
+    };
+}
+
+// What one box holds on average: { tier: cards a box }, from the pack layout and
+// the case budget (lottery hits at their mean). present: the tiers the set has
+// ({ tier: true }); without it every tier the layout and budget name. God packs
+// aren't in it. Progress.boxPrice prices a box from this.
+function boxContents(cfg, present) {
+    var has = function (t) { return present ? !!present[t] : true; };
+    var P = cfg.packsPerBox, B = cfg.boxes, out = {}, hits = 0;
+    var add = function (t, n) { if (n) out[t] = (out[t] || 0) + n; };
+    HIT_TIERS.forEach(function (t) {
+        if (!has(t)) return;
+        var n = caseAmount(cfg, t) / B;
+        add(t, n);
+        hits += n;
+    });
+    var sr = has("SR") ? cfg.srPerBox : 0;
+    add("SR", sr);
+    cfg.slots.forEach(function (s) { if (s !== "HIT") add(s === "RARE" ? "R" : s, P); });
+    var rest = Math.max(0, P - hits - sr);   // hit slots without a hit
+    if (cfg.rPerBox !== undefined && has("UC")) {
+        add("R", Math.min(rest, cfg.rPerBox));
+        add("UC", Math.max(0, rest - cfg.rPerBox));
+    } else {
+        add("R", rest);
+    }
+    var leaders = has("L") ? cfg.leadersPerBox : 0;
+    add("L", leaders);
+    add("C", -leaders);
+    if (has("DON")) {
+        var dons = cfg.donPerBox || 0;
+        var gold = !has("DON_GOLD") ? 0 : cfg.goldDonPerBox ? cfg.goldDonPerBox : (cfg.fixed.DON_GOLD || 0) / B;
+        var sp = has("DON_SP") ? (cfg.lottery.DON_SP || cfg.fixed.DON_SP || 0) / B : 0;
+        add("DON_GOLD", gold);
+        add("DON_SP", sp);
+        add("DON", Math.max(0, dons - gold - sp));
+        if (!cfg.donFront) add("C", -dons);   // a DON!! takes a common's place
+    }
+    var panda = has("PANDA") ? (cfg.fixed.PANDA || 0) / B : 0;
+    add("PANDA", panda);
+    add("R", -panda);
+    if (present && present.TOPPER) add("TOPPER", 1);
+    Object.keys(out).forEach(function (t) { if (out[t] <= 0) delete out[t]; });
+    return out;
+}
+
+// ---- Carddass Hyper Battle products ---------------------------------------------------
+//
+// Stages and Grand Line Compilations were sold only from Carddass vending machines: a
+// pack of 4 random cards for 100 yen (no boxes). Bandai published no odds; here a pack
+// holds a holo about 1 time in 3 (6 holos in a set of ~42), and the 7th Stage's secret
+// rare turns up about 1 pack in 40. A Grand Box was a ready-made deck, one of 3 variants,
+// each built round a gold-stamped card (Grand Box DX: two decks). The deck lists aren't
+// recorded, so a variant here is its gold card, a holo and a third of the set's other cards,
+// with repeats up to the deck's size. A Jump Festa pack is that year's event promos.
+// A resealed pack (a show's scammer) has had its holo swapped for a common.
+var HYPER_PACK = { cards: 4, holoOdds: 1 / 3, secretOdds: 1 / 40, show: 12 };
+
+// cards: the set's cards (app/hyperbattle.json's, with .rarity). -> [card]
+function makeHyperPack(cards, resealed) {
+    var of = function (r) { return cards.filter(function (c) { return c.rarity === r; }); };
+    var commons = of("common"), holos = of("holo"), secrets = of("secret");
+    var pack = shuffle(commons.slice()).slice(0, HYPER_PACK.cards);
+    while (pack.length < HYPER_PACK.cards && commons.length) pack.push(pick(commons));
+    var r = Math.random(), secret = secrets.length ? HYPER_PACK.secretOdds : 0;
+    if (!resealed && r < secret) pack[pack.length - 1] = pick(secrets);
+    else if (!resealed && holos.length && r < secret + HYPER_PACK.holoOdds) pack[pack.length - 1] = pick(holos);
+    return pack;
+}
+
+// a Grand Box: one of its deck variants. -> { show: [up to HYPER_PACK.show cards, best last], rest: [the rest of the deck] }
+function makeGrandBox(cards, deckSize) {
+    var golds = cards.filter(function (c) { return c.rarity === "gold"; });
+    var holos = cards.filter(function (c) { return c.rarity === "holo"; });
+    var others = cards.filter(function (c) { return c.rarity === "common"; });
+    var variants = Math.max(1, golds.length || 3), v = Math.floor(Math.random() * variants);
+    var mine = others.filter(function (c, i) { return i % variants === v; });
+    var unique = shuffle(mine.slice());
+    var deck = [];
+    if (holos.length) deck.push(holos[v % holos.length]);
+    if (golds.length) deck.push(golds[v]);
+    var size = Math.max(deck.length, deckSize || 32), k = 0;
+    while (deck.length < size && unique.length) deck.unshift(unique[k++ % unique.length]);
+    // the reveal: the deck's best few (its holo and gold card last); the rest goes straight to the binder
+    var showN = Math.min(HYPER_PACK.show, deck.length);
+    return { show: deck.slice(deck.length - showN), rest: deck.slice(0, deck.length - showN) };
 }
 
 // highest-ranked card in a pack

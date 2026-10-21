@@ -14,7 +14,7 @@ Boosters EB-01 to EB-03 and the Premium Boosters PRB-01 / PRB-02.
 | Click a card (summary) | inspect it (move the mouse to tilt it) |
 | R | open another pack (summary) |
 | X | switch between single packs and box mode |
-| S | choose a set (sets not downloaded yet are fetched in the app, ~40 MB each) |
+| S | the card shop: pick a box off the shelf (box mode) or a single pack from the counter (sets not downloaded yet are fetched in the app, ~40 MB each) |
 | A | box: open all remaining packs |
 | B | binder: your collection (from the sealed pack or the summary) |
 | O | binder: show owned only / the whole set |
@@ -24,10 +24,13 @@ Boosters EB-01 to EB-03 and the Premium Boosters PRB-01 / PRB-02.
 | Y | sync: sign in to your sync server (or create an account) to share your saves between computers |
 | M | sound on / off (remembered) |
 | P | the Port: ship and crew, card shop, sealed products, cosmetics (← → switch tabs) |
-| G | the Vault: your graded slabs (filter by set and grade), cards out for grading, the set registry |
+| G | the Vault: your graded slabs (filter by set and grade), sets and their display cases, cards out for grading, the set registry, fakes from card shows |
+| K | the card show (every day, one visit a day) |
 | F | in the binder: filters (rarity, card type, colour, owned / missing / duplicates / graded); there's also a search box and sorting by rarity, number, value or copies |
 | C | box mode: buy the rest of the case (15% off) |
+| U | Mac: check for an update, or install the one that's out |
 | Esc / right-click | close |
+| click a wanted poster / banner | dismiss it (right-click, or "Clear all", dismisses the rest too) |
 
 ## Files
 
@@ -39,8 +42,11 @@ The app is split into a platform-independent part (`app/`) and a thin host.
   `run()`, `appPath()`, `startShowcase()`. A port (e.g. macOS with PySide6) provides these and the windows.
 - `showcase.qml`: the desktop showcase window (Linux); `app/ShowcaseCard.qml` is the shared card
 - `app/sets.json`: every booster set: product family (main / extra / premium), hit-mapping era,
-  TCGplayer ids of its pack/box photos and DON!! cards, and the per-set rates the research found.
-- `app/SetPicker.qml`: the set picker
+  TCGplayer ids of its pack/box photos and DON!! cards, the per-set rates the research found, and
+  the market price of a sealed box (`boxUsd`, or `boxJpy` for Japanese sets; October 2026:
+  TCGplayer / eBay medians for English, Japanese shop and resale prices). Japanese sets (`-JP`,
+  `"lang": "jp"`) also name their Bandai card-list series and their English counterparts (`en`).
+- `app/SetPicker.qml`: the card shop where you pick a set: boxes on the shelves, single packs on the counter (English and Japanese tabs)
 - `app/Stage.qml`: the flow (pack → reveal → summary, box mode), layout and effects
 - `app/PortView.qml`: the Port (ship, crew, shop, grading, sealed, cosmetics; the rules are in `app/progress.js`)
 - `app/Sounds.qml`, `app/sounds/`: sound effects (tearing, card flips, a charge-up before big hits, chimes
@@ -50,23 +56,56 @@ The app is split into a platform-independent part (`app/`) and a thin host.
   `OPTCG_MUTE=1` starts muted
 - `app/Pack.qml`, `app/PackFace.qml`: the booster wrapper (official photo, or the drawn fallback) and the tear animation
 - `app/BoxView.qml`: box mode (the sealed display box, the grid of 24 packs, the box summary)
+- `app/CardShow.qml`, `app/StallTable.qml`: the daily card show (the hall map, a vendor's table, checking and haggling, the recap)
+- `app/vintage.json`, `app/DrawnFace.qml`: the 2005-06 CCG's cards (list, prices, pictures, sealed prices), and the drawn face of a card or sealed product with no picture
+- `app/hyperbattle.json`: Carddass Hyper Battle's cards, sets and sealed products (its pictures: a release asset)
+- `app/collections.js`, `app/SetsView.qml`, `app/DisplayCase.qml`: the collections to complete with graded cards, the vault's Sets tab, and the display cases saved sets go in
 - `app/Binder.qml`: the collection view (owned cards first with counts, missing ones faded)
 - `app/Card.qml`, `app/CardBack.qml`: the flipping, tilting card (Leaders get the red back), plus the drawn fallback back
 - `app/tiers.js`: rarity tiers, pack layouts and case budgets per product family, and the pack / case generators
 - `app/shaders/*.frag`: the holo foil, pack foil and god-ray shaders. Run `./build-shaders.sh` after editing them.
-- `fetch_cards.py SET | all | list | previews`: downloads a set's data and images from optcgapi.com into
-  `~/.cache/optcg/<SET>/` (the app runs it itself when you pick a new set). It also fetches the
-  pack and box photos (Bandai's for OP-17, TCGplayer's for the rest, background removed), the
+- `fetch_cards.py SET | all | list | previews | background | VINTAGE | PROMO | HYPERBATTLE`: downloads a set's data and images from
+  optcgapi.com into `~/.cache/optcg/<SET>/`. You don't need to run it: `background` fetches
+  everything that's missing (card backs, every set's pack photos, the card show's vintage cards,
+  promos and Hyper Battle cards (`VINTAGE`, `PROMO`, `HYPERBATTLE`), the playmats, then every set,
+  newest first, English then Japanese, at low priority), and the desktop companion runs it a
+  couple of minutes after you log in and every 6 hours after, the pack opener 20 seconds after it
+  opens; so picking a set is instant. Only one runs at a time, and a set is never downloaded twice
+  at once (picking one that's downloading just waits for it). All sets together are about 2 GB. It also fetches the
+  pack and box photos (Bandai's for OP-17, TCGplayer's for the rest, background removed; the
+  Japanese sets get the Japanese products, Bandai Japan's shots and PriceCharting's), the
   set's booster DON!! cards (TCGplayer scans) and the blue deck, red Leader and DON!! card backs
   (`assets/back*.png`, from the official rule-manual PDF). Needs `poppler` and `imagemagick` for
   the photos and backs; without them the widget falls back to drawn versions. If optcgapi is
-  unreachable, the cached card list is reused.
+  unreachable, the cached card list is reused. Japanese sets come from Bandai's Japanese card
+  list (via the [punk-records](https://github.com/buhbbl/punk-records) scrape, or the official
+  page when that doesn't have the set yet), with Japanese card images; names and rarities come
+  from the English set where it has the same printing (otherwise the Japanese name is kept).
+
+## Japanese sets
+
+Every Japanese booster up to OP-17 (OP-01–OP-17, EB-01–EB-04, PRB-01/02), on the picker's
+Japanese tab. They open like the real product: 6-card packs (4 commons, an uncommon and an
+"R or better" slot), 24 a box, 12 boxes a case, with ~3.5 SRs and 4 Leaders a box and just
+1–2 hits (every box has an alt art or a SEC: 2 alt arts 25%, 1 alt art 42%, a SEC 33%); a
+case has ~4 SECs, 8 alt arts, 2 Leader parallels and an SP, a manga rare 1 case in 10. Premium
+boosters are 10 packs of 10. No DON!! cards or box toppers. Bandai publishes no odds, so these
+are the Japanese community's box tallies. Japanese cards are valued at half their English
+counterpart's market price (there's no public Japanese price list); the pack photos are the
+English product's, marked JP.
 - `open-pack.sh [box]`: the toggle launcher (fetches data on the first run)
 
 ## Progression: berries, bounties and focus
 
-Packs and boxes cost berries (฿): 500 a pack (800 for premium boosters), a box 5% off, the rest
-of a case 15% off. You earn them by:
+Packs and boxes cost berries (฿), priced from what's inside: a box costs what its cards are worth
+at today's market prices, leaving out the chase cards (Treasure Rares, Manga Rares, Super parallels,
+Gold/Silver SPs, gold-signature cards, god packs), plus 10%. So a box without a chase card comes
+back a little under break-even (about 91%), and the chase cards are where the money is: on average
+a box always makes money (about 105–150% back, depending on the set), and a bit under half of all
+boxes turn a profit. Main-set boxes come to about ฿11,000–15,000, premium boosters about ฿30,000,
+Japanese boxes about ฿4,000–7,000, and they move with the market. A pack is a 24th of the box plus 5%,
+the rest of a case 15% off. The knob is `BOX_VALUE_MARKUP` in `app/progress.js` (and
+`Tiers.boxContents` for what a box holds). You earn them by:
 
 - **being at your computer**: while you're active (idle time doesn't count; Hyprland's idle
   detection on Linux, the system idle timer on macOS) you earn 4 ฿ a minute plus 2 × √(collection
@@ -110,25 +149,96 @@ there are wanted posters for them
 - **Ship and crew.** Upgrade from a rowboat to the Going Merry and the Thousand Sunny (each about 5×
   the last, up to ฿60M): more passive income, free packs faster and more of them. Recruit the
   Straw Hats, each with a perk: Zoro doubles focus berries, Nami +25% income, Usopp better hit odds
-  in single packs, Sanji cheaper packs, Chopper saves a streak that missed one day, Robin tells you
-  how good a sealed pack is, Franky cheaper boxes and cases, Brook +10% when selling, Jinbe a fourth
+  in single packs, Sanji cheaper packs, Chopper saves a streak that missed one day, Robin knows
+  the vintage market (her notes, from the Port or at the card show, price every vintage card and
+  sealed product, raw and graded; she won't appraise a listing for you at the show), Franky cheaper boxes and cases, Brook +10% when selling, Jinbe a fourth
   daily bounty, Luffy (Gear 5) god packs twice as likely.
-- **Card shop.** Eight deals a day from your downloaded sets at market price + 10% (once each), and
-  any card can be ordered from the binder (click it) at + 50%.
-- **Grading.** In the binder, click a card you own, "Grade a copy…": pick a service (Value 24 h,
-  Standard 6 h, Express 30 min; the fee grows with the card's value), the odds are shown. It comes
-  back in a slab with a grade from 1 to 10 (8% get a 10): a 10 is worth 4× the card, a 9 1.6×, an
-  8 1.1×, lower less. Slabs live in the Vault (G): real-looking slabs with your label style, filters
-  by set and grade, sell them or put them on your desktop. Graded cards still count as owned in the
-  binder, with a grade badge.
+- **Card shop.** Eight deals a day from your downloaded sets at market price + 10% (once each), random
+  each day; they can be cards you already have, and each deal says how many you own. You can't
+  order cards from the binder: the shop and the card show are the only places to buy cards.
+- **The card show** (K, or the Port's card shop tab). Every day, one visit a show. You walk in to a map of the hall: fifteen stalls (about 290
+  cards, slabs and sealed products), honest or not, all looking alike from the aisle. Click one to walk
+  over to its table: everything it has (sealed product, slabs, raw cards) laid out big in one grid,
+  with a price sticker and its name under each. Once you walk in, the app shows no prices at
+  all (no binder, vault, port or wanted board, and the desktop showcase hides its price) until you
+  leave: you have to know the market. Vendors are honest dealers, bargain tables, premium dealers,
+  vintage specialists or scammers, and you only find out which after you leave.
+  - **Checking.** Pick something up and check it, twenty checks a visit: a raw card under the loupe,
+  under the light, its back, its stock, its corners and edges (its real condition: a scammer's "pack
+  fresh" never is); a slab's label, its cert (looked up), its case, the card inside; a sealed
+  product's crimp or shrink wrap, its print, its weight. A scammer's stock is about half fakes, and a
+  fake is crude, decent or good: it gives itself away in three, two or one of its checks and looks
+  fine in the rest (a good one looks almost right on the table). A real card sometimes has an innocent
+  quirk that can look suspicious. You can ask the vendor about something once: honest dealers mostly
+  give a straight answer, scammers mostly don't (sometimes they lie convincingly), and they get pushy
+  if you inspect too much at their stall.
+  - **Vintage and promos.** Promotion cards (optcgapi's list, the ones with a picture) and the
+  2005-06 English One Piece CCG (The Quest Begins, Passage to the Grand Line and six promos,
+  `app/vintage.json`) are only sold here. Two vintage specialists a show, and now and then a
+  scammer, sell nothing but vintage: singles, slabs, and often a sealed 2005-06 booster pack or box.
+  Sealed product goes to the Port's sealed products, gains value, and opens a pack at a time (ten
+  cards: five commons, three uncommons, a foil and a rare slot; a Super or Silver Rare in about one
+  pack in twelve, a Gold Rare in one in forty-eight); a scammer's may be resealed, its hits taken
+  out. Some shows have a grail, a $1,000+ promo or vintage card. Vintage cards show the 2005 card
+  back, and their pictures are Card Game Collector scans, cleaned-up photos (`app/pictures/vintage/`)
+  or PriceCharting photos; cards there's no good picture of are left out for now. The vault's sets
+  have vintage and promo lists (the Gold and Silver Rares, the 2005 promos, every P-001 Luffy, a
+  vintage Straw Hat crew), and the wanted board has Vintage Collector, First Edition, Promo Hunter
+  and Holy Grail.
+  - **Carddass Hyper Battle** (Japan, 1999-2002, `app/hyperbattle.json`): Bandai's first One Piece
+  card game, 813 cards over sixteen sets and the promos. A Carddass specialist (and now and then a
+  scammer) sells its singles and slabs, and its sealed products: vending packs (Stages and Grand Line
+  Compilations were only ever sold from Carddass machines, four cards for 100 yen: a holo in about one
+  pack in three), Grand Boxes (a ready-made deck built round a gold-stamped card: the best twelve
+  revealed, the rest straight to the binder) and the Jump Festa limited packs. Its pictures (one zip,
+  about 60 MB) come from the repo's `v1.16.0-hb-pictures` release, downloaded once in the background,
+  not with every update. Every set has a collection to complete, and the wanted board has Rookie (the
+  1999 Luffy, C01) and Carddass Kid (ten Hyper Battle packs).
+  - You can make one offer per item (5, 10 or 20% off); scammers say yes suspiciously easily. When
+  you leave, the recap shows what you paid against what it was really worth, and what kind of fake
+  you got. Fakes go to the vault's Fakes tab, worth nothing: keep them or destroy them. The rules and
+  the knobs (`SHOW_VENDORS`, `SHOW_CHECKS`, `SHOW_FAKE_GRADES`, `SHOW_SEALED`...) are in
+  `app/progress.js`, the screens in `app/CardShow.qml` and `app/StallTable.qml`.
+- **Grading.** In the binder, click a card you own, "Grade / pre-grade…": pick a copy and a service
+  (Value 24 h, Standard 6 h, Express 30 min, Elite 3 days; the fee grows with the card's value), the
+  odds are shown. It comes back in a slab with a grade from 1 to 10: a 10 is worth 4× the card, a 9
+  1.6×, an 8 1.1×, lower less. Slabs live in the Vault (G): real-looking slabs with your label style,
+  filters by set and grade, sell them or put them on your desktop. Graded cards still count as owned
+  in the binder, with a grade badge.
+  - **Condition.** Every copy starts unchecked (8% get a 10, like before). A pre-grade (2% of the
+    card's value, at least ฿100) shows one copy's condition: Pristine (10% of copies, 30% get a 10),
+    Clean (30%, 11%), Decent (35%, 4%), Worn (18%, 1%) or Damaged (7%, none). Selling takes the
+    unchecked copies first, then the worst.
+  - **Prep** (12%, at least ฿500) moves a copy a condition up; 5% of the time it slips a level down.
+  - **Elite** (35%, at least ฿20,000) grades the card twice and keeps the better grade: a Pristine
+    copy gets a 10 about half the time.
+  - **Review** (in the Vault; 20% of the slab's value, at least ฿2,000): the grade goes up one or
+    stays, never down, once per slab. The chance depends on the copy's condition (Pristine 35%,
+    Clean 15%, Decent 6%, Worn 2%; 12% for unchecked copies and slabs from before conditions).
+  - **Crack** a slab open (free) to grade the card again: it comes back raw in its condition, a level
+    worse 25% of the time. Slabs from before conditions come back Pristine / Clean / Decent for a
+    10 / 9 / 8, and unchecked, with no wear, for a 7 or lower.
+  - **Sets** (the Vault's Sets tab): collections to complete with graded cards, any grade. Per set:
+    its SPs (EB-03's nine heroines...), Manga Rares, Alt Art Leaders, Secret Rares and the master set
+    (every card). Themes: the Straw Hat Crew, the Four Emperors and the Admirals (an alt art or better
+    of each), Wanted Posters, Treasure Rares, Gold & Silver SPs. Character master sets (every chase
+    version of Luffy, Zoro, Nami, Sanji, Robin, Shanks, Ace, Law, Yamato, Boa Hancock), and every Manga
+    Rare. A card's English or Japanese printing fills its slot. Save a complete one and its slabs go
+    in a display case (frame and velvet by kind; gold for a Gem Set, every slab a 10): they're locked
+    there, the set is worth 25% more than its slabs (50% for a Gem Set), and the first time you save
+    it you get 10% of its value (20% for a Gem Set) and a wanted poster. A saved set is a collectable:
+    it can't be sold, and its bonus only counts toward your passive income (not the collection-worth
+    posters). Break the set to get the slabs back (the bonus goes).
 - **Sealed products.** Buy boxes and cases and hold them: they gain value every week (older sets
   faster, up to about 2.3× a year) and count toward your collection's value. Sell them for what
-  they're worth, or open them: their boxes wait, prepaid, in that set's box mode.
+  they're worth, or open them: their boxes wait, prepaid, in that set's box mode. Buying and selling
+  them doesn't count toward the berries-spent and berries-earned posters.
 - **Cosmetics.** Real One Piece Card Game playmats as the pack opener's background (the official
   Limited Edition Vol.1-5, the Flame-Flame Fruit Coliseum Edition, the 2024 / 2025 Regional prize
   mats), plain colour backdrops, and labels for your desktop slab. Playmat pictures are downloaded
   by `fetch_cards.py --playmat` (TCGplayer's product photo, or the official product page) into
-  `~/.cache/optcg/playmats/` the first time they're shown.
+  `~/.cache/optcg/playmats/` the first time they're shown; Limited Edition Vol.2, 3 and 5 come with
+  the app (`app/pictures/playmats/`).
 
 The crew's portraits and the ship pictures are art from cards in your downloaded sets (each Straw
 Hat's best card; the Thousand Sunny is the OP09-080 Stage card), so download more sets for more of
@@ -211,8 +321,10 @@ and `~/Library/Application Support/optcg`.
 **Updates install themselves:** `install.sh` adds a login item that runs `mac/update.py` at login
 and every 6 hours. It checks the latest GitHub release, downloads its `optcg.bundle`, fast-forwards
 the checkout, refreshes the Python packages if needed, restarts the desktop showcase and shows a
-notification (log: `~/Library/Logs/optcg-update.log`). Double-click `mac/Update OPTCG.command` in
-Finder to check right away. If the repo is private, put a GitHub token in
+notification (log: `~/Library/Logs/optcg-update.log`). To update right away, use the button at the
+end of the pack opener's top bar (or press U): it checks a few seconds after the opener opens, says
+"update to vX (U)" when there's one, installs it, and the next time you open the pack opener it's
+the new version. Double-click `mac/Update OPTCG.command` in Finder works too. If the repo is private, put a GitHub token in
 `~/Library/Application Support/optcg/github-token`.
 
 Publishing a release from here: `tools/release.sh v1.3.0 "what changed"`.

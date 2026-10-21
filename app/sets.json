@@ -6,6 +6,7 @@
   "confidence": "estimated",
   "pack": 450085,
   "box": 450086,
+  "boxUsd": 1400,
   "dons": [],
   "case": {
    "SEC": 4
@@ -19,6 +20,7 @@
   "confidence": "estimated",
   "pack": 455865,
   "box": 455866,
+  "boxUsd": 556,
   "dons": [],
   "note": "Box toppers 1 per box."
  },
@@ -29,6 +31,7 @@
   "confidence": "estimated",
   "pack": 477175,
   "box": 477176,
+  "boxUsd": 554,
   "dons": []
  },
  "OP-04": {
@@ -38,6 +41,7 @@
   "confidence": "estimated",
   "pack": 485832,
   "box": 485833,
+  "boxUsd": 496,
   "dons": []
  },
  "OP-05": {
@@ -47,6 +51,7 @@
   "confidence": "estimated",
   "pack": 498733,
   "box": 498734,
+  "boxUsd": 950,
   "dons": [
    [
     529792,
@@ -66,6 +71,7 @@
   "confidence": "estimated",
   "pack": 515077,
   "box": 515080,
+  "boxUsd": 381,
   "dons": []
  },
  "OP-07": {
@@ -75,6 +81,7 @@
   "confidence": "estimated",
   "pack": 532104,
   "box": 532106,
+  "boxUsd": 277,
   "dons": [
    [
     555894,
@@ -90,6 +97,7 @@
   "confidence": "rough",
   "pack": 521160,
   "box": 521161,
+  "boxUsd": 875,
   "dons": []
  },
  "OP-08": {
@@ -99,6 +107,7 @@
   "confidence": "estimated",
   "pack": 542502,
   "box": 542504,
+  "boxUsd": 253,
   "dons": [
    [
     577568,
@@ -114,6 +123,7 @@
   "confidence": "estimated",
   "pack": 563833,
   "box": 563834,
+  "boxUsd": 617,
   "dons": [
    [
     604246,
@@ -133,6 +143,7 @@
   "confidence": "estimated",
   "pack": 586670,
   "box": 586671,
+  "boxUsd": 250,
   "dons": [
    [
     624357,
@@ -148,6 +159,7 @@
   "confidence": "estimated",
   "pack": 620179,
   "box": 620180,
+  "boxUsd": 566,
   "dons": [
    [
     636742,
@@ -163,6 +175,7 @@
   "confidence": "rough",
   "pack": 594068,
   "box": 594069,
+  "boxUsd": 818,
   "dons": []
  },
  "OP-12": {
@@ -172,6 +185,7 @@
   "confidence": "estimated",
   "pack": 628345,
   "box": 628346,
+  "boxUsd": 290,
   "dons": [
    [
     646574,
@@ -188,6 +202,7 @@
   "confidence": "rough",
   "pack": 545398,
   "box": 545399,
+  "boxUsd": 915,
   "dons": [
    [
     593820,
@@ -484,6 +499,12 @@
   "confidence": "rough",
   "pack": 628451,
   "box": 628452,
+  "boxUsd": 378,
+  "cardPhotos": {
+   "OP09-057_r2": 653834,
+   "OP09-020_r2": 653833,
+   "OP09-078_p1": 653835
+  },
   "dons": [
    [
     655513,
@@ -780,6 +801,7 @@
   "confidence": "estimated",
   "pack": 628351,
   "box": 628352,
+  "boxUsd": 439,
   "dons": [
    [
     660744,
@@ -803,6 +825,7 @@
   "confidence": "estimated",
   "pack": 666577,
   "box": 665598,
+  "boxUsd": 270,
   "dons": [
    [
     672188,
@@ -834,6 +857,7 @@
   "confidence": "rough",
   "pack": 666727,
   "box": 666891,
+  "boxUsd": 324,
   "dons": [
    [
     677566,
@@ -879,6 +903,7 @@
   "confidence": "documented",
   "pack": 682056,
   "box": 682057,
+  "boxUsd": 256,
   "dons": [
    [
     686650,
@@ -910,6 +935,7 @@
   "confidence": "documented",
   "pack": 689341,
   "box": 689336,
+  "boxUsd": 226,
   "dons": [
    [
     698313,
@@ -942,6 +968,7 @@
   "confidence": "documented",
   "pack": 704756,
   "box": 704752,
+  "boxUsd": 307,
   "dons": [
    [
     712747,
@@ -1007,5 +1034,335 @@
    "SUPER": 0.15
   },
   "note": "TCGTalk OP17 case mapping data (1,000+ packs); no fixed hit mapping."
+ },
+ "OP-01-JP": {
+  "name": "Romance Dawn",
+  "nameJp": "ROMANCE DAWN",
+  "lang": "jp",
+  "series": "550101",
+  "en": ["OP-01"],
+  "family": "main",
+  "era": "random",
+  "confidence": "estimated",
+  "packPhoto": "https://www.onepiece-cardgame.com/renewal/images/products/boosters/op01/img_item01.webp",
+  "boxPhoto": "https://storage.googleapis.com/images.pricecharting.com/wl7vxhro2sdriy4y/1600.jpg",
+  "boxJpy": 43000,
+  "dons": []
+ },
+ "OP-02-JP": {
+  "name": "Paramount War",
+  "nameJp": "頂上決戦",
+  "lang": "jp",
+  "series": "550102",
+  "en": ["OP-02"],
+  "family": "main",
+  "era": "random",
+  "confidence": "estimated",
+  "packPhoto": "https://www.onepiece-cardgame.com/renewal/images/products/boosters/op02/img_item01.webp",
+  "boxPhoto": "https://storage.googleapis.com/images.pricecharting.com/f3j6mehknpaqxc4f/1600.jpg",
+  "boxJpy": 24000,
+  "dons": []
+ },
+ "OP-03-JP": {
+  "name": "Pillars of Strength",
+  "nameJp": "強大な敵",
+  "lang": "jp",
+  "series": "550103",
+  "en": ["OP-03"],
+  "family": "main",
+  "era": "random",
+  "confidence": "estimated",
+  "packPhoto": "https://www.onepiece-cardgame.com/renewal/images/products/boosters/op03/img_item01.webp",
+  "boxPhoto": "https://storage.googleapis.com/images.pricecharting.com/esbbe7bears4v6eb/1600.jpg",
+  "boxJpy": 19000,
+  "dons": []
+ },
+ "OP-04-JP": {
+  "name": "Kingdoms of Intrigue",
+  "nameJp": "謀略の王国",
+  "lang": "jp",
+  "series": "550104",
+  "en": ["OP-04"],
+  "family": "main",
+  "era": "random",
+  "confidence": "estimated",
+  "packPhoto": "https://www.onepiece-cardgame.com/renewal/images/products/boosters/op04/img_item01.webp",
+  "boxPhoto": "https://storage.googleapis.com/images.pricecharting.com/eyrh6mltawob46dg/1600.jpg",
+  "boxJpy": 22000,
+  "dons": []
+ },
+ "OP-05-JP": {
+  "name": "Awakening of the New Era",
+  "nameJp": "新時代の主役",
+  "lang": "jp",
+  "series": "550105",
+  "en": ["OP-05"],
+  "family": "main",
+  "era": "random",
+  "confidence": "estimated",
+  "packPhoto": "https://www.onepiece-cardgame.com/renewal/images/products/boosters/op05/img_item01.webp",
+  "boxPhoto": "https://storage.googleapis.com/images.pricecharting.com/yptg4y67336dgduw/1600.jpg",
+  "boxJpy": 26000,
+  "dons": []
+ },
+ "OP-06-JP": {
+  "name": "Wings of the Captain",
+  "nameJp": "双璧の覇者",
+  "lang": "jp",
+  "series": "550106",
+  "en": ["OP-06"],
+  "family": "main",
+  "era": "random",
+  "confidence": "estimated",
+  "packPhoto": "https://www.onepiece-cardgame.com/renewal/images/products/boosters/op06/img_item01.webp",
+  "boxPhoto": "https://storage.googleapis.com/images.pricecharting.com/p3mznsjz5fyczrdg/1600.jpg",
+  "boxJpy": 22000,
+  "dons": []
+ },
+ "EB-01-JP": {
+  "name": "Extra Booster: Memorial Collection",
+  "nameJp": "メモリアルコレクション",
+  "lang": "jp",
+  "series": "550201",
+  "en": ["EB-01"],
+  "family": "extra",
+  "era": "random",
+  "confidence": "rough",
+  "packPhoto": "https://www.onepiece-cardgame.com/renewal/images/products/boosters/eb01/img_item01.webp",
+  "boxPhoto": "https://storage.googleapis.com/images.pricecharting.com/3uzvofqgua2i3kyc/1600.jpg",
+  "boxJpy": 16000,
+  "dons": []
+ },
+ "OP-07-JP": {
+  "name": "500 Years in the Future",
+  "nameJp": "500年後の未来",
+  "lang": "jp",
+  "series": "550107",
+  "en": ["OP-07"],
+  "family": "main",
+  "era": "random",
+  "confidence": "estimated",
+  "packPhoto": "https://www.onepiece-cardgame.com/renewal/images/products/boosters/op07/img_item01.webp",
+  "boxPhoto": "https://storage.googleapis.com/images.pricecharting.com/rsvp32cqbu55r7ko/1600.jpg",
+  "boxJpy": 12000,
+  "dons": []
+ },
+ "OP-08-JP": {
+  "name": "Two Legends",
+  "nameJp": "二つの伝説",
+  "lang": "jp",
+  "series": "550108",
+  "en": ["OP-08"],
+  "family": "main",
+  "era": "random",
+  "confidence": "estimated",
+  "packPhoto": "https://www.onepiece-cardgame.com/renewal/images/products/boosters/op08/img_item01.webp",
+  "boxPhoto": "https://storage.googleapis.com/images.pricecharting.com/2r4drfaaj3xjjx3p/1600.jpg",
+  "boxJpy": 10000,
+  "dons": []
+ },
+ "PRB-01-JP": {
+  "name": "Premium Booster - The Best",
+  "nameJp": "ONE PIECE CARD THE BEST",
+  "lang": "jp",
+  "series": "550301",
+  "en": ["PRB-01"],
+  "family": "premium",
+  "era": "random",
+  "confidence": "rough",
+  "packPhoto": "https://www.onepiece-cardgame.com/renewal/images/products/boosters/prb01/img_item01.webp",
+  "boxPhoto": "https://storage.googleapis.com/images.pricecharting.com/on2okih2toiuq3w4/1600.jpg",
+  "boxJpy": 20000,
+  "dons": [],
+  "god": ["manga"],
+  "note": "10 packs of 10 cards a box."
+ },
+ "OP-09-JP": {
+  "name": "Emperors in the New World",
+  "nameJp": "新たなる皇帝",
+  "lang": "jp",
+  "series": "550109",
+  "en": ["OP-09"],
+  "family": "main",
+  "era": "random",
+  "confidence": "estimated",
+  "packPhoto": "https://www.onepiece-cardgame.com/renewal/images/products/boosters/op09/img_item01.webp",
+  "boxPhoto": "https://storage.googleapis.com/images.pricecharting.com/vxoousyvvfb6h3gf/1600.jpg",
+  "boxJpy": 20000,
+  "dons": []
+ },
+ "OP-10-JP": {
+  "name": "Royal Blood",
+  "nameJp": "王族の血統",
+  "lang": "jp",
+  "series": "550110",
+  "en": ["OP-10"],
+  "family": "main",
+  "era": "random",
+  "confidence": "estimated",
+  "packPhoto": "https://www.onepiece-cardgame.com/renewal/images/products/boosters/op10/img_item01.webp",
+  "boxPhoto": "https://storage.googleapis.com/images.pricecharting.com/5hg5otst6yyn4r4j/1600.jpg",
+  "boxJpy": 10000,
+  "dons": []
+ },
+ "EB-02-JP": {
+  "name": "Extra Booster: Anime 25th Collection",
+  "nameJp": "Anime 25th collection",
+  "lang": "jp",
+  "series": "550202",
+  "en": ["EB-02"],
+  "family": "extra",
+  "era": "random",
+  "confidence": "rough",
+  "packPhoto": "https://www.onepiece-cardgame.com/renewal/images/products/boosters/eb02/img_item01.webp",
+  "boxPhoto": "https://storage.googleapis.com/images.pricecharting.com/uf5c5xpe6l7itag6/1600.jpg",
+  "boxJpy": 24000,
+  "dons": []
+ },
+ "OP-11-JP": {
+  "name": "A Fist of Divine Speed",
+  "nameJp": "神速の拳",
+  "lang": "jp",
+  "series": "550111",
+  "en": ["OP-11"],
+  "family": "main",
+  "era": "random",
+  "confidence": "estimated",
+  "packPhoto": "https://www.onepiece-cardgame.com/renewal/images/products/boosters/op11/img_item01.webp",
+  "boxPhoto": "https://storage.googleapis.com/images.pricecharting.com/ycfcqugyvmfpwmld/1600.jpg",
+  "boxJpy": 24000,
+  "dons": []
+ },
+ "OP-12-JP": {
+  "name": "Legacy of the Master",
+  "nameJp": "師弟の絆",
+  "lang": "jp",
+  "series": "550112",
+  "en": ["OP-12"],
+  "family": "main",
+  "era": "random",
+  "confidence": "estimated",
+  "packPhoto": "https://www.onepiece-cardgame.com/renewal/images/products/boosters/op12/img_item01.webp",
+  "boxPhoto": "https://storage.googleapis.com/images.pricecharting.com/wp52re4cli63uobn/1600.jpg",
+  "boxJpy": 14000,
+  "dons": []
+ },
+ "PRB-02-JP": {
+  "name": "Premium Booster - The Best - Vol. 2",
+  "nameJp": "ONE PIECE CARD THE BEST vol.2",
+  "lang": "jp",
+  "series": "550302",
+  "en": ["PRB-02"],
+  "family": "premium",
+  "era": "random",
+  "confidence": "rough",
+  "packPhoto": "https://www.onepiece-cardgame.com/renewal/images/products/boosters/prb02/img_item01.webp",
+  "boxPhoto": "https://www.onepiece-cardgame.com/renewal/images/products/boosters/prb02/img_item02.webp",
+  "boxJpy": 12000,
+  "dons": [],
+  "god": ["parallel"],
+  "note": "10 packs of 10 cards a box; Japanese god packs are documented for this one."
+ },
+ "OP-13-JP": {
+  "name": "Carrying On His Will",
+  "nameJp": "受け継がれる意志",
+  "lang": "jp",
+  "series": "550113",
+  "en": ["OP-13"],
+  "family": "main",
+  "era": "random",
+  "confidence": "estimated",
+  "packPhoto": "https://www.onepiece-cardgame.com/renewal/images/products/boosters/op13/img_item01.webp",
+  "boxPhoto": "https://www.onepiece-cardgame.com/products/boosters/op13/images/img_item02.webp",
+  "boxJpy": 17000,
+  "dons": [],
+  "god": ["demon"]
+ },
+ "EB-03-JP": {
+  "name": "Extra Booster: One Piece Heroines Edition",
+  "nameJp": "ONE PIECE Heroines Edition",
+  "lang": "jp",
+  "series": "550203",
+  "en": ["EB-03"],
+  "family": "extra",
+  "era": "random",
+  "confidence": "rough",
+  "packPhoto": "https://www.onepiece-cardgame.com/renewal/images/products/boosters/eb03/img_item01.webp",
+  "boxPhoto": "https://www.onepiece-cardgame.com/renewal/images/products/boosters/eb03/img_item02.webp",
+  "boxJpy": 16000,
+  "dons": [],
+  "god": ["sp"]
+ },
+ "OP-14-JP": {
+  "name": "The Azure Sea's Seven",
+  "nameJp": "蒼海の七傑",
+  "lang": "jp",
+  "series": "550114",
+  "en": ["OP14-EB04"],
+  "family": "main",
+  "era": "random",
+  "confidence": "estimated",
+  "packPhoto": "https://www.onepiece-cardgame.com/renewal/images/products/boosters/op14/img_item01.webp",
+  "boxPhoto": "https://www.onepiece-cardgame.com/renewal/images/products/boosters/op14/img_item02.webp",
+  "boxJpy": 11000,
+  "dons": []
+ },
+ "EB-04-JP": {
+  "name": "Extra Booster: Egghead Crisis",
+  "nameJp": "EGGHEAD CRISIS",
+  "lang": "jp",
+  "series": "550204",
+  "en": ["OP14-EB04", "OP15-EB04"],
+  "family": "extra",
+  "era": "random",
+  "confidence": "rough",
+  "packPhoto": "https://www.onepiece-cardgame.com/renewal/images/products/boosters/eb04/img_item01.webp",
+  "boxPhoto": "https://www.onepiece-cardgame.com/renewal/images/products/boosters/eb04/img_item02.webp",
+  "boxJpy": 10000,
+  "dons": []
+ },
+ "OP-15-JP": {
+  "name": "Adventure on Kami's Island",
+  "nameJp": "神の島の冒険",
+  "lang": "jp",
+  "series": "550115",
+  "en": ["OP15-EB04"],
+  "family": "main",
+  "era": "random",
+  "confidence": "estimated",
+  "packPhoto": "https://www.onepiece-cardgame.com/renewal/images/products/boosters/op15/img_item01.webp",
+  "boxPhoto": "https://www.onepiece-cardgame.com/renewal/images/products/boosters/op15/img_item02.webp",
+  "boxJpy": 11000,
+  "dons": []
+ },
+ "OP-16-JP": {
+  "name": "The Time of Battle",
+  "nameJp": "決戦の刻",
+  "lang": "jp",
+  "series": "550116",
+  "en": ["OP-16"],
+  "family": "main",
+  "era": "random",
+  "confidence": "estimated",
+  "packPhoto": "https://www.onepiece-cardgame.com/onepiececg/bccard/jp/products/2026/03/19/QRbilYFyY46pR9VQ/img_item01.webp",
+  "boxPhoto": "https://www.onepiece-cardgame.com/onepiececg/bccard/jp/products/2026/03/19/4wWP6JOtX1shy7hI/img_item02.webp",
+  "boxJpy": 9500,
+  "dons": [],
+  "note": "The first Japanese set with a Treasure Rare."
+ },
+ "OP-17-JP": {
+  "name": "The World's Strongest Warriors",
+  "nameJp": "世界最強の戦士",
+  "lang": "jp",
+  "series": "550117",
+  "en": ["OP-17"],
+  "family": "main",
+  "era": "random",
+  "confidence": "estimated",
+  "packPhoto": "https://www.onepiece-cardgame.com/products/boosters/op17/images/others/product_pack.webp",
+  "boxPhoto": "https://www.onepiece-cardgame.com/products/boosters/op17/images/others/product_booster.webp",
+  "boxJpy": 12000,
+  "dons": [],
+  "note": "¥240 a pack from here (¥220 before, ¥198 for OP-01 to OP-03)."
  }
 }

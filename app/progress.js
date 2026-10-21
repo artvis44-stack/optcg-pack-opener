@@ -1,4 +1,5 @@
 .pragma library
+.import "tiers.js" as Tiers
 // Progression: berries (฿), free packs, the daily streak, passive income,
 // focus sessions, daily bounties and wanted-poster achievements; and the Port,
 // where berries go: your ship and crew (perks), the card shop, grading,
@@ -14,10 +15,11 @@
 
 // ---- the economy -----------------------------------------------------------------
 
-var PACK_PRICE = { main: 500, extra: 500, premium: 800 };   // ฿ (an English pack is ~$5)
-var BOX_DISCOUNT = 0.95;
+var BOX_DISCOUNT = 0.95;           // a box against its packs bought one by one
 var CASE_DISCOUNT = 0.85;          // on the boxes left in the case
 var USD_TO_BERRY = 100;            // selling: $1 market value = 100 ฿
+var BOX_VALUE_MARKUP = 1.1;        // a box costs this much over what its cards are worth, chase cards left out
+var JP_CARD_PRICE = 0.5;           // a Japanese single against the same English one (no public JP price list)
 var INCOME_PER_MINUTE = 4;         // while you're at the computer, plus more the more your collection is worth
 var INCOME_VALUE_SCALE = 2;        // + 2 × √(collection value / 1,000) ฿ a minute
 var INCOME_CAP_MINUTES = 500;      // a day's income is capped at this many minutes' worth
@@ -34,21 +36,47 @@ var BASE_VALUE = {
     C: 5, UC: 10, DON: 20, R: 30, FOIL: 40, L: 60, SR: 250, TOPPER: 500, PANDA: 1500,
     AA: 1500, TEX: 1200, SEC: 2500, L_AA: 4000, DON_GOLD: 5000, DON_SP: 5000, SP: 6000,
     SEC_AA: 8000, TR: 20000, SUPER_L: 30000, SP_GOLD: 30000, SIGNED: 50000, MANGA: 60000,
-    SUPER: 100000
+    SUPER: 100000,
+    PROMO: 500, V_C: 3000, V_FOIL: 10000, V_SR: 15000, V_SILVER: 20000, V_GOLD: 60000, V_PROMO: 200000
 };
 
-// p (optional): the player, for crew discounts; set (optional): the set, for the week's featured set
-function packPrice(family, p, set) {
-    return Math.round((PACK_PRICE[family] || PACK_PRICE.main) * (p && hasCrew(p, "sanji") ? 0.9 : 1) * featuredDiscount(p, set));
+// A box costs what its cards are worth, not counting the chase cards
+// (CHASE_TIERS: Treasure Rares, Manga, Super parallels...), plus
+// BOX_VALUE_MARKUP: a box without a chase card is close to break-even (a little
+// under), one with a chase card is where the money is. Worth: the set's cards
+// at market price (Tiers.boxContents for how many of each a box holds).
+// A pack is a 24th (or so) of the box, a little dearer one at a time.
+// cfg: Tiers.setConfig(the set); p (optional): the player, for crew discounts;
+// set (optional): the set id, for the week's featured set; values (optional):
+// { tier: what a card of that tier is worth on average, ฿ } for the set's cards
+// (Stage.tierValues), BASE_VALUE for what it doesn't give
+function marketBox(cfg, values) {
+    var present = null;
+    if (values && Object.keys(values).length) {
+        present = {};
+        Object.keys(values).forEach(function (t) { present[t] = true; });
+    }
+    var contents = Tiers.boxContents(cfg, present), worth = 0;
+    Object.keys(contents).forEach(function (t) {
+        if (CHASE_TIERS.indexOf(t) >= 0) return;
+        var v = values && values[t] > 0 ? values[t] : BASE_VALUE[t] || 5;
+        worth += contents[t] * v;
+    });
+    return Math.max(100, worth * BOX_VALUE_MARKUP);
 }
 
-function boxPrice(family, packsPerBox, p, set) {
-    var full = (PACK_PRICE[family] || PACK_PRICE.main) * packsPerBox * BOX_DISCOUNT;
-    return Math.round(full * (p && hasCrew(p, "franky") ? 0.9 : 1) * featuredDiscount(p, set) / 100) * 100;
+function packPrice(cfg, p, set, values) {
+    var base = marketBox(cfg, values) / BOX_DISCOUNT / cfg.packsPerBox;
+    var step = base < 1000 ? 10 : 50;
+    return Math.max(step, Math.round(base * (p && hasCrew(p, "sanji") ? 0.9 : 1) * featuredDiscount(p, set) / step) * step);
 }
 
-function casePrice(family, packsPerBox, boxesLeft, p, set) {
-    return Math.round(boxPrice(family, packsPerBox, p, set) * boxesLeft * CASE_DISCOUNT / 100) * 100;
+function boxPrice(cfg, p, set, values) {
+    return Math.max(100, Math.round(marketBox(cfg, values) * (p && hasCrew(p, "franky") ? 0.9 : 1) * featuredDiscount(p, set) / 100) * 100);
+}
+
+function casePrice(cfg, boxesLeft, p, set, values) {
+    return Math.round(boxPrice(cfg, p, set, values) * boxesLeft * CASE_DISCOUNT / 100) * 100;
 }
 
 function featuredDiscount(p, set) {
@@ -97,7 +125,7 @@ var CREW = [
     { id: "usopp",   name: "Usopp",         card: "Usopp",            price: 40000,   perk: "Single packs: hits 15% likelier" },
     { id: "sanji",   name: "Sanji",         card: "Sanji",            price: 60000,   perk: "Packs cost 10% less" },
     { id: "chopper", name: "Tony Tony Chopper", card: "Tony Tony.Chopper", price: 80000, perk: "Missing a single day doesn't break your streak" },
-    { id: "robin",   name: "Nico Robin",    card: "Nico Robin",       price: 120000,  perk: "Reads a sealed pack: tells you how good it is" },
+    { id: "robin",   name: "Nico Robin",    card: "Nico Robin",       price: 120000,  perk: "Knows the old games: her notes price every vintage card and sealed product" },
     { id: "franky",  name: "Franky",        card: "Franky",           price: 200000,  perk: "Boxes and cases cost 10% less" },
     { id: "brook",   name: "Brook",         card: "Brook",            price: 300000,  perk: "Cards sell for 10% more" },
     { id: "jinbe",   name: "Jinbe",         card: "Jinbe",            price: 500000,  perk: "A fourth daily bounty" },
@@ -108,20 +136,175 @@ var CREW = [
 // Send a card off; it comes back in a slab with a grade from 1 to 10 that
 // multiplies what it's worth. The grade is rolled when you send it.
 
+// bestOf: graded that many times, the best grade kept (Elite)
 var GRADING = [
-    { id: "value",    name: "Value",    hours: 24,  base: 300,  pct: 0.05 },
-    { id: "standard", name: "Standard", hours: 6,   base: 1000, pct: 0.1 },
-    { id: "express",  name: "Express",  hours: 0.5, base: 5000, pct: 0.2 }
+    { id: "value",    name: "Value",    hours: 24,  base: 300,   pct: 0.05 },
+    { id: "standard", name: "Standard", hours: 6,   base: 1000,  pct: 0.1 },
+    { id: "express",  name: "Express",  hours: 0.5, base: 5000,  pct: 0.2 },
+    { id: "elite",    name: "Elite",    hours: 72,  base: 20000, pct: 0.35, bestOf: 2 }
 ];
 var GRADE_ODDS = [[10, 0.08], [9, 0.34], [8, 0.3], [7, 0.15], [6, 0.07], [5, 0.03], [4, 0.015], [3, 0.008], [2, 0.004], [1, 0.003]];
 var GRADE_MULT = { 10: 4, 9: 1.6, 8: 1.1, 7: 0.9, 6: 0.75, 5: 0.6, 4: 0.5, 3: 0.45, 2: 0.4, 1: 0.35 };
+// The secret: any grading can come back a DIAMOND LABEL 10, worth 10x the raw card.
+// Rolled when it's sent, like the grade; no odds table shows it.
+var DIAMOND_CHANCE = 0.005;
+var DIAMOND_MULT = 10;
+// A raw copy's condition sets its grading odds. Copies start unchecked (graded
+// like GRADE_ODDS, which is what the conditions average out to); a pre-grade
+// reveals one copy's condition, prep moves one up a level. In the collection a
+// card entry keeps counts per condition, entry.cond = { clean: 1, ... }; the
+// copies not in there are unchecked. share: how many copies are in that
+// condition; review: the chance a review lifts its slab a grade.
+var CONDITIONS = [
+    { id: "pristine", name: "Pristine", share: 0.10, review: 0.35, color: "#ffd700",
+      odds: [[10, 0.30], [9, 0.50], [8, 0.15], [7, 0.05]] },
+    { id: "clean",    name: "Clean",    share: 0.30, review: 0.15, color: "#7fd1b9",
+      odds: [[10, 0.11], [9, 0.52], [8, 0.27], [7, 0.08], [6, 0.02]] },
+    { id: "decent",   name: "Decent",   share: 0.35, review: 0.06, color: "#7fa8ff",
+      odds: [[10, 0.04], [9, 0.31], [8, 0.38], [7, 0.18], [6, 0.07], [5, 0.02]] },
+    { id: "worn",     name: "Worn",     share: 0.18, review: 0.02, color: "#c8a070",
+      odds: [[10, 0.01], [9, 0.10], [8, 0.30], [7, 0.30], [6, 0.16], [5, 0.08], [4, 0.04], [3, 0.01]] },
+    { id: "damaged",  name: "Damaged",  share: 0.07, review: 0,    color: "#ff8a7a",
+      odds: [[9, 0.02], [8, 0.10], [7, 0.18], [6, 0.25], [5, 0.20], [4, 0.12], [3, 0.07], [2, 0.04], [1, 0.02]] }
+];
+var CONDITION = {};
+CONDITIONS.forEach(function (c, i) { c.rank = i; CONDITION[c.id] = c; });
+var PREP_SLIP = 0.05;            // prep goes wrong: a level down instead of up
+var CRACK_WEAR = 0.25;           // cracking a slab: the card can come out a level worse
+var REVIEW_LEGACY = 0.12;        // slabs of unchecked copies, and ones graded before conditions
+
+function preGradeFee(value) { return Math.round(Math.max(100, 0.02 * value) / 10) * 10; }
+function prepFee(value) { return Math.round(Math.max(500, 0.12 * value) / 10) * 10; }
+function reviewFee(slabWorth) { return Math.round(Math.max(2000, 0.2 * slabWorth) / 10) * 10; }
+
+// a card entry's copies by condition, with "unchecked" for the rest. Copies
+// that left (sold, graded, a sync on another computer) come out of the
+// unchecked ones first, then the worst.
+function conditions(entry) {
+    var out = { unchecked: 0 }, n = entry ? entry.count || 0 : 0, cond = (entry && entry.cond) || {};
+    CONDITIONS.forEach(function (c) { out[c.id] = Math.max(0, Math.floor(cond[c.id] || 0)); });
+    var checked = CONDITIONS.reduce(function (a, c) { return a + out[c.id]; }, 0);
+    for (var i = CONDITIONS.length - 1; i >= 0 && checked > n; i--) {
+        var drop = Math.min(out[CONDITIONS[i].id], checked - n);
+        out[CONDITIONS[i].id] -= drop;
+        checked -= drop;
+    }
+    out.unchecked = n - checked;
+    return out;
+}
+
+// write conditions() back onto the entry (only what's not unchecked)
+function setConditions(entry, counts) {
+    var cond = {};
+    CONDITIONS.forEach(function (c) { if (counts[c.id] > 0) cond[c.id] = counts[c.id]; });
+    if (Object.keys(cond).length) entry.cond = cond;
+    else delete entry.cond;
+}
+
+// take one copy of a condition ("unchecked" or an id) off the entry; false if there's none
+function takeCopy(entry, condId) {
+    var counts = conditions(entry);
+    if (!(counts[condId] > 0)) return false;
+    counts[condId]--;
+    entry.count--;
+    setConditions(entry, counts);
+    return true;
+}
+
+// put a copy of a condition (null: unchecked) on the entry
+function addCopy(entry, condId) {
+    var counts = conditions(entry);
+    entry.count = (entry.count || 0) + 1;
+    if (condId && CONDITION[condId]) counts[condId]++;
+    setConditions(entry, counts);
+}
+
+function rollCondition() {
+    var r = Math.random(), acc = 0;
+    for (var i = 0; i < CONDITIONS.length; i++) {
+        acc += CONDITIONS[i].share;
+        if (r < acc) return CONDITIONS[i].id;
+    }
+    return "decent";
+}
+
+// pre-grade: an unchecked copy gets its condition; returns it ("" if none to check)
+function preGrade(entry) {
+    var counts = conditions(entry);
+    if (counts.unchecked <= 0) return "";
+    var c = rollCondition();
+    counts[c]++;
+    setConditions(entry, counts);
+    return c;
+}
+
+// prep a copy of condition condId: { to, slipped } (null if it can't be)
+function prep(entry, condId) {
+    var counts = conditions(entry), c = CONDITION[condId];
+    if (!c || c.rank === 0 || !(counts[condId] > 0)) return null;
+    var slipped = Math.random() < PREP_SLIP;
+    var to = slipped ? CONDITIONS[Math.min(CONDITIONS.length - 1, c.rank + 1)].id : CONDITIONS[c.rank - 1].id;
+    counts[condId]--;
+    counts[to]++;
+    setConditions(entry, counts);
+    return { to: to, slipped: slipped && to !== condId };
+}
+
+// the grade odds of a copy (condition id, or unchecked)
+function gradeOdds(condId) {
+    return CONDITION[condId] ? CONDITION[condId].odds : GRADE_ODDS;
+}
+
+// best of `tries` gradings
+function bestOfOdds(odds, tries) {
+    if (!(tries > 1)) return odds;
+    var below = 0, out = [];
+    odds.slice().sort(function (a, b) { return a[0] - b[0]; }).forEach(function (g) {
+        var upTo = below + g[1];
+        out.push([g[0], Math.pow(upTo, tries) - Math.pow(below, tries)]);
+        below = upTo;
+    });
+    return out.sort(function (a, b) { return b[0] - a[0]; });
+}
+
+// the chance of each grade for a copy sent to a service: [[grade, p], ...] best first
+function serviceOdds(condId, serviceId) {
+    var g = GRADING.filter(function (x) { return x.id === serviceId; })[0] || GRADING[0];
+    return bestOfOdds(gradeOdds(condId), g.bestOf || 1);
+}
+
+// crack a slab: the condition the raw copy comes back in (null: unchecked).
+// Slabs from before conditions: a 10 / 9 / 8 comes back Pristine / Clean / Decent;
+// 7 or lower comes back unchecked, a fresh chance, and never with wear.
+function crackCondition(slab) {
+    if (slab.cond === "unchecked") return null;   // sent without a pre-grade: still unknown
+    var c = CONDITION[slab.cond];
+    if (!slab.cond) {
+        if (slab.grade <= 7) return null;
+        c = CONDITION[slab.grade >= 10 ? "pristine" : slab.grade === 9 ? "clean" : "decent"];
+    }
+    if (!c) return null;
+    if (Math.random() < CRACK_WEAR) c = CONDITIONS[Math.min(CONDITIONS.length - 1, c.rank + 1)];
+    return c.id;
+}
+
+// the chance a review lifts a slab a grade (0 if it can't be reviewed)
+function reviewChance(slab) {
+    if (!slab || slab.reviewed || slab.grade >= 10) return 0;
+    return CONDITION[slab.cond] ? CONDITION[slab.cond].review : REVIEW_LEGACY;
+}
+
 var GRADE_NAME = { 10: "GEM MINT", 9: "MINT", 8: "NM-MT", 7: "NEAR MINT", 6: "EX-MT", 5: "EXCELLENT",
                    4: "VG-EX", 3: "VERY GOOD", 2: "GOOD", 1: "POOR" };
+
+// a slab's grade name: GRADE_NAME, or DIAMOND for a Diamond Label
+function gradeName(slab) {
+    return slab && slab.diamond ? "DIAMOND" : GRADE_NAME[slab && slab.grade] || "";
+}
 
 // ---- the Port: the card shop and sealed products ---------------------------------
 
 var DEAL_MARKUP = 1.1;      // today's deals: a little over market value
-var ORDER_MARKUP = 1.5;     // any card, ordered from the binder
 var DEALS_PER_DAY = 8;
 var SEALED_RATE = [0.004, 0.016];   // value growth a week: the newest set .. the oldest
 
@@ -137,13 +320,13 @@ var BACKDROPS = [
     { id: "pm-vol1",   name: "Official Playmat · Limited Edition Vol.1", price: 80000, base: "#05070d", glow: "#00000000",
       playmat: { tcg: 542494, page: "https://en.onepiece-cardgame.com/products/other/playmat003.php" } },
     { id: "pm-vol2",   name: "Official Playmat · Limited Edition Vol.2 (the Four Emperors)", price: 120000, base: "#05070d", glow: "#00000000",
-      playmat: { page: "https://en.onepiece-cardgame.com/products/other/playmat005.php" } },
+      playmat: { file: "pictures/playmats/pm-vol2.jpg" } },
     { id: "pm-vol3",   name: "Official Playmat · Limited Edition Vol.3", price: 200000, base: "#05070d", glow: "#00000000",
-      playmat: { page: "https://en.onepiece-cardgame.com/products/other/playmat007.php" } },
+      playmat: { file: "pictures/playmats/pm-vol3.jpg" } },
     { id: "pm-vol4",   name: "Official Playmat · Limited Edition Vol.4 (Roronoa Zoro)", price: 300000, base: "#05070d", glow: "#00000000",
       playmat: { tcg: 657220 } },
     { id: "pm-vol5",   name: "Official Playmat · Limited Edition Vol.5", price: 450000, base: "#05070d", glow: "#00000000",
-      playmat: { page: "https://en.onepiece-cardgame.com/products/other/playmat010.php" } },
+      playmat: { file: "pictures/playmats/pm-vol5.jpg" } },
     { id: "pm-flame",  name: "Flame-Flame Fruit Coliseum Edition", price: 1500000, base: "#05070d", glow: "#00000000",
       playmat: { tcg: 717036 } },
     { id: "pm-reg24-2", name: "2024 Regional · 2nd Place", price: 8000000, base: "#05070d", glow: "#00000000",
@@ -165,6 +348,690 @@ var SLABS = [
     { id: "gold",    name: "Gold Label",  price: 250000,  top: "#ffeab0", bottom: "#d4a640", text: "#2a1a00", sub: "#6b4a10" },
     { id: "holo",    name: "Holo Label",  price: 1000000, top: "#c8f0ff", bottom: "#f4c8ff", text: "#141a2e", sub: "#4a4f7a" }
 ];
+// a Diamond Label slab wears this whatever label you chose; it can't be bought
+var DIAMOND_LABEL = { id: "diamond", name: "Diamond Label", top: "#f4fdff", bottom: "#bfe9ff", text: "#0b2a44", sub: "#2f6f9a" };
+
+// ---- the card show: every day ---------------------------------------------------
+// Every day a card show is in town: a hall of vendor stalls
+// (CardShow.qml: a floor plan you walk around, then each stall's table), one visit a
+// show. Once you're in, the app shows no prices (no binder, vault, port or wanted board
+// until you leave): you have to know the market. Nico Robin (crew) knows the vintage
+// market: her notes come along (she won't appraise a listing for you). Vendors are honest, bargain tables,
+// premium dealers, vintage specialists or scammers; which is which you only know for
+// sure after you leave.
+//
+// Spotting fakes: a listing can be checked a few ways (SHOW_CHECKS): a raw card under
+// the loupe and the light, its back, its stock, its corners and edges; a slab's label,
+// its cert (looked up), its case, the card inside; a sealed product's crimp or shrink
+// wrap, its print, its weight. Each check uses one of the visit's SHOW_CHECK_BUDGET. A
+// fake is crude, decent or good (SHOW_FAKE_GRADES): it gives itself away in that many of
+// its checks and looks fine in the rest (and a good one looks almost right on the table,
+// Card.qml's fakeLook). Real listings have innocent quirks now and then (SHOW_QUIRK) that
+// can look suspicious. Corners and edges show a raw card's real condition: scammers'
+// "pack fresh" cards never are. You can ask the vendor about a listing once: honest
+// dealers mostly give a straight answer, scammers mostly don't (and sometimes lie
+// convincingly), and a scammer gets pushy if you inspect too much at their stall.
+// Haggling: one offer per card. What's in the hall is dealt when you walk in and saved
+// (p.show.stock), so it doesn't change.
+//
+// Promos and vintage cards (the 2005-06 CCG) are only sold here: two sets of their
+// own (SHOW_SETS) that no pack holds. About SHOW_SPECIAL_SHARE of the other tables'
+// cards are those, and some shows (SHOW_GRAIL_CHANCE) have a grail, one worth
+// SHOW_GRAIL_USD or more, at a premium dealer's (or a vintage specialist's) table or a
+// scammer's. Scammers fake those more often than modern cards, as with real
+// counterfeits. Vintage specialists, and some scammers (SHOW_VINTAGE_SCAMMER), sell
+// nothing else: a few vintage singles and slabs, and often a sealed 2005-06 pack or box
+// (SHOW_SEALED). Bought, a sealed product waits in the Port's sealed products (gaining
+// value like the others) and opens a pack at a time. A scammer's is resealed: searched,
+// its rare and foil swapped out (Tiers.makeVintagePack).
+
+var SHOW_CHECK_BUDGET = 20;                 // checks a visit (one look at one thing about one listing)
+var SHOW_STEAL = 0.75;                      // under this share of market: a steal (the Sharp Eye poster)
+var SHOW_HAGGLE = [0.05, 0.1, 0.2];         // the offers you can make: this much off
+// kind -> how many tables, listings [min, max], asking price [min, max] × market,
+// share of slabs, share of fakes, haggle: the chance each offer is taken; vintage: sells
+// only vintage cards and sealed product
+var SHOW_VENDORS = {
+    honest:  { tables: 5, listings: [20, 30], price: [0.95, 1.15], slabs: 0.4,  fakes: 0,   haggle: [0.8, 0.5, 0.15] },
+    bargain: { tables: 2, listings: [15, 25], price: [0.55, 0.85], slabs: 0.15, fakes: 0,   haggle: [0.85, 0.55, 0.25] },
+    premium: { tables: 3, listings: [12, 18], price: [1.15, 1.5],  slabs: 0.75, fakes: 0,   haggle: [0.6, 0.3, 0.08] },
+    vintage: { tables: 2, listings: [10, 15], price: [1.0, 1.3],   slabs: 0.35, fakes: 0,   haggle: [0.7, 0.4, 0.1], vintage: "ccg" },
+    carddass:{ tables: 1, listings: [10, 15], price: [0.95, 1.25], slabs: 0.25, fakes: 0,   haggle: [0.75, 0.45, 0.12], vintage: "hb" },
+    scammer: { tables: 3, listings: [18, 26], price: [0.6, 0.9],   slabs: 0.5,  fakes: 0.5, haggle: [0.95, 0.9, 0.75] }
+};
+var SHOW_VINTAGE_SCAMMER = 0.35;            // a scammer's table is a vintage one this often (either game)
+var SHOW_VINTAGE_LISTINGS = [10, 15];       // ...with this many listings
+var SHOW_VINTAGE_MIN = 500;                 // a vintage table's singles start cheaper (฿): binders of commons too
+// [name, what the table says]; scammers' blurbs have their own tells
+var SHOW_NAMES = {
+    honest:  [["Grand Line Cards", "Fair prices, everything checked."], ["Baratie Collectibles", "Family shop since the first set."],
+              ["Water 7 Trading", "Graded and raw, all guaranteed."], ["Sabaody Singles", "Prices match the market, give or take."],
+              ["Alabasta TCG", "We grade what we sell."], ["Fish-Man Island Games", "Ask about anything in the case."],
+              ["Loguetown Hobbies", "Collectors serving collectors."], ["Skypiea Slabs & Singles", "Every card checked twice."],
+              ["Zou Trading Post", "Fair and square, every time."]],
+    bargain: [["Estate sale table", "Selling a late collector's binder. Not sure what it's worth."],
+              ["Kid clearing out a binder", "Need money for a bike!"], ["Garage sale box", "Old cards, make me an offer."],
+              ["Moving-house sale", "Everything must go before Friday."]],
+    premium: [["Mariejois Vault", "Only the best slabs. Prices to match."], ["Celestial Grails", "Investment-grade cards."],
+              ["Laugh Tale Luxe", "Gem mints, nothing less."], ["Elbaf Grails", "Only the rarest. Serious buyers."]],
+    vintage: [["Gol D. Roger's Relics", "The 2005-06 English game. Singles, slabs, sealed."], ["Shonen Jump Vault", "Original 2005 product, stored right."],
+              ["Old Era Cards", "Vintage One Piece only. Ask me anything."], ["Ohara Archives", "Twenty years collecting the first English game."]],
+    scammer: [["Dressrosa Deals", "Cash only, no returns. All gem mint, trust me."], ["Jaya Card Kingz", "Best prices at the show!! Pack fresh guaranteed!!"],
+              ["Thriller Bark Treasures", "Too good to last. No refunds."], ["Big Mom's Bargains", "Everything mint. Buy two, I'll throw in a sleeve."],
+              ["Buggy's Blowout", "Prices slashed!! Genuine 100%!! Cash only!!"]],
+    carddass: [["Carddass Corner", "Japanese vintage: Hyper Battle, 1999-2002."], ["Akihabara Retro", "Straight from Japan. Carddass, every stage."],
+               ["Showa-Heisei Cards", "Old Japanese cards, sorted by stage."]],
+    vintageScammer: [["Retro Treasure Chest", "RARE vintage!! 1st print!! Sealed!!"], ["Grand Line Antiques", "Vintage at modern prices. No returns."],
+                     ["Golden Age Grails", "Every card a grail. Cash only, today only."]]
+};
+// how likely a chase card of each tier is to be on a table
+var SHOW_RARITY = { SR: 3, AA: 10, TEX: 5, SEC: 10, SEC_AA: 10, L_AA: 12, SP: 18, DON_GOLD: 2, TR: 12, MANGA: 10,
+                    SUPER: 4, SUPER_L: 3, SP_GOLD: 3, SIGNED: 1 };
+// the show-only sets: their cards come from app/vintage.json (VINTAGE) and optcgapi's promo list (PROMO)
+var SHOW_SETS = {
+    VINTAGE: { name: "One Piece CCG (2005-06)", show: true },
+    PROMO:   { name: "Promotion Cards", show: true },
+    HYPERBATTLE: { name: "Carddass Hyper Battle (1999-2002)", show: true }
+};
+var SHOW_SPECIAL_SHARE = 0.12;              // of the other tables' listings: promos and vintage cards
+var SHOW_SPECIAL_RARITY = { PROMO: 8, V_C: 4, V_FOIL: 3, V_SR: 3, V_SILVER: 2, V_GOLD: 1, V_PROMO: 1,
+                            V_HB: 4, V_HB_HOLO: 3, V_HB_GOLD: 1.5, V_HB_SECRET: 0.5, V_HB_PROMO: 1 };
+var SHOW_SPECIAL_MIN = 2000;                // promos and vintage cards worth less than this (฿) stay home
+var SHOW_GRAIL_USD = 1000;                  // a card worth this much or more is a grail
+var SHOW_GRAIL_CHANCE = 0.25;               // a show with a grail: about one a month
+var SHOW_SPECIAL_FAKES = 0.8;               // a scammer's promo, vintage card or sealed product is fake this often
+// sealed vintage packs / boxes: the chance a vintage table has one, and that some other table does
+var SHOW_SEALED = { vintage: { pack: 0.35, box: 0.08 }, other: { pack: 0.06, box: 0.01 } };
+// Hyper Battle's sealed products (app/hyperbattle.json "sealed"): the chance a Carddass table has
+// one of each kind (a vending pack, a Grand Box, a Jump Festa pack), and that another table has a vending pack
+var SHOW_SEALED_HB = { carddass: { vpack: 0.7, grandbox: 0.15, jfpack: 0.05 }, other: { vpack: 0.04 } };
+var SHOW_SEALED_TABLES = [["premium", 0.55], ["honest", 0.25], ["scammer", 0.2]];   // which other table
+
+// ---- checking a listing ----
+// a fake: [grade, share, how many of its checks give it away, how off it looks on the table (0..1)]
+var SHOW_FAKE_GRADES = [["crude", 0.3, 3, 1], ["decent", 0.45, 2, 0.5], ["good", 0.25, 1, 0.15]];
+var SHOW_QUIRK = 0.3;                       // a real listing has an innocent quirk in one check this often
+// what you can check, by what the listing is: { id, label, real, tell, quirk } (lines; "%g": the grade);
+// noTell: never where a fake gives itself away (a resealed pack's wrapper is the real one)
+var SHOW_CHECKS = {
+    raw: [
+        { id: "loupe", label: "Loupe",
+          real: ["Under the loupe the print is a clean rosette of tiny dots, and the small text is razor sharp.",
+                 "The copyright line is crisp enough to read every letter.",
+                 "Fine lines in the art stay fine under magnification: no smearing at all."],
+          tell: ["Under the loupe there's no dot pattern at all: flat, smeary inkjet colour.",
+                 "The small text is fuzzy, like a photocopy of a photocopy.",
+                 "The copyright line has blurred into a grey smudge."],
+          quirk: ["One colour layer is a hair out of register: a faint fringe along the outlines. Print runs did that.",
+                  "There's a tiny stray dot of ink in the art: a speck on the press."] },
+        { id: "light", label: "Under the light",
+          real: ["Tilted under the hall lights it catches the light just as it should.",
+                 "The surface has that even, satin sheen.",
+                 "Where there's foil it shifts as you tilt it, the colours rolling across."],
+          tell: ["It's far too glossy: it shines like a sticker.",
+                 "The shine is printed on: it doesn't move at all when you tilt it.",
+                 "The surface is dull and papery, with no sheen."],
+          quirk: ["A faint scuff runs across the surface where it's rubbed against something.",
+                  "The surface has a slight haze, like it's been handled a lot."] },
+        { id: "back", label: "The back",
+          real: ["The back's colours match the real ones, shade for shade.",
+                 "The back's print is sharp and its pattern the right size."],
+          tell: ["The back is a shade too dark, and the logo's a little blurry.",
+                 "Next to a card of yours, the back's colour is clearly off.",
+                 "The back's pattern is slightly too big, as if it was scanned and printed."],
+          quirk: ["The back's off-centre: the border's thicker at the bottom. Plenty of real ones were cut like that.",
+                  "A thin print line runs across the back. A factory flaw."] },
+        { id: "stock", label: "Feel the stock",
+          real: ["Right weight, and it flexes back with that snap when you bend it gently.",
+                 "Against a card from your binder the thickness feels identical."],
+          tell: ["The stock is thin and floppy: it bends like paper.",
+                 "It's stiff and slick, more like plastic than card.",
+                 "Held up to the light it glows right through: there's no core layer."],
+          quirk: ["It has a slight curve, the way cards warp in humid storage.",
+                  "It's a touch stiffer than you expected. Some print runs were."] },
+        { id: "edges", label: "Corners & edges",
+          real: [""], tell: ["The edges are cut rough, not the clean die-cut of a factory card."], quirk: [""] }
+    ],
+    slab: [
+        { id: "label", label: "The label",
+          real: ["The label's font and spacing look right, and the hologram's there.",
+                 "Grade, name and cert number are printed clean and spelt right."],
+          tell: ["The grade reads \"GEM MNIT\". Close, not quite.",
+                 "The label font is wrong, and there's no hologram.",
+                 "The grade on the label sits a little crooked, like it was printed at home."],
+          quirk: ["The label's faded a little, like it sat in a sunny window.",
+                  "A tiny bubble under the label sticker. Happens at the factory."] },
+        { id: "cert", label: "Look up the cert",
+          real: ["You look the cert up on your phone: registered as this card, graded %g.",
+                 "The cert checks out: this card, grade %g."],
+          tell: ["You look the cert up: no record of that number.",
+                 "The cert's registered to a different card entirely. The label's been copied."],
+          quirk: ["The hall's signal is awful and the lookup takes ages, but it checks out: this card, grade %g."] },
+        { id: "case", label: "The case",
+          real: ["Clean case, crisp seams, nothing's been pried.",
+                 "The case is clear and the seams are factory-sealed."],
+          tell: ["Glue marks along the seam: it's been opened and closed again.",
+                 "The case is lighter and cloudier than a real one.",
+                 "The seams are uneven, and one corner's been forced."],
+          quirk: ["A few light scratches on the case from being handled.",
+                  "A scuff on the back of the case. Cosmetic."] },
+        { id: "inside", label: "The card inside",
+          real: ["Through the case, the print looks crisp and the colours right.",
+                 "What you can see of the card through the plastic looks right."],
+          tell: ["Even through the plastic the print looks soft and washed out.",
+                 "The card sits loose in the case, and it's thinner than it should be."],
+          quirk: ["The card's sitting slightly crooked in the case. They shift sometimes."] }
+    ],
+    pack: [
+        { id: "crimp", label: "The crimp",
+          real: ["The crimp at both ends is factory-tight and even.",
+                 "Clean factory crimps, top and bottom."],
+          tell: ["The top crimp is uneven and shiny with glue: it's been opened and resealed.",
+                 "There's a crease where the top was pried open and pressed shut."],
+          quirk: ["One corner of the crimp is a little crushed, from storage."] },
+        { id: "wrap", label: "The wrapper", noTell: true,
+          real: ["The wrapper's print is sharp, its colours right for 2005-06.",
+                 "The wrapper art and logos are exactly right."],
+          quirk: ["The wrapper's faded a little on one side, like it sat in a shop window."] },
+        { id: "weight", label: "Weigh it",
+          real: ["On your pocket scale it weighs what a fresh pack should.",
+                 "The weight's spot on for ten cards and the wrapper."],
+          tell: ["It's light on your pocket scale: about one card short of a fresh pack.",
+                 "Lighter than a pack of ten should be. The foil's gone, maybe."],
+          quirk: ["It's a fraction heavier than you'd expect. Wrappers vary a little."] }
+    ],
+    box: [
+        { id: "shrink", label: "The shrink wrap",
+          real: ["Factory shrink wrap, tight, with the right seams.",
+                 "The shrink wrap's tight and the seams are the factory's."],
+          tell: ["The shrink wrap's loose, with a hand-made seam along the bottom.",
+                 "Under the shrink there's a slit in the box's tape: it's been opened."],
+          quirk: ["The shrink wrap's torn at one corner. The box under it is still sealed."] },
+        { id: "print", label: "The box", noTell: true,
+          real: ["The box's print and logos are exactly right for 2005-06.",
+                 "Proper Bandai box, the right art, the right size."],
+          quirk: ["The box is dented at one corner from shipping."] },
+        { id: "weight", label: "Weigh it",
+          real: ["It weighs what twelve packs should.",
+                 "The weight's right for a full box."],
+          tell: ["It's light: about a pack's worth short.",
+                 "It weighs less than a full box should. Something's been taken out."],
+          quirk: ["It's a little heavier than you'd expect. The cardboard's thick."] }
+    ]
+};
+// corners and edges: a raw card's real condition (sold as is: unchecked)
+var SHOW_EDGES = {
+    pristine: "Sharp corners, clean edges, no whitening: pack fresh.",
+    clean: "Sharp corners; a speck of whitening on one edge.",
+    decent: "Light whitening along the edges, the corners a little soft.",
+    worn: "Rounded corners and edge wear you can't miss.",
+    damaged: "A crease runs across it, and the corners are chewed.",
+    "": "Some wear, about what you'd expect from a binder."
+};
+// asking the vendor about a listing: the chance of a straight answer, by kind; else vague, or for a scammer a line
+var SHOW_STRAIGHT = { honest: 0.85, premium: 0.9, bargain: 0.45, vintage: 0.9, carddass: 0.9, scammer: 0.3 };
+var SHOW_TALK = {
+    honest:  ["\"Came out of a collection I bought last month. I checked every card myself.\"",
+              "\"Pulled it myself, actually. Been in a top loader ever since.\"",
+              "\"A regular traded it in. I know him, he's careful with his cards.\""],
+    premium: ["\"Graded straight from our own submissions. Here's the receipt if you want it.\"",
+              "\"From a private collection. We authenticate everything before it goes in the case.\""],
+    bargain: ["\"It was in my dad's binder. No idea where he got it.\"",
+              "\"Honestly? Found it in a box in the attic.\""],
+    vintage: ["\"Opened that box myself back in 2006. Kept everything in a binder away from the light.\"",
+              "\"Bought it from the original owner. He played the game when it came out.\"",
+              "\"I've collected this game for twenty years. I can tell you the print run.\""],
+    carddass: ["\"Brought these back from Japan myself. Vending machine pulls, kept in a binder since 2000.\"",
+               "\"A collector in Osaka sold me his stages. He kept every holo in a sleeve.\"",
+               "\"Bought the lot from an old toy shop that still had the Carddass machine.\""],
+    vague:   ["\"Not sure, I bought a big lot. Looks fine to me.\"",
+              "\"Couldn't tell you. It was in with a bunch of others.\""],
+    scam:    ["\"Trust me, it's legit. Look at it, it's beautiful.\"",
+              "\"Straight from Japan, totally real. I don't do fakes.\"",
+              "\"You're the third person looking at it today. Decide quick.\"",
+              "\"No questions, no problems. Cash only.\""],
+    pushy:   ["\"You going to buy something, or just stare at it all day?\"",
+              "\"Look, I've got other customers. Buy it or move on.\"",
+              "\"Stop handling the merchandise if you're not buying.\""],
+    patient: ["\"Take your time, look at anything you like.\"",
+              "\"Want a closer look at anything? Go ahead.\""]
+};
+var SHOW_PUSHY = 3;                         // checks at a scammer's stall before they start pushing
+
+function isShowSet(set) {
+    return !!SHOW_SETS[set];
+}
+
+function isGrail(x) {
+    return x.value >= SHOW_GRAIL_USD * USD_TO_BERRY && Tiers.SHOW_ONLY_TIERS.indexOf(x.card.tier) >= 0;
+}
+
+// what a raw card is said to be, by its real condition
+var SHOW_CLAIM = { pristine: "Pack fresh", clean: "Near mint", decent: "Lightly played", worn: "Played", damaged: "Damaged" };
+
+// the show's day ("2026-10-24"): there's one every day
+function showDay(now) {
+    return dayOf(now);
+}
+
+// the next show you can go to: today's if you haven't been, else tomorrow's ("2026-10-24")
+function nextShowDay(p, now) {
+    for (var i = 0; i < 8; i++) {
+        var day = showDay(now + i * 86400 * 1000);
+        if (day && !(i === 0 && showVisited(p, day))) return day;
+    }
+    return "";
+}
+
+function showState(p) {
+    return p.show || { day: "", entered: 0, left: 0, stock: null, bought: {}, haggled: {}, looks: 0, checked: {}, asked: {} };
+}
+
+// you've been to (and left) today's show
+function showVisited(p, day) {
+    var s = showState(p);
+    return s.day === day && !!s.left;
+}
+
+// you're at the show now (walked in today, haven't left)
+function atShow(p, now) {
+    var s = showState(p), day = showDay(now);
+    return !!day && s.day === day && !!s.entered && !s.left;
+}
+
+// can you walk in: there's a show today and you haven't been
+function canEnterShow(p, now) {
+    var day = showDay(now);
+    return !!day && !showVisited(p, day);
+}
+
+function shuffled(list, rnd) {
+    list = list.slice();
+    for (var i = list.length - 1; i > 0; i--) {
+        var j = Math.floor(rnd() * (i + 1)), t = list[i];
+        list[i] = list[j];
+        list[j] = t;
+    }
+    return list;
+}
+
+function between(rnd, lo, hi) { return lo + (hi - lo) * rnd(); }
+
+function roundPrice(v) {
+    var step = v >= 100000 ? 1000 : v >= 10000 ? 100 : v >= 1000 ? 50 : 10;
+    return Math.max(step, Math.round(v / step) * step);
+}
+
+// The hall: [{ id, kind, vintage, name, blurb, listings: [listing] }], the same for the same
+// day and pool. pool: [{ key, card, value }] (every card of your downloaded sets and the
+// show-only sets, value: its market price raw). A listing: { id, key, card, grade (0: raw),
+// claim, cond, fake, fakeGrade, fakeLook, tells (the checks that give a fake away), value (what it's really worth, never shown while
+// you're there), ask, checks: { check id: what you see }, talk (the vendor's answer) }; a
+// sealed product's also has sealed: { kind: "pack" | "box", origin, packs } (its card stands
+// in for it; a Hyper Battle one's also has line "hb", name and its product's cards). sealed:
+// { ccg: { "<set name>": { pack: ฿, box: ฿ } } (app/vintage.json's "sealed", in ฿), hb: [product:
+// { name, kind: "vpack" | "grandbox" | "jfpack", set, worth: ฿, cards }] (app/hyperbattle.json's) },
+// or nothing (a bare ccg map works too).
+function makeShowStock(day, pool, sealed) {
+    var rnd = hash("show " + day);
+    var pickOf = function (list) { return list[Math.floor(rnd() * list.length)]; };
+    // modern chase cards; promos and vintage cards; vintage only (grails apart: one a show at most)
+    var modern = {}, special = {}, vintage = { ccg: {}, hb: {} }, grails = [];
+    pool.forEach(function (x) {
+        var t = x.card.tier;
+        if (!(x.value > 0)) return;
+        if (SHOW_RARITY[t]) (modern[t] = modern[t] || []).push(x);
+        else if (!SHOW_SPECIAL_RARITY[t] || x.value < SHOW_VINTAGE_MIN) return;
+        else if (isGrail(x)) grails.push(x);
+        else {
+            if (x.value >= SHOW_SPECIAL_MIN) (special[t] = special[t] || []).push(x);
+            if (Tiers.isVintage(x.card)) {
+                var line = vintage[x.card.set === "HYPERBATTLE" ? "hb" : "ccg"];
+                (line[t] = line[t] || []).push(x);
+            }
+        }
+    });
+    var used = {};
+    var picker = function (byTier, weights) {
+        var tiers = Object.keys(byTier);
+        var weight = tiers.reduce(function (n, t) { return n + weights[t]; }, 0);
+        return !tiers.length ? null : function () {
+            var r = rnd() * weight, tier = tiers[tiers.length - 1];
+            for (var i = 0; i < tiers.length; i++) {
+                r -= weights[tiers[i]];
+                if (r < 0) { tier = tiers[i]; break; }
+            }
+            var options = byTier[tier].filter(function (x) { return !used[x.key]; });
+            return (options.length ? options : byTier[tier])[Math.floor(rnd() * (options.length || byTier[tier].length))];
+        };
+    };
+    var pickModern = picker(modern, SHOW_RARITY), pickSpecial = picker(special, SHOW_SPECIAL_RARITY);
+    var pickVintage = { ccg: picker(vintage.ccg, SHOW_SPECIAL_RARITY), hb: picker(vintage.hb, SHOW_SPECIAL_RARITY) };
+    var lines = Object.keys(pickVintage).filter(function (l) { return pickVintage[l]; });
+    if (!pickModern && !pickSpecial) return [];
+    var kinds = [];
+    Object.keys(SHOW_VENDORS).forEach(function (k) { for (var i = 0; i < SHOW_VENDORS[k].tables; i++) kinds.push(k); });
+    var names = {};
+    Object.keys(SHOW_NAMES).forEach(function (k) { names[k] = shuffled(SHOW_NAMES[k], rnd); });
+
+    // what each check shows: a fake fails `tells` of them (a good fake just one), a real one
+    // may have an innocent quirk in one
+    var inspect = function (what, fake, grade, cond) {
+        var checks = SHOW_CHECKS[what], out = {}, tells = {}, quirk = "", fg = null;
+        if (fake) {
+            var r = rnd(), acc = 0;
+            fg = SHOW_FAKE_GRADES[SHOW_FAKE_GRADES.length - 1];
+            for (var i = 0; i < SHOW_FAKE_GRADES.length; i++) {
+                acc += SHOW_FAKE_GRADES[i][1];
+                if (r < acc) { fg = SHOW_FAKE_GRADES[i]; break; }
+            }
+            var can = shuffled(checks.filter(function (c) { return !c.noTell; }), rnd);
+            can.slice(0, fg[2]).forEach(function (c) { tells[c.id] = true; });
+        } else if (rnd() < SHOW_QUIRK) {
+            var quirky = checks.filter(function (c) { return c.quirk && c.quirk[0]; });
+            quirk = pickOf(quirky).id;
+        }
+        checks.forEach(function (c) {
+            var line = pickOf(tells[c.id] ? c.tell : quirk === c.id ? c.quirk : c.real);
+            if (c.id === "edges") line = (SHOW_EDGES[cond] + (tells.edges ? " " + line : "")).trim();
+            out[c.id] = line.replace("%g", grade);
+        });
+        return { checks: out, tells: Object.keys(tells), grade: fg ? fg[0] : "", look: fg ? fg[3] : 0 };
+    };
+
+    var talk = function (kind, fake) {
+        var straight = rnd() < SHOW_STRAIGHT[kind];
+        if (kind === "scammer") return pickOf(straight ? SHOW_TALK.honest : SHOW_TALK.scam);   // sometimes a convincing lie
+        return pickOf(straight ? SHOW_TALK[kind] : SHOW_TALK.vague);
+    };
+
+    var listing = function (kind, x, id) {
+        var cfg = SHOW_VENDORS[kind], showOnly = !SHOW_RARITY[x.card.tier];
+        var fake = rnd() < (showOnly && cfg.fakes ? SHOW_SPECIAL_FAKES : cfg.fakes);
+        var slab = rnd() < cfg.slabs;
+        var grade = 0, cond = "", claim = "";
+        if (slab) {
+            var g = rnd();
+            grade = kind === "premium" ? (g < 0.5 ? 10 : g < 0.9 ? 9 : 8)
+                  : kind === "scammer" ? (g < 0.6 ? 10 : 9)
+                  : (g < 0.25 ? 10 : g < 0.7 ? 9 : g < 0.92 ? 8 : 7);
+        } else if (kind === "scammer") {   // always "pack fresh", never true
+            cond = rnd() < 0.6 ? "worn" : "damaged";
+            claim = SHOW_CLAIM.pristine;
+        } else if (kind === "bargain" && rnd() < 0.5) {
+            cond = "";                                       // not checked: sold as is
+            claim = "As is (not checked)";
+        } else {
+            var r = rnd(), acc = 0;
+            cond = "decent";
+            for (var c = 0; c < CONDITIONS.length; c++) {
+                acc += CONDITIONS[c].share;
+                if (r < acc) { cond = CONDITIONS[c].id; break; }
+            }
+            claim = SHOW_CLAIM[cond];
+        }
+        var worth = grade ? x.value * GRADE_MULT[grade] : x.value;
+        var ask = roundPrice(worth * between(rnd, cfg.price[0], cfg.price[1]));
+        var seen = inspect(grade ? "slab" : "raw", fake, grade, cond);
+        return { id: id, key: x.key, card: x.card, grade: grade, claim: claim, cond: cond, fake: fake,
+                 fakeGrade: seen.grade, fakeLook: seen.look, tells: seen.tells, value: fake ? 0 : Math.round(worth), ask: ask,
+                 checks: seen.checks, talk: talk(kind, fake) };
+    };
+
+    var ccgSealed = sealed && (sealed.ccg || (sealed.hb ? null : sealed)) || {}, hbSealed = sealed && sealed.hb || [];
+    // a sealed vintage pack or box on a table
+    var sealedListing = function (table, kind, origin) {
+        var worth = ccgSealed[origin][kind];
+        if (!(worth > 0)) return null;
+        var cfg = SHOW_VENDORS[table.kind], fake = !!cfg.fakes && rnd() < SHOW_SPECIAL_FAKES;
+        var seen = inspect(kind, fake, 0, "");
+        return {
+            id: table.id + "-" + kind, key: "sealed:" + origin + ":" + kind,
+            card: { id: kind === "box" ? "BOX" : "PACK", name: origin + (kind === "box" ? " Booster Box" : " Booster Pack"),
+                    tier: kind === "box" ? "SEALED_BOX" : "SEALED_PACK", set: "VINTAGE", origin: origin, image: "" },
+            sealed: { kind: kind, origin: origin, packs: kind === "box" ? Tiers.VINTAGE_PACK.packsPerBox : 1 },
+            grade: 0, claim: "Factory sealed", cond: "", fake: fake, fakeGrade: seen.grade, fakeLook: seen.look, tells: seen.tells,
+            value: fake ? 0 : worth, ask: roundPrice(worth * between(rnd, cfg.price[0], cfg.price[1])),
+            checks: seen.checks, talk: talk(table.kind, fake)
+        };
+    };
+
+    // a sealed Hyper Battle product (a vending pack, a Grand Box, a Jump Festa pack)
+    var hbListing = function (table, product) {
+        var cfg = SHOW_VENDORS[table.kind], fake = !!cfg.fakes && rnd() < SHOW_SPECIAL_FAKES;
+        var box = product.kind === "grandbox";
+        var seen = inspect(box ? "box" : "pack", fake, 0, "");
+        return {
+            id: table.id + "-" + product.kind + "-" + Math.floor(rnd() * 1e6), key: "sealed:hb:" + product.name,
+            card: { id: box ? "BOX" : "PACK", name: product.name, tier: box ? "SEALED_BOX" : "SEALED_PACK", set: "HYPERBATTLE",
+                    origin: product.set, line: "hb", image: "" },
+            sealed: { kind: product.kind, line: "hb", origin: product.set, name: product.name, packs: 1, cards: product.cards || null },
+            grade: 0, claim: box ? "Sealed, never opened" : "Unopened", cond: "", fake: fake, fakeGrade: seen.grade, fakeLook: seen.look,
+            tells: seen.tells, value: fake ? 0 : product.worth, ask: roundPrice(product.worth * between(rnd, cfg.price[0], cfg.price[1])),
+            checks: seen.checks, talk: talk(table.kind, fake)
+        };
+    };
+    var hbProduct = function (kind) {
+        var of = hbSealed.filter(function (x) { return x.kind === kind && x.worth > 0; });
+        return of.length ? pickOf(of) : null;
+    };
+
+    var hall = shuffled(kinds, rnd).map(function (kind, v) {
+        var cfg = SHOW_VENDORS[kind];
+        // sells only vintage: a specialist (of one game), or a scammer passing as one
+        var old = cfg.vintage && pickVintage[cfg.vintage] ? cfg.vintage
+                : kind === "scammer" && lines.length && rnd() < SHOW_VINTAGE_SCAMMER ? pickOf(lines) : "";
+        var pool = old && kind === "scammer" ? "vintageScammer" : kind;
+        var nm = names[pool].shift() || ["Table " + (v + 1), ""];
+        var range = old ? SHOW_VINTAGE_LISTINGS : cfg.listings;
+        var n = cfg.vintage && !old ? 0 : range[0] + Math.floor(rnd() * (range[1] - range[0] + 1));
+        var listings = [];
+        for (var i = 0; i < n; i++) {
+            var x = old ? pickVintage[old]()
+                  : pickSpecial && (!pickModern || rnd() < SHOW_SPECIAL_SHARE) ? pickSpecial() : pickModern();
+            used[x.key] = true;
+            listings.push(listing(kind, x, v + "-" + i));
+        }
+        return { id: String(v), kind: kind, vintage: old, name: nm[0], blurb: nm[1], listings: listings };
+    });
+
+    // now and then a grail: on a premium dealer's table (or a vintage specialist's, for a vintage
+    // one), or a scammer's (likely a fake)
+    if (grails.length && rnd() < SHOW_GRAIL_CHANCE) {
+        var g = grails[Math.floor(rnd() * grails.length)];
+        var gline = !Tiers.isVintage(g.card) ? "" : g.card.set === "HYPERBATTLE" ? "hb" : "ccg";
+        var honestKind = gline && rnd() < 0.5 ? (gline === "hb" ? "carddass" : "vintage") : "premium";
+        var kind = rnd() < 0.65 ? honestKind : "scammer";
+        var where = hall.filter(function (t) { return t.kind === kind && (!t.vintage || t.vintage === gline); });
+        var table = where[Math.floor(rnd() * where.length)];
+        if (table) table.listings.unshift(listing(table.kind, g, table.id + "-g"));
+    }
+
+    // sealed vintage packs and boxes: often at the vintage tables, very rarely anywhere else
+    var origins = Object.keys(ccgSealed);
+    if (origins.length) {
+        hall.filter(function (t) { return t.vintage === "ccg"; }).forEach(function (t) {
+            ["box", "pack"].forEach(function (kind) {
+                if (rnd() >= SHOW_SEALED.vintage[kind]) return;
+                var it = sealedListing(t, kind, pickOf(origins));
+                if (it) t.listings.unshift(it);
+            });
+        });
+        ["box", "pack"].forEach(function (kind) {
+            if (rnd() >= SHOW_SEALED.other[kind]) return;
+            var r = rnd(), who = SHOW_SEALED_TABLES[0][0];
+            for (var i = 0, acc = 0; i < SHOW_SEALED_TABLES.length; i++) {
+                acc += SHOW_SEALED_TABLES[i][1];
+                if (r < acc) { who = SHOW_SEALED_TABLES[i][0]; break; }
+            }
+            var tables = hall.filter(function (t) { return t.kind === who && !t.vintage; });
+            var t = tables[Math.floor(rnd() * tables.length)];
+            var it = t && sealedListing(t, kind, pickOf(origins));
+            if (it) t.listings.unshift(it);
+        });
+    }
+    // Hyper Battle: vending packs, Grand Boxes, Jump Festa packs at the Carddass tables; now and
+    // then a vending pack somewhere else
+    if (hbSealed.length) {
+        hall.filter(function (t) { return t.vintage === "hb"; }).forEach(function (t) {
+            ["jfpack", "grandbox", "vpack"].forEach(function (kind) {
+                var product = rnd() < SHOW_SEALED_HB.carddass[kind] ? hbProduct(kind) : null;
+                if (product) t.listings.unshift(hbListing(t, product));
+            });
+        });
+        if (rnd() < SHOW_SEALED_HB.other.vpack) {
+            var others = hall.filter(function (t) { return !t.vintage && t.kind !== "bargain"; });
+            var t2 = others[Math.floor(rnd() * others.length)], product = hbProduct("vpack");
+            if (t2 && product) t2.listings.unshift(hbListing(t2, product));
+        }
+    }
+    return hall;
+}
+
+// walk in: the hall is dealt (once a day) and you're there until you leave
+function enterShow(p, now, pool, sealed) {
+    var day = showDay(now);
+    if (!canEnterShow(p, now)) return false;
+    var s = showState(p);
+    if (s.day !== day || !s.stock) p.show = { day: day, entered: now, left: 0, stock: makeShowStock(day, pool, sealed), bought: {}, haggled: {},
+                                          looks: 0, checked: {}, asked: {} };
+    else if (!s.entered) p.show.entered = now;
+    return true;
+}
+
+function showListing(p, id) {
+    var s = showState(p);
+    for (var v = 0; v < (s.stock || []).length; v++)
+        for (var i = 0; i < s.stock[v].listings.length; i++)
+            if (s.stock[v].listings[i].id === id) return s.stock[v].listings[i];
+    return null;
+}
+
+function showVendor(p, listingId) {
+    var s = showState(p);
+    return (s.stock || []).filter(function (v) { return v.id === listingId.split("-")[0]; })[0] || null;
+}
+
+// what a listing costs you now (after a haggle that worked)
+function showPrice(p, listing) {
+    var h = showState(p).haggled[listing.id];
+    return h && h.ok ? roundPrice(listing.ask * (1 - h.pct)) : listing.ask;
+}
+
+// make an offer (pct: one of SHOW_HAGGLE); one per listing. Returns true (taken) / false
+// (refused, the price stays) / null (can't: already haggled, bought, or not at the show).
+// The answer is the same however often you'd ask it, so there's no asking again.
+function haggle(p, id, pct, now) {
+    var s = showState(p), x = showListing(p, id), v = showVendor(p, id);
+    var k = SHOW_HAGGLE.indexOf(pct);
+    if (!atShow(p, now) || !x || !v || k < 0 || s.haggled[id] || s.bought[id]) return null;
+    var ok = hash("haggle " + s.day + " " + id + " " + pct)() < SHOW_VENDORS[v.kind].haggle[k];
+    p.show.haggled[id] = { pct: pct, ok: ok };
+    return ok;
+}
+
+// What can be checked about a listing: [{ id, label }] (SHOW_CHECKS)
+function showChecks(listing) {
+    var what = listing.sealed ? listing.sealed.kind : listing.grade ? "slab" : "raw";
+    return SHOW_CHECKS[what].map(function (c) { return { id: c.id, label: c.label }; });
+}
+
+// what you've seen of a listing so far: { check id: text }
+function showSeen(p, id) {
+    var x = showListing(p, id), done = (showState(p).checked || {})[id] || {}, out = {};
+    if (x) Object.keys(done).forEach(function (c) { out[c] = (x.checks || {})[c] || ""; });
+    return out;
+}
+
+// check one thing about a listing (one of the visit's SHOW_CHECK_BUDGET; looking again is free):
+// what you see, or "" when you're out of checks (or not at the show)
+function checkListing(p, id, check, now) {
+    var s = showState(p), x = showListing(p, id);
+    if (!atShow(p, now) || !x || !x.checks || x.checks[check] === undefined) return "";
+    p.show.checked = p.show.checked || {};
+    var done = p.show.checked[id] = p.show.checked[id] || {};
+    if (done[check]) return x.checks[check];
+    if ((s.looks || 0) >= SHOW_CHECK_BUDGET) return "";
+    p.show.looks = (s.looks || 0) + 1;
+    done[check] = true;
+    return x.checks[check];
+}
+
+// ask the vendor about a listing (free, once: the answer doesn't change)
+function askVendor(p, id, now) {
+    var x = showListing(p, id);
+    if (!atShow(p, now) || !x) return "";
+    p.show.asked = p.show.asked || {};
+    p.show.asked[id] = true;
+    return x.talk || "";
+}
+
+// what the vendor says while you're at their stall: a scammer gets pushy once you've
+// checked SHOW_PUSHY things on their table; everyone else is happy to let you look
+function vendorMood(p, vendorId) {
+    var s = showState(p), v = (s.stock || []).filter(function (t) { return t.id === vendorId; })[0];
+    if (!v) return "";
+    var n = 0;
+    Object.keys(s.checked || {}).forEach(function (id) {
+        if (id.split("-")[0] === vendorId) n += Object.keys(s.checked[id]).length;
+    });
+    if (n < SHOW_PUSHY) return "";
+    var lines = v.kind === "scammer" ? SHOW_TALK.pushy : SHOW_TALK.patient;
+    return lines[Math.floor(hash("mood " + s.day + " " + vendorId)() * lines.length)];
+}
+
+// buy a listing: the berries go, the card comes (the caller puts it in the collection).
+// Returns the listing, or null (not here, sold, or you can't afford it).
+function buyAtShow(p, id, now) {
+    var s = showState(p), x = showListing(p, id);
+    if (!atShow(p, now) || !x || s.bought[id]) return null;
+    var price = showPrice(p, x);
+    if (!spend(p, price, "show")) return null;
+    p.show.bought[id] = { price: price, at: now };
+    if (x.sealed) {   // to the Port's sealed products (a resealed one's found out when you leave)
+        var sid = now.toString(36) + Math.floor(Math.random() * 1e6).toString(36);
+        p.sealed[sid] = { set: x.sealed.line === "hb" ? "HYPERBATTLE" : "VINTAGE", setName: x.sealed.origin, kind: x.sealed.kind,
+                          boxes: 0, vintage: true, line: x.sealed.line || "ccg", name: x.sealed.name || "", cards: x.sealed.cards || null,
+                          packs: x.sealed.packs, packsTotal: x.sealed.packs, resealed: !!x.fake,
+                          paid: price, at: now, rate: SEALED_RATE[1] };
+    }
+    return x;
+}
+
+// leave: the visit is over. Returns the recap: { items: [{ listing, vendor, paid }], paid,
+// worth, fakes, steals, vendors: [{ name, kind }] } and records the visit (its posters)
+function leaveShow(p, now) {
+    var s = showState(p);
+    if (!s.day || s.left) return null;
+    p.show.left = now;
+    var items = Object.keys(s.bought).map(function (id) {
+        return { listing: showListing(p, id), vendor: showVendor(p, id), paid: s.bought[id].price };
+    }).filter(function (it) { return it.listing; });
+    var recap = {
+        items: items,
+        paid: items.reduce(function (n, it) { return n + it.paid; }, 0),
+        worth: items.reduce(function (n, it) { return n + it.listing.value; }, 0),
+        fakes: items.filter(function (it) { return it.listing.fake; }).length,
+        steals: items.filter(function (it) { return !it.listing.fake && it.paid < SHOW_STEAL * it.listing.value; }).length,
+        vendors: (s.stock || []).map(function (v) { return { name: v.name, kind: v.kind }; })
+    };
+    // the genuine promos and vintage cards you brought home (their posters)
+    var real = items.filter(function (it) { return !it.listing.fake && !it.listing.sealed; }).map(function (it) { return it.listing; });
+    var tally = function (fn) { return real.filter(fn).length; };
+    recap.done = record(p, { type: "show", fakes: recap.fakes, steals: recap.steals,
+                             vintage: tally(function (x) { return Tiers.isVintage(x.card); }),
+                             promos: tally(function (x) { return ["PROMO", "V_PROMO", "V_HB_PROMO"].indexOf(x.card.tier) >= 0; }),
+                             rookie: tally(function (x) { return x.card.set === "HYPERBATTLE" && x.card.id === "C01"; }),
+                             goldRares: tally(function (x) { return x.card.tier === "V_GOLD"; }),
+                             grails: tally(function (x) { return isGrail({ card: x.card, value: x.grade ? x.value / GRADE_MULT[x.grade] : x.value }); }) });
+    return recap;
+}
+
+// a fake slab's label: close to the real thing, not quite
+var FAKE_GRADE_NAME = { 10: "GEM MNIT", 9: "MNIT", 8: "NM-TM", 7: "NAER MINT" };
+function fakeGradeName(slab) {
+    return FAKE_GRADE_NAME[slab && slab.grade] || (GRADE_NAME[slab && slab.grade] || "") + ".";
+}
 
 // ---- the week: a rotating event and weekly bounties ------------------------------
 // Weeks start on Monday. The events take turns, one a week.
@@ -323,6 +1190,19 @@ var ACHIEVEMENTS = [
     a("graded1",  "Slabbed",               "Get a card graded",                    1e7,   1000,  null, function (p) { return p.stats.graded; }, 1),
     a("gem1",     "Gem Mint",              "Get a 10",                             2e8,   20000, null, function (p) { return p.stats.gem10; }, 1),
     a("gem10",    "Perfect Ten",           "Get ten 10s",                          2.5e9, 200000, null, function (p) { return p.stats.gem10; }, 10),
+    a("show1",    "Show Floor",            "Visit a card show",                    5e6,   500,   null, function (p) { return p.stats.shows; }, 1),
+    a("show10",   "Show Regular",          "Visit 10 card shows",                  3e8,   20000, null, function (p) { return p.stats.shows; }, 10),
+    a("sharpeye", "Sharp Eye",             "Buy a card at a show for under 75% of its market price", 1e8, 10000, null, function (p) { return p.stats.showSteals; }, 1),
+    a("burned",   "Got Burned",            "Buy a fake at a card show",            1e7,   500,   null, function (p) { return p.stats.fakes; }, 1),
+    a("vintage5", "Vintage Collector",     "Bring home 5 genuine vintage cards from card shows", 2e8, 15000, null, function (p) { return p.stats.vintage; }, 5),
+    a("goldrare", "First Edition",         "Bring home a genuine 2005-06 Gold Rare", 5e8, 30000, null, function (p) { return p.stats.goldRares; }, 1),
+    a("promo25",  "Promo Hunter",          "Bring home 25 genuine promos from card shows", 8e8, 50000, null, function (p) { return p.stats.promos; }, 25),
+    a("rookie",   "Rookie",                "Own the 1999 Hyper Battle Luffy (C01), from a card show or a pack", 1.5e9, 120000, null,
+      function (p) { return p.stats.rookie; }, 1),
+    a("carddass10","Carddass Kid",         "Open 10 Hyper Battle vending packs", 3e8, 20000, null,
+      function (p) { return setStats(p, "HYPERBATTLE").packs; }, 10),
+    a("grail",    "Holy Grail",            "Bring home a genuine grail (a $1,000+ promo or vintage card)", 3e9, 250000, null,
+      function (p) { return p.stats.grails; }, 1),
     a("sealed1",  "Shrink Wrap",           "Buy a sealed product",                 5e6,   500,   null, function (p) { return Object.keys(p.sealed).length + p.stats.sealedOpened; }, 1),
     a("sealed5",  "Hoarder",               "Hold 5 sealed products at once",       1.2e8, 10000, null, function (p) { return Object.keys(p.sealed).length; }, 5),
     a("investor", "Investor",              "Hold a sealed product worth twice what you paid", 1e9, 80000,
@@ -414,12 +1294,41 @@ function bountyOf(id) {
     return t ? t.bounty : 0;
 }
 
-// set: "" = everything (the overall bounty), else just that set's posters
+// set: "" = everything (the overall bounty, saved sets too), else just that set's posters
 function totalBounty(p, set) {
-    return Object.keys(p.achievements).reduce(function (sum, id) {
+    var posters = Object.keys(p.achievements).reduce(function (sum, id) {
         if (set && id.indexOf(set + ":") !== 0) return sum;
         return sum + bountyOf(id);
     }, 0);
+    if (set) return posters;
+    var c = p.collections || {};
+    return Object.keys(c).reduce(function (sum, id) { return sum + (c[id].bounty || 0); }, posters);
+}
+
+// ---- collections: sets of slabs saved in a display case (collections.js) ----------
+// A saved set's slabs are locked in its case and it's worth more than they are;
+// the first time a collection is saved you get a reward and a bounty, and again
+// (the difference) the first time it's saved as a Gem Set (every slab a 10).
+var SET_BONUS = 0.25, GEM_SET_BONUS = 0.5;     // worth this much over its slabs
+var SET_REWARD = 0.1, GEM_SET_REWARD = 0.2;    // once, a share of what the slabs are worth
+var SET_REWARD_MIN = 2000;
+var SET_BOUNTY_PER_SLOT = 2e7;                 // on the wanted board; twice that for a Gem Set
+
+function setBonus(gem) { return gem ? GEM_SET_BONUS : SET_BONUS; }
+
+// pay a saved collection's reward if it hasn't had it (or not as a Gem Set yet);
+// worth: what its slabs are worth. Returns the wanted poster to show, or null.
+function rewardSet(p, id, title, slots, worth, gem) {
+    p.collections = p.collections || {};
+    var had = p.collections[id];
+    if (had && (had.gem || !gem)) return null;
+    var bounty = SET_BOUNTY_PER_SLOT * slots * (gem ? 2 : 1);
+    var reward = Math.max(SET_REWARD_MIN, Math.round(worth * (gem ? GEM_SET_REWARD : SET_REWARD) / 10) * 10);
+    var pay = Math.max(0, reward - (had ? had.reward || 0 : 0));
+    if (pay) earn(p, pay, "sets");
+    p.collections[id] = { day: dayOf(Date.now()), bounty: bounty, reward: Math.max(reward, had ? had.reward || 0 : 0), gem: !!gem };
+    return { kind: "achievement", a: { title: title, text: gem ? "Saved as a Gem Set: every slab a 10" : "Saved in a display case",
+                                       bounty: bounty - (had ? had.bounty || 0 : 0), reward: pay } };
 }
 
 // a locked poster's progress, as text ("" when it has none)
@@ -452,8 +1361,10 @@ function fresh(now) {
                  bySet: {},                       // set -> { packs, boxes, cases, pulled, completion, groups, present, value }
                  backfilled: 1,                   // 0: the set boards still need back-dating from the collection (see backfill)
                  spent: 0, bought: 0, boughtValue: 0, graded: 0, gem10: 0, sealedOpened: 0,
-                 seasonsDone: 0, weeklyDone: 0 },
+                 seasonsDone: 0, weeklyDone: 0, shows: 0, showSteals: 0, fakes: 0,
+                 vintage: 0, promos: 0, goldRares: 0, grails: 0, rookie: 0 },
         achievements: {},              // id -> date unlocked
+        collections: {},               // saved collection id -> { day, bounty, reward, gem } (rewarded once)
         bounties: { day: "", list: [] },
         // the Port
         ship: { level: 0 },
@@ -464,6 +1375,7 @@ function fresh(now) {
         shop: { day: "", bought: {} }, // today's deals bought (card key -> true)
         cosmetics: { owned: {}, backdrop: "default", slab: "classic" },
         ledger: { since: dayOf(now), total: {}, days: {} },  // see ledgerAdd
+        show: { day: "", entered: 0, left: 0, stock: null, bought: {}, haggled: {}, looks: 0 },   // the card show (see enterShow)
         weekly: { week: "", event: "", set: "", setName: "", list: [] },   // this week's event and bounties
         season: { id: "", counts: {}, done: {}, tiers: {} },               // this month's season (see seasonGoals)
         seasons: {},                   // past seasons: id -> { points, tiers }
@@ -583,6 +1495,12 @@ function accrue(p, now, sets) {
         p.weekly = { week: week, event: eventFor(week).id, set: featured.id, setName: featured.name,
                      list: makeWeeklyBounties(week, featured) };
     }
+    // a card show you never walked out of (the day's over): you've gone home
+    var sh = p.show;
+    if (sh && sh.day && sh.entered && !sh.left && sh.day !== today) {
+        var recap = leaveShow(p, now);
+        if (recap) events = events.concat(recap.done);
+    }
     var month = monthOf(now);
     if (p.season.id !== month) {
         if (p.season.id) p.seasons[p.season.id] = { points: seasonPoints(p), tiers: Object.keys(p.season.tiers).length };
@@ -609,21 +1527,22 @@ function pay(p, price, freePackOk, what) {
     return spend(p, price, what || "packs") ? "paid" : "";
 }
 
-// pay berries for anything (what: a SPENDING key, for the ledger); false if you can't afford it
-function spend(p, amount, what) {
+// pay berries for anything (what: a SPENDING key, for the ledger); false if you can't afford it.
+// unstated: not counted in stats.spent (the spending posters), only in the ledger
+function spend(p, amount, what, unstated) {
     amount = Math.round(amount);
     if (p.berries < amount) return false;
     p.berries -= amount;
-    p.stats.spent += amount;
+    if (!unstated) p.stats.spent += amount;
     ledgerAdd(p, "spend", what || "other", amount);
     return true;
 }
 
-// get berries (source: an EARNINGS key, for the ledger)
-function earn(p, amount, source) {
+// get berries (source: an EARNINGS key, for the ledger); unstated: not counted in stats.earned
+function earn(p, amount, source, unstated) {
     amount = Math.round(amount);
     p.berries += amount;
-    p.stats.earned += amount;
+    if (!unstated) p.stats.earned += amount;
     ledgerAdd(p, "earn", source || "other", amount);
 }
 
@@ -631,9 +1550,9 @@ function earn(p, amount, source) {
 // (the wanted board shows it; it's how the economy gets balanced)
 
 var EARNINGS = [["income", "Passive income"], ["sell", "Selling cards"], ["posters", "Wanted posters"],
-                ["setPosters", "Set wanted posters"], ["bounties", "Daily bounties"], ["streak", "Daily streak"],
+                ["setPosters", "Set wanted posters"], ["sets", "Saved sets"], ["bounties", "Daily bounties"], ["streak", "Daily streak"],
                 ["focus", "Focus sessions"], ["sealed", "Selling sealed"], ["season", "Season rewards"], ["other", "Other"]];
-var SPENDING = [["packs", "Packs"], ["boxes", "Boxes"], ["cases", "Cases"], ["shop", "Card shop"], ["grading", "Grading"],
+var SPENDING = [["packs", "Packs"], ["boxes", "Boxes"], ["cases", "Cases"], ["shop", "Card shop"], ["show", "Card shows"], ["grading", "Grading"],
                 ["sealed", "Sealed products"], ["ship", "Ship"], ["crew", "Crew"], ["cosmetics", "Cosmetics"], ["other", "Other"]];
 var LEDGER_DAYS = 14;   // days kept day by day
 
@@ -693,6 +1612,7 @@ function record(p, ev) {
     if (ev.type === "pack") {
         var b = bySet(p, ev.set);
         s.packs++;
+        s.rookie += ev.rookie || 0;   // the 1999 Hyper Battle Luffy came out of it
         b.packs++;
         s.sets[ev.set] = (s.sets[ev.set] || 0) + 1;
         ev.tiers.forEach(function (t) {
@@ -715,6 +1635,7 @@ function record(p, ev) {
         if (ev.set) bySet(p, ev.set).cases++;
     } else if (ev.type === "value") {
         s.value = ev.total;
+        s.setBonus = ev.bonus || 0;   // saved sets' bonus: passive income only
         Object.keys(s.bySet).forEach(function (k) { s.bySet[k].value = 0; });
         Object.keys(ev.bySet).forEach(function (k) { bySet(p, k).value = ev.bySet[k]; });
     } else if (ev.type === "sell") {
@@ -727,6 +1648,17 @@ function record(p, ev) {
         s.boughtValue += ev.value;
     } else if (ev.type === "graded") {
         s.graded++;
+        if (ev.grade === 10) s.gem10++;
+    } else if (ev.type === "show") {       // left a card show (fakes and steals only come out then)
+        s.shows++;
+        s.showSteals += ev.steals || 0;
+        s.fakes += ev.fakes || 0;
+        s.vintage += ev.vintage || 0;
+        s.promos += ev.promos || 0;
+        s.goldRares += ev.goldRares || 0;
+        s.grails += ev.grails || 0;
+        s.rookie += ev.rookie || 0;
+    } else if (ev.type === "reviewed") {   // a review lifted a slab: a new 10 counts, it's not another grading
         if (ev.grade === 10) s.gem10++;
     } else if (ev.type === "registry") {
         // ev.bySet: { set: { gem, graded, total, registry } } from the collection's slabs
@@ -792,14 +1724,15 @@ function record(p, ev) {
         count("posters", 1);
         done.push({ kind: "achievement", a: x });
     };
-    Object.keys(s.bySet).forEach(function (set) { setAchievements(set).forEach(check); });
+    Object.keys(s.bySet).forEach(function (set) { if (!isShowSet(set)) setAchievements(set).forEach(check); });   // no board for those
     ACHIEVEMENTS.forEach(check);
     return done.concat(seasonCheck(p));
 }
 
 // ฿ a minute while you're active: grows with what your collection is worth
 function incomePerMinute(p) {
-    var base = INCOME_PER_MINUTE + INCOME_VALUE_SCALE * Math.sqrt(Math.max(0, p.stats.value || 0) / 1000);
+    var worth = (p.stats.value || 0) + (p.stats.setBonus || 0);   // saved sets count their bonus here
+    var base = INCOME_PER_MINUTE + INCOME_VALUE_SCALE * Math.sqrt(Math.max(0, worth) / 1000);
     return Math.round(base * incomeBonus(p));
 }
 
@@ -870,13 +1803,16 @@ function cardValue(card, market) {
 // (or the given collection's cards) and the market prices cached in
 // market/<set>.json (base values without them).
 // graded: the collection's graded slabs (read with the cards when cards isn't given).
-function collectionValue(host, dataDir, cards, graded) {
-    var markets = {}, out = { total: 0, bySet: {} };
+// saved: the collection's saved sets ({ id: { slabs: [slab id], gem } }): their bonus is
+// out.bonus, which only counts toward passive income (not the value posters)
+function collectionValue(host, dataDir, cards, graded, saved) {
+    var markets = {}, out = { total: 0, bySet: {}, bonus: 0 };
     if (!cards) {
         try {
             var col = JSON.parse(host.readText(dataDir + "/collection.json") || "{}");
             cards = col.cards || {};
             graded = col.graded || {};
+            saved = col.sets || {};
         } catch (e) { cards = {}; }
     }
     var market = function (set) {
@@ -898,12 +1834,19 @@ function collectionValue(host, dataDir, cards, graded) {
         var g = graded[id];
         add(g.set, slabValue(g, market(g.set)));
     });
+    Object.keys(saved || {}).forEach(function (id) {
+        var bonus = setBonus(saved[id].gem);
+        (saved[id].slabs || []).forEach(function (sid) {
+            var g = (graded || {})[sid];
+            if (g) out.bonus += slabValue(g, market(g.set)) * bonus;
+        });
+    });
     return out;
 }
 
 // record a fresh collectionValue() (plus your sealed products); returns the completions
 function setValue(p, v) {
-    return record(p, { type: "value", total: v.total + sealedTotal(p, Date.now()), bySet: v.bySet });
+    return record(p, { type: "value", total: v.total + sealedTotal(p, Date.now()), bySet: v.bySet, bonus: v.bonus || 0 });
 }
 
 // How much of a set you own: { completion, groups: { leaders: 0..1, ... }, present: [tiers] }.
@@ -1026,30 +1969,34 @@ function gradingFee(serviceId, value, p) {
     return Math.round(Math.max(g.base, g.pct * value) / 10) * 10;
 }
 
-function rollGrade() {
+// odds: [[grade, p], ...] (GRADE_ODDS without)
+function rollGrade(odds) {
+    odds = odds || GRADE_ODDS;
     var r = Math.random(), acc = 0;
-    for (var i = 0; i < GRADE_ODDS.length; i++) {
-        acc += GRADE_ODDS[i][1];
-        if (r < acc) return GRADE_ODDS[i][0];
+    for (var i = 0; i < odds.length; i++) {
+        acc += odds[i][1];
+        if (r < acc) return odds[i][0];
     }
-    return 8;
+    return odds[odds.length - 1][0];
 }
 
 // a slab: { set, key, id, name, tier, image, grade, ... }
 function slabValue(slab, market) {
-    return Math.round(cardValue(slab, market) * (GRADE_MULT[slab.grade] || 1));
+    return Math.round(cardValue(slab, market) * (slab.diamond ? DIAMOND_MULT : GRADE_MULT[slab.grade] || 1));
 }
 
 // send one copy of a card off (the caller takes it out of the collection);
-// card: { id, name, tier, set, image, key }, value: what it's worth raw
+// card: { id, name, tier, set, image, key, cond }, value: what it's worth raw
 function sendToGrading(p, card, serviceId, value, now) {
     var g = GRADING.filter(function (x) { return x.id === serviceId; })[0];
     var fee = gradingFee(serviceId, value, p);
     if (!g || !spend(p, fee, "grading")) return null;
     var id = now.toString(36) + Math.floor(Math.random() * 1e6).toString(36);
     var hours = g.hours * (eventIs(p, "grading") ? 0.5 : 1);
-    p.grading[id] = { card: card, service: g.id, fee: fee, grade: rollGrade(),
+    var diamond = Math.random() < DIAMOND_CHANCE;
+    p.grading[id] = { card: card, service: g.id, fee: fee, grade: diamond ? 10 : rollGrade(serviceOdds(card.cond, g.id)),
                       sentAt: now, readyAt: now + hours * 3600 * 1000 };
+    if (diamond) p.grading[id].diamond = true;
     return id;
 }
 
@@ -1062,7 +2009,9 @@ function collectOrder(p, id) {
     var o = p.grading[id];
     if (!o) return null;
     delete p.grading[id];
-    return Object.assign({}, o.card, { grade: o.grade, gradedAt: Date.now(), service: o.service });
+    var slab = Object.assign({}, o.card, { grade: o.grade, gradedAt: Date.now(), service: o.service });
+    if (o.diamond) slab.diamond = true;
+    return slab;
 }
 
 // ---- the Port: the card shop ------------------------------------------------------------
@@ -1103,9 +2052,12 @@ function shopToday(p, now) {
 
 // ---- the Port: sealed products --------------------------------------------------------------
 
+// a vintage product (from a card show) is worth its unopened packs' share; a resealed one, nothing
 function sealedValue(item, now) {
+    if (item.resealed) return 0;
     var weeks = Math.max(0, now - item.at) / (7 * 86400 * 1000);
-    return Math.round(item.paid * Math.pow(1 + item.rate, weeks));
+    var left = item.vintage ? item.packs / item.packsTotal : 1;
+    return Math.round(item.paid * left * Math.pow(1 + item.rate, weeks));
 }
 
 function sealedTotal(p, now) {
@@ -1119,9 +2071,11 @@ function bestSealedGain(p, now) {
     }, 0);
 }
 
-// age: 0 (the newest set) .. 1 (the oldest): older sets gain value faster
+// age: 0 (the newest set) .. 1 (the oldest): older sets gain value faster.
+// Buying and selling sealed products isn't counted as spent or earned (the
+// spending and earning posters), so they can't be farmed by buying and selling.
 function buySealed(p, set, setName, kind, boxes, price, age) {
-    if (!spend(p, price, "sealed")) return null;
+    if (!spend(p, price, "sealed", true)) return null;
     var now = Date.now(), id = now.toString(36) + Math.floor(Math.random() * 1e6).toString(36);
     p.sealed[id] = { set: set, setName: setName, kind: kind, boxes: boxes, paid: price, at: now,
                      rate: SEALED_RATE[0] + (SEALED_RATE[1] - SEALED_RATE[0]) * Math.max(0, Math.min(1, age)) };
@@ -1133,7 +2087,7 @@ function sellSealed(p, id) {
     if (!it) return 0;
     var v = sealedValue(it, Date.now());
     delete p.sealed[id];
-    earn(p, v, "sealed");
+    earn(p, v, "sealed", true);
     return v;
 }
 
@@ -1145,6 +2099,18 @@ function openSealed(p, id) {
     p.prepaidBoxes[it.set] = (p.prepaidBoxes[it.set] || 0) + it.boxes;
     p.stats.sealedOpened++;
     return it;
+}
+
+// a vintage product: one of its packs comes out (Stage rips it). Returns { origin, resealed, left,
+// line, product (the kind), name, cards }
+function openVintagePack(p, id) {
+    var it = p.sealed[id];
+    if (!it || !it.vintage || !(it.packs > 0)) return null;
+    if (it.packs === it.packsTotal) p.stats.sealedOpened++;
+    it.packs--;
+    if (!it.packs) delete p.sealed[id];
+    return { origin: it.setName, resealed: !!it.resealed, left: it.packs, line: it.line || "ccg", product: it.kind,
+             name: it.name || "", cards: it.cards || null };
 }
 
 // ---- the Port: cosmetics -----------------------------------------------------------------------
@@ -1168,6 +2134,13 @@ function ownsCosmetic(p, id) {
 }
 
 // buy (if needed) and wear it; kind: "backdrop" | "slab"
+// the playmats to download ahead of time ([[id, tcgplayer id, page]], for
+// fetch_cards.py background); the ones that come with the app aren't
+function playmatDownloads() {
+    return BACKDROPS.filter(function (b) { return b.playmat && !b.playmat.file; })
+        .map(function (b) { return [b.id, String(b.playmat.tcg || ""), b.playmat.page || ""]; });
+}
+
 function equipCosmetic(p, kind, id) {
     if (kind === "backdrop" && id.indexOf("season-") === 0) {   // earned in a season, never sold
         if (!ownsCosmetic(p, id)) return false;

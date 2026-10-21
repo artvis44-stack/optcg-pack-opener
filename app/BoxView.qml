@@ -28,6 +28,9 @@ Item {
             .sort((a, b) => Tiers.info[b].rank - Tiers.info[a].rank)
             .map(t => ({ tier: t, count: counts[t] }));
     }
+    // what the pulled cards are worth, against what the box cost
+    readonly property int pulledValue: pulled.reduce((a, c) => a + stage.cardValue(c), 0)
+    readonly property int profit: pulledValue - (stage ? stage.boxPaidPrice : 0)
     // the cards worth laying out: SR and up
     readonly property var hits: pulled.filter(c => Tiers.tierOf(c).rank >= 4)
                                       .sort((a, b) => Tiers.tierOf(b).rank - Tiers.tierOf(a).rank)
@@ -58,6 +61,22 @@ Item {
                   + (view.phase === "boxGrid" ? "   ·   " + view.openedCount + " / " + view.stage.boxPacks.length + " packs opened" : "")
             color: "#d0d4dc"
             font.pixelSize: 16
+        }
+        Text {   // the box done: did it pay?
+            visible: view.phase === "boxSummary"
+            anchors.horizontalCenter: parent.horizontalCenter
+            text: (view.profit >= 0 ? "PROFIT  +" : "LOSS  −") + Progress.format(Math.abs(view.profit))
+            color: view.profit >= 0 ? "#5be37d" : "#ff5a5a"
+            style: Text.Outline; styleColor: "#000000"
+            font { pixelSize: 30; weight: Font.Black }
+        }
+        Text {
+            visible: view.phase === "boxSummary"
+            anchors.horizontalCenter: parent.horizontalCenter
+            text: "Cards worth " + Progress.format(view.pulledValue) + "   ·   the box cost "
+                  + Progress.format(view.stage.boxPaidPrice) + (view.stage.offTheRecord ? " (free here)" : "")
+            color: "#9aa0ad"
+            font.pixelSize: 14
         }
     }
 
@@ -170,6 +189,110 @@ Item {
         }
     }
 
+    // the chances in a box of this set (Tiers.boxChances), beside the sealed box
+    Rectangle {
+        id: odds
+        readonly property var o: view.stage ? view.stage.boxOdds : null
+        visible: view.phase === "boxSealed" && !!o
+        x: Math.min(view.width - width - 20, boxArt.x + boxArt.width + 50)
+        anchors.verticalCenter: parent.verticalCenter
+        width: 320
+        height: oddsCol.height + 32
+        radius: 12
+        color: "#d00c1020"
+        border.color: "#3a4258"
+
+        function pct(p) {
+            return p >= 0.995 ? "every box" : p >= 0.1 ? Math.round(p * 100) + "%" : p >= 0.01 ? (p * 100).toFixed(1) + "%"
+                 : "1 in " + Math.round(1 / p);
+        }
+
+        Column {
+            id: oddsCol
+            x: 18; y: 16
+            width: parent.width - 36
+            spacing: 7
+            Text {
+                text: "IN THIS BOX"
+                color: "#ffd56b"
+                font { pixelSize: 18; weight: Font.Black; letterSpacing: 2 }
+            }
+            Text {
+                width: parent.width
+                wrapMode: Text.WordWrap
+                text: !odds.o ? "" : odds.o.packs + " packs"
+                      + (odds.o.srs ? "  ·  about " + Math.round(odds.o.srs) + " Super Rares" : "")
+                      + (odds.o.leaders ? "  ·  " + odds.o.leaders + " Leaders" : "")
+                      + (odds.o.topper ? "  ·  a box topper" : "")
+                color: "#c8ccd6"
+                font.pixelSize: 13
+            }
+            Text {
+                text: "Chance of at least one:"
+                color: "#9aa0ad"
+                font.pixelSize: 12
+            }
+            Repeater {
+                model: odds.o ? odds.o.hits : []
+                Item {
+                    required property var modelData
+                    readonly property var tier: Tiers.info[modelData.tier]
+                    width: oddsCol.width
+                    height: 20
+                    Text {
+                        width: 150
+                        anchors.verticalCenter: parent.verticalCenter
+                        elide: Text.ElideRight
+                        text: parent.tier.label
+                        color: parent.tier.color
+                        font { pixelSize: 13; weight: Font.Bold }
+                    }
+                    Rectangle {   // the bar
+                        x: 154
+                        anchors.verticalCenter: parent.verticalCenter
+                        width: parent.width - x - 76   // room for "every box" on the right
+                        height: 6; radius: 3
+                        color: "#232a3c"
+                        Rectangle {
+                            width: Math.max(2, parent.width * modelData.chance)
+                            height: parent.height; radius: 3
+                            color: parent.parent.tier.color
+                        }
+                    }
+                    Text {
+                        anchors { right: parent.right; verticalCenter: parent.verticalCenter }
+                        text: odds.pct(modelData.chance)
+                        color: "#fff6e0"
+                        font { pixelSize: 13; weight: Font.Black }
+                    }
+                }
+            }
+            Item {
+                width: oddsCol.width
+                height: 20
+                Text {
+                    anchors.verticalCenter: parent.verticalCenter
+                    text: "God pack"
+                    color: "#ff9af0"
+                    font { pixelSize: 13; weight: Font.Bold }
+                }
+                Text {
+                    anchors { right: parent.right; verticalCenter: parent.verticalCenter }
+                    text: odds.o ? odds.pct(odds.o.god) : ""
+                    color: "#fff6e0"
+                    font { pixelSize: 13; weight: Font.Black }
+                }
+            }
+            Text {
+                width: parent.width
+                wrapMode: Text.WordWrap
+                text: "For any box of this set; what's in this one stays sealed."
+                color: "#6f7686"
+                font { pixelSize: 11; italic: true }
+            }
+        }
+    }
+
     // what opening this box costs, and the rest-of-the-case deal
     Column {
         visible: view.phase === "boxSealed" && !view.stage.offTheRecord
@@ -230,11 +353,22 @@ Item {
                     width: gridScreen.tileW
                     height: gridScreen.tileH + gridScreen.labelH
 
-                    // drop in, staggered, when the box is opened
-                    opacity: 0
-                    Component.onCompleted: dropIn.start()
+                    // drop in, staggered, when the grid is first shown. The tiles are built while the
+                    // sealed box (or a closed overlay) still hides the grid, and a fade run there stalls
+                    // half way, leaving packs see-through; so start it on show and finish it on hide.
+                    property bool dropped: false
+                    function showGrid() {
+                        if (gridScreen.visible && !dropped) { dropped = true; dropIn.restart(); }
+                        else if (!gridScreen.visible && dropIn.running) dropIn.complete();
+                    }
+                    Component.onCompleted: showGrid()
+                    Connections {
+                        target: gridScreen
+                        function onVisibleChanged() { tile.showGrid() }
+                    }
                     SequentialAnimation {
                         id: dropIn
+                        PropertyAction { target: tile; property: "opacity"; value: 0 }
                         PauseAnimation { duration: tile.index * 25 }
                         NumberAnimation { target: tile; property: "opacity"; to: 1; duration: 250 }
                     }

@@ -3,7 +3,7 @@ import "tiers.js" as Tiers
 import "progress.js" as Progress
 
 // The Port (P): where berries go. Tabs (← →): your ship and crew (perks), the
-// card shop (today's deals; any card can also be ordered from the binder),
+// card shop (today's deals, random every day; each says whether you own the card),
 // sealed products (buy, hold while they gain value, sell or open) and
 // cosmetics (backdrops, slab labels). Grading has its own screen, the Vault (G).
 Item {
@@ -15,6 +15,7 @@ Item {
     property string tab: "ship"
     property real now: Date.now()
     property var inspected: null     // a card or slab shown big
+    property bool notes: false       // Robin's notes, open
 
     function step(d) {
         var ids = tabs.map(t => t[0]);
@@ -23,13 +24,15 @@ Item {
     }
 
     function back() {
-        if (inspected) inspected = null;
+        if (notes) notes = false;
+        else if (inspected) inspected = null;
         else stage.togglePort();
     }
 
     onVisibleChanged: {
         if (!visible) return;
         inspected = null;
+        notes = false;
         now = Date.now();
         loadPool();
         if (tab === "cosmetics") fetchPlaymats();
@@ -268,7 +271,7 @@ Item {
                             required property var modelData
                             readonly property bool aboard: Progress.hasCrew(port.p, modelData.id)
                             width: (content.width - 24) / 3
-                            height: 124
+                            height: Math.max(124, crewCol.height + 24)   // room for a long perk and Robin's button
                             border.color: aboard ? "#7fd1b9" : "#2c3550"
                             Art {
                                 x: 10; y: 10
@@ -279,6 +282,7 @@ Item {
                                 dim: !parent.aboard
                             }
                             Column {
+                                id: crewCol
                                 x: 126; y: 12
                                 width: parent.width - 138
                                 spacing: 5
@@ -306,6 +310,13 @@ Item {
                                     color: "#7fd1b9"
                                     font.pixelSize: 12
                                 }
+                                PillButton {
+                                    visible: parent.parent.aboard && modelData.id === "robin"
+                                    text: "Her notes"
+                                    fontSize: 12
+                                    accent: "#c8a0ff"
+                                    onClicked: port.notes = true
+                                }
                             }
                         }
                     }
@@ -317,12 +328,28 @@ Item {
                 visible: port.tab === "shop"
                 width: parent.width
                 spacing: 12
+                Heading { text: "The card show" }
+                Note {
+                    width: parent.width
+                    readonly property string next: Progress.nextShowDay(port.p, port.now)
+                    text: Progress.canEnterShow(port.p, port.now)
+                          ? "It's in town today! Thirteen tables of chase cards, raw and graded, at prices you'll have to judge "
+                            + "yourself: once you're in, nothing shows a market price. Haggle, look closely, and watch out for fakes."
+                          : "You've been to today's. There's one every day: the next one is tomorrow (" + next + ")."
+                }
+                PillButton {
+                    visible: Progress.canEnterShow(port.p, port.now) && !port.stage.offTheRecord
+                    text: "Go to the card show (K)"
+                    accent: "#ff9ad5"
+                    onClicked: port.stage.toggleShow()
+                }
+                Item { width: 1; height: 8 }
                 Heading { text: "Today's deals" }
                 Note {
                     width: parent.width
                     text: "New stock every day from the sets you've downloaded, at market price + "
-                          + Math.round((Progress.dealMarkup(port.p) - 1) * 100) + "%. Looking for one card? Find it in the binder (B), "
-                          + "click it and order it (+" + Math.round((Progress.ORDER_MARKUP - 1) * 100) + "%)."
+                          + Math.round((Progress.dealMarkup(port.p) - 1) * 100) + "%. It's luck of the draw: the stock can include cards "
+                          + "you already have, and each one says how many you own."
                 }
                 Note {
                     visible: port.deals.length === 0
@@ -356,6 +383,15 @@ Item {
                                 color: Tiers.tierOf(deal.modelData.card).color
                                 font { pixelSize: 11; weight: Font.Bold }
                             }
+                            Text {   // do you have it already? (raw copies, slabs and display cases)
+                                readonly property var own: port.stage.ownedCount(deal.modelData.key)
+                                width: parent.width
+                                elide: Text.ElideRight
+                                text: own.raw + own.graded === 0 ? "New for you"
+                                      : "You own " + (own.raw + own.graded) + (own.graded ? " · " + own.graded + " graded" : "")
+                                color: own.raw + own.graded === 0 ? "#7fd1b9" : "#c8ccd6"
+                                font { pixelSize: 11; weight: Font.Bold }
+                            }
                             PillButton {
                                 text: deal.sold ? "Bought" : Progress.format(deal.price)
                                 fontSize: 12
@@ -378,7 +414,8 @@ Item {
                 Note {
                     width: parent.width
                     text: "Sealed boxes and cases gain value while you hold them (older sets faster), and count toward your "
-                          + "collection's value. Sell them for what they're worth now, or open them: the boxes wait for you in box mode."
+                          + "collection's value. Sell them for what they're worth now, or open them: the boxes wait for you in box mode. "
+                          + "Vintage packs and boxes (only ever at a card show) open a pack at a time."
                 }
                 Note { visible: !parent.held.length; text: "Nothing sealed yet." }
                 Repeater {
@@ -391,16 +428,25 @@ Item {
                         Text {
                             x: 14
                             anchors.verticalCenter: parent.verticalCenter
-                            text: modelData.set + " " + modelData.kind + "  ·  " + modelData.setName
+                            // a vintage one (from a card show) opens a pack at a time; a resealed one's worth nothing
+                            text: (modelData.line === "hb"
+                                   ? "Hyper Battle  ·  " + (modelData.name || modelData.setName) + (modelData.resealed ? "  ·  RESEALED" : "")
+                                   : modelData.vintage
+                                   ? "2005 CCG " + modelData.kind + "  ·  " + modelData.setName
+                                     + (modelData.kind === "box" ? "  ·  " + modelData.packs + " of " + modelData.packsTotal + " packs left" : "")
+                                     + (modelData.resealed ? "  ·  RESEALED" : "")
+                                   : modelData.set + " " + modelData.kind + "  ·  " + modelData.setName)
                                   + "  ·  paid " + Progress.format(modelData.paid) + "  ·  now " + Progress.format(parent.worth)
                                   + "  (" + (parent.worth >= modelData.paid ? "+" : "") + ((parent.worth / modelData.paid - 1) * 100).toFixed(1) + "%)"
-                            color: "#e8e8ee"
+                            color: modelData.resealed ? "#ff8a7a" : "#e8e8ee"
                             font { pixelSize: 14; weight: Font.Bold }
                         }
                         Row {
                             anchors { right: parent.right; rightMargin: 12; verticalCenter: parent.verticalCenter }
                             spacing: 8
-                            PillButton { text: "Open"; fontSize: 12; onClicked: port.stage.openSealed(modelData.id) }
+                            PillButton { text: modelData.line === "hb" ? (modelData.kind === "grandbox" ? "Open the deck" : "Open it")
+                                               : modelData.vintage ? "Open a pack" : "Open"; fontSize: 12
+                                         onClicked: modelData.vintage ? port.stage.openVintagePack(modelData.id) : port.stage.openSealed(modelData.id) }
                             PillButton { text: "Sell"; fontSize: 12; accent: "#7fd1b9"; onClicked: port.stage.sellSealed(modelData.id) }
                         }
                     }
@@ -413,8 +459,8 @@ Item {
                         required property string modelData
                         readonly property var info: port.stage.sets[modelData] || {}
                         readonly property var c: Tiers.setConfig(info)
-                        readonly property int box: Progress.boxPrice(c.family, c.packsPerBox, port.p, modelData)
-                        readonly property int wholeCase: Progress.casePrice(c.family, c.packsPerBox, c.boxes, port.p, modelData)
+                        readonly property int box: Progress.boxPrice(c, port.p, modelData, port.stage.tierValues(modelData))
+                        readonly property int wholeCase: Progress.casePrice(c, c.boxes, port.p, modelData, port.stage.tierValues(modelData))
                         width: content.width
                         height: 46
                         Text {
@@ -712,5 +758,12 @@ Item {
         text: "← →: switch tabs   ·   graded cards: the vault (G)   ·   P or Esc: back"
         color: "#9aa0ad"
         font.pixelSize: 14
+    }
+
+    RobinNotes {   // Robin's notes, over everything
+        anchors.fill: parent
+        visible: port.notes
+        stage: port.stage
+        onClose: port.notes = false
     }
 }

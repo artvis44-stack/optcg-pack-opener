@@ -9,11 +9,15 @@ the new version).
 
 usage: update.py            check and update if there's a newer release
        update.py --force    reinstall the latest release even if it's not newer
+       update.py --check    just say what's installed and what's out, as a line of
+                            JSON ({"have", "latest", "newer"} or {"error"}); the pack
+                            opener's update button asks this
 
 The repo may be private: then it needs a GitHub token, read from
 $OPTCG_GITHUB_TOKEN, ~/Library/Application Support/optcg/github-token, or `gh`.
 Log: ~/Library/Logs/optcg-update.log
 """
+import fcntl
 import json
 import os
 import re
@@ -131,6 +135,16 @@ def restart_showcase():
     log("started the desktop companion")
 
 
+def check(release):
+    """--check: one line of JSON for the pack opener"""
+    if isinstance(release, str):
+        print(json.dumps({"error": release}), flush=True)
+        return 1
+    latest, have = release["tag_name"], current_tag()
+    print(json.dumps({"have": have, "latest": latest, "newer": version(latest) > version(have)}), flush=True)
+    return 0
+
+
 def main():
     force = "--force" in sys.argv
     tok = token()
@@ -138,13 +152,16 @@ def main():
         release = json.load(api_get(API, tok))
     except urllib.error.HTTPError as e:
         if e.code == 404:
-            log("can't see the releases: the repo is private and there's no token "
-                f"(put one in {DATA / 'github-token'})")
+            release = ("can't see the releases: the repo is private and there's no token "
+                       f"(put one in {DATA / 'github-token'})")
         else:
-            log(f"GitHub API error {e.code}")
-        return 1
+            release = f"GitHub API error {e.code}"
     except OSError as e:
-        log(f"offline? {e}")
+        release = f"offline? {e}"
+    if "--check" in sys.argv:
+        return check(release)
+    if isinstance(release, str):
+        log(release)
         return 1
 
     latest, have = release["tag_name"], current_tag()
@@ -156,6 +173,14 @@ def main():
         log(f"{latest} has no optcg.bundle asset")
         return 1
 
+    # the update button and the LaunchAgent could both be at it
+    DATA.mkdir(parents=True, exist_ok=True)
+    lock = open(DATA / ".update.lock", "w")
+    try:
+        fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
+    except OSError:
+        log("another update is running")
+        return 1
     log(f"updating {have} -> {latest}")
     before_reqs = (HERE / "requirements.txt").read_text()
     with tempfile.TemporaryDirectory() as tmp:

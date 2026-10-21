@@ -4,14 +4,16 @@ import "progress.js" as Progress
 
 // The Vault (G): your graded cards. Tabs (← →): your slabs (filter by set and
 // grade; click one to see it big, sell it or put it on the desktop), what's out
-// for grading, and the set registry (best grade of each card, Gem Mint progress).
-// Cards are sent for grading from the binder: click a card you own, "Grade a copy".
+// for grading, the set registry (best grade of each card, Gem Mint progress), and
+// the fakes you bought at card shows (worth nothing; keep them or destroy them).
+// Cards are sent for grading from the binder: click a card you own, "Grade / pre-grade".
 Item {
     id: vault
 
     property Item stage
     readonly property var p: stage ? stage.progress : Progress.fresh(Date.now())
-    readonly property var tabs: [["slabs", "Slabs"], ["out", "Out for grading"], ["registry", "Set registry"]]
+    readonly property var tabs: [["slabs", "Slabs"], ["sets", "Sets"], ["out", "Out for grading"], ["registry", "Set registry"]]
+                                .concat(fakes.length ? [["fakes", "Fakes"]] : [])
     property string tab: "slabs"
     property string setFilter: ""
     property int gradeFilter: 0          // 0: every grade, 7: 7 or lower
@@ -26,6 +28,7 @@ Item {
 
     function back() {
         if (inspected) inspected = null;
+        else if (tab === "sets" && setsView.opened) setsView.opened = "";
         else stage.toggleVault();
     }
 
@@ -54,6 +57,12 @@ Item {
     readonly property var orders: Object.keys(p.grading || {}).map(id => Object.assign({ id: id }, p.grading[id]))
                                         .sort((a, b) => a.readyAt - b.readyAt)
     readonly property int gems: allSlabs.filter(s => s.grade === 10).length
+    // counterfeits bought at card shows: { fakeId, card, grade, paid, day, vendor }
+    readonly property var fakes: {
+        var f = (stage && stage.collection.fakes) || {};
+        return Object.keys(f).map(id => Object.assign({ fakeId: id }, f[id])).sort((a, b) => (b.day || "").localeCompare(a.day || ""));
+    }
+    property string confirmDestroy: ""
     readonly property real worth: allSlabs.reduce((n, s) => n + (stage ? stage.slabValue(s) : 0), 0)
 
     function timeLeft(ms) {
@@ -189,8 +198,9 @@ Item {
             Text {
                 anchors { top: slabView.bottom; topMargin: 6; horizontalCenter: parent.horizontalCenter }
                 text: Progress.format(vault.stage.slabValue(cell.modelData))
-                      + (cell.modelData.gradedAt && vault.now - cell.modelData.gradedAt < 86400000 ? "   ·   NEW" : "")
-                color: cell.modelData.grade === 10 ? "#ffd700" : "#c8ccd6"
+                      + (vault.stage.lockedSlabs[cell.modelData.slabId] ? "   ·   in a case"
+                         : cell.modelData.gradedAt && vault.now - cell.modelData.gradedAt < 86400000 ? "   ·   NEW" : "")
+                color: cell.modelData.diamond ? "#7ae8ff" : cell.modelData.grade === 10 ? "#ffd700" : "#c8ccd6"
                 font { pixelSize: 13; weight: Font.Bold }
             }
         }
@@ -201,7 +211,7 @@ Item {
         width: Math.min(560, vault.width * 0.8)
         horizontalAlignment: Text.AlignHCenter
         text: vault.allSlabs.length ? "No slabs match these filters."
-              : "No graded cards yet. Open the binder (B), click a card you own and choose \"Grade a copy\". "
+              : "No graded cards yet. Open the binder (B), click a card you own and choose \"Grade / pre-grade\". "
                 + "It comes back in a slab with a grade from 1 to 10."
     }
 
@@ -224,7 +234,7 @@ Item {
             Note {
                 width: parent.width
                 visible: !vault.orders.length
-                text: "Nothing out for grading. Send a card from the binder (B): click a card you own, \"Grade a copy\"."
+                text: "Nothing out for grading. Send a card from the binder (B): click a card you own, \"Grade / pre-grade\"."
             }
             Repeater {
                 model: vault.orders
@@ -277,6 +287,92 @@ Item {
         }
     }
 
+    // ---- fakes: counterfeits from card shows ------------------------------------------------
+    Flickable {
+        visible: vault.tab === "fakes"
+        anchors {
+            top: header.bottom; topMargin: 20
+            bottom: parent.bottom; bottomMargin: 44
+            horizontalCenter: parent.horizontalCenter
+        }
+        width: Math.min(vault.width * 0.9, 900)
+        contentHeight: fakeCol.height
+        clip: true
+        boundsBehavior: Flickable.StopAtBounds
+        Column {
+            id: fakeCol
+            width: parent.width
+            spacing: 10
+            Note {
+                width: parent.width
+                text: "Counterfeits you bought at card shows. They're worth nothing and don't count as owned. "
+                      + "Keep them as a lesson (see how the foil doesn't shimmer?) or destroy them."
+            }
+            Repeater {
+                model: vault.fakes
+                Panel {
+                    required property var modelData
+                    width: fakeCol.width
+                    height: modelData.grade ? 150 : 104
+                    Loader {
+                        x: 12; y: 8
+                        sourceComponent: modelData.grade ? fakeSlab : fakeCard
+                        readonly property var c: Object.assign({ fake: true, grade: modelData.grade }, vault.stage.localCard(modelData.card))
+                        Component {
+                            id: fakeCard
+                            Card { width: 64; card: parent.c; faceUp: true; time: vault.stage ? vault.stage.t : 0 }
+                        }
+                        Component {
+                            id: fakeSlab
+                            Slab { width: 80; card: parent.c; time: vault.stage ? vault.stage.t : 0; hoverTilt: false }
+                        }
+                    }
+                    Column {
+                        x: modelData.grade ? 104 : 90; y: 12
+                        width: parent.width - x - 16
+                        spacing: 6
+                        Text {
+                            width: parent.width
+                            elide: Text.ElideRight
+                            text: "FAKE  ·  " + Tiers.displayName(modelData.card) + "  ·  " + modelData.card.set
+                                  + (modelData.grade ? "  ·  a fake " + modelData.grade + " slab" : "")
+                            color: "#ff8a7a"
+                            font { pixelSize: 15; weight: Font.Bold }
+                        }
+                        Text {
+                            text: "Bought at the " + modelData.day + " card show from " + modelData.vendor + " for " + Progress.format(modelData.paid || 0)
+                            color: "#9aa0ad"
+                            font.pixelSize: 13
+                        }
+                        PillButton {
+                            text: vault.confirmDestroy === modelData.fakeId ? "Destroy it? Yes" : "Destroy"
+                            fontSize: 12
+                            accent: "#ff8a7a"
+                            onClicked: {
+                                if (vault.confirmDestroy !== modelData.fakeId) { vault.confirmDestroy = modelData.fakeId; return; }
+                                vault.stage.destroyFake(modelData.fakeId);
+                                vault.confirmDestroy = "";
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    // ---- sets: collections and their display cases (SetsView.qml) --------------------------
+    SetsView {
+        id: setsView
+        visible: vault.tab === "sets"
+        anchors {
+            top: header.bottom; topMargin: 16
+            bottom: parent.bottom; bottomMargin: 40
+            left: parent.left; right: parent.right
+        }
+        stage: vault.stage
+        onInspect: slab => vault.inspected = slab
+    }
+
     // ---- the set registry ----------------------------------------------------------------
     Flickable {
         visible: vault.tab === "registry"
@@ -315,7 +411,7 @@ Item {
                     height: 74
                     Text {
                         x: 16; y: 12
-                        text: modelData.set + "  ·  " + ((vault.stage.sets[modelData.set] || {}).name || "")
+                        text: modelData.set + "  ·  " + ((vault.stage.sets[modelData.set] || Progress.SHOW_SETS[modelData.set] || {}).name || "")
                         color: "#e8e8ee"
                         font { pixelSize: 16; weight: Font.Black }
                     }
@@ -374,17 +470,25 @@ Item {
         visible: !!vault.inspected
         anchors.horizontalCenter: parent.horizontalCenter
         y: Math.max(20, (vault.height - height) / 2 - 30)
-        width: Math.min(380, (vault.height - 160) / 1.62)
+        width: Math.min(380, (vault.height - 210) / 1.62)
         card: vault.inspected
         labelStyle: Progress.slabStyle(vault.p)
         time: vault.stage ? vault.stage.t : 0
         onClicked: vault.inspected = null
     }
+    property bool confirmCrack: false
+    onInspectedChanged: confirmCrack = false
     Row {
+        id: slabActions
         visible: !!vault.inspected
         anchors { horizontalCenter: parent.horizontalCenter; top: big.bottom; topMargin: 16 }
         spacing: 12
+        readonly property var s: vault.inspected
+        readonly property real chance: s ? Progress.reviewChance(s) : 0
+        readonly property int reviewFee: s ? Progress.reviewFee(vault.stage.slabValue(s)) : 0
+        readonly property string inCase: s ? vault.stage.lockedSlabs[s.slabId] || "" : ""   // in a display case: hands off
         PillButton {
+            visible: !slabActions.inCase
             text: vault.inspected ? "Sell (+" + Progress.format(vault.stage.slabValue(vault.inspected)) + ")" : ""
             accent: "#7fd1b9"
             onClicked: {
@@ -396,11 +500,59 @@ Item {
             text: "Show on desktop"
             onClicked: vault.stage.showcase(vault.inspected)
         }
+        PillButton {   // up a grade or stays, never down; once per slab
+            visible: !!slabActions.s && !vault.stage.offTheRecord && slabActions.chance > 0 && !slabActions.inCase
+            text: "Review (" + Progress.format(slabActions.reviewFee) + ", " + Math.round(slabActions.chance * 100) + "% it goes up to "
+                  + (slabActions.s ? slabActions.s.grade + 1 : "") + ")"
+            accent: "#c8a0ff"
+            enabledLook: vault.p.berries >= slabActions.reviewFee
+            onClicked: {
+                var id = slabActions.s.slabId;
+                vault.stage.reviewSlab(id);
+                vault.inspected = vault.allSlabs.filter(x => x.slabId === id)[0] || null;
+            }
+        }
+        PillButton {   // back to a raw copy in the binder, to grade again
+            visible: !!slabActions.s && !vault.stage.offTheRecord && !slabActions.inCase
+            text: vault.confirmCrack ? "Crack it open? Yes" : "Crack it open"
+            accent: "#ff8a7a"
+            onClicked: {
+                if (!vault.confirmCrack) {
+                    vault.confirmCrack = true;
+                    return;
+                }
+                vault.stage.crackSlab(slabActions.s.slabId);
+                vault.inspected = null;
+            }
+        }
+    }
+    Text {   // what cracking or a review would do
+        visible: !!slabActions.s
+        anchors { horizontalCenter: parent.horizontalCenter; top: slabActions.bottom; topMargin: 10 }
+        width: Math.min(760, vault.width - 40)
+        horizontalAlignment: Text.AlignHCenter
+        wrapMode: Text.WordWrap
+        readonly property var s: slabActions.s
+        readonly property var cond: s ? Progress.CONDITION[s.cond] : null
+        text: !s ? ""
+              : slabActions.inCase ? "In the " + (vault.stage.savedSets[slabActions.inCase] || {}).title
+                                     + " display case (the Sets tab): break the set to sell, review or crack it."
+              : (cond ? "Graded from a " + cond.name + " copy." : s.cond === "unchecked" ? "Graded from an unchecked copy." : "Graded before conditions.")
+                + (s.reviewed ? "  Reviewed already." : s.grade >= 10 ? "" : "  A review lifts it a grade or leaves it, never lower.")
+                + "  Cracking it puts the card back in the binder raw"
+                + (cond ? " (" + cond.name + ", or a level worse " + Math.round(Progress.CRACK_WEAR * 100) + "% of the time)"
+                   : s.cond === "unchecked" || s.grade <= 7 ? " (unchecked, a fresh chance)"
+                   : " (" + (s.grade >= 10 ? "Pristine" : s.grade === 9 ? "Clean" : "Decent") + ", or a level worse " + Math.round(Progress.CRACK_WEAR * 100) + "% of the time)")
+                + ", to grade again."
+                + (s.diamond ? "  The Diamond Label goes with the slab: cracked, it's gone." : "")
+        color: "#9aa0ad"
+        font.pixelSize: 13
     }
 
     Text {
         anchors { bottom: parent.bottom; bottomMargin: 14; horizontalCenter: parent.horizontalCenter }
         text: vault.inspected ? "Move the mouse to tilt   ·   click or Esc to go back"
+              : vault.tab === "sets" ? "← →: switch tabs   ·   save a complete collection in a display case   ·   G or Esc: back"
               : "← →: switch tabs   ·   click a slab to see it big   ·   G or Esc: back"
         color: "#9aa0ad"
         font.pixelSize: 14

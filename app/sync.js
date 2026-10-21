@@ -96,6 +96,18 @@ function mergeCollection(b, l, r) {
         var firsts = [lc[k], rc[k]].filter(function (x) { return x && x.first; }).map(function (x) { return x.first; }).sort();
         if (firsts.length) e.first = firsts[0];
         e.count = count;
+        // copies by condition (Progress.conditions) add up the same way; any
+        // more than the count are trimmed when the app reads them
+        var cond = {};
+        [bc[k], lc[k], rc[k]].forEach(function (x) { Object.keys((x && x.cond) || {}).forEach(function (c) { cond[c] = 0; }); });
+        Object.keys(cond).forEach(function (c) {
+            var get = function (x) { return (x && x.cond && x.cond[c]) || 0; };
+            var n = get(rc[k]) + get(lc[k]) - get(bc[k]);
+            if (n > 0) cond[c] = n;
+            else delete cond[c];
+        });
+        if (Object.keys(cond).length) e.cond = cond;
+        else delete e.cond;
         cards[k] = e;
     });
     out.cards = cards;
@@ -104,6 +116,14 @@ function mergeCollection(b, l, r) {
     var graded = mergeTree(b.graded || {}, l.graded || {}, r.graded || {}, "graded");
     if (graded && Object.keys(graded).length) out.graded = graded;
     else delete out.graded;
+    // fakes from card shows: by id, the same way
+    var fakes = mergeTree(b.fakes || {}, l.fakes || {}, r.fakes || {}, "graded");
+    if (fakes && Object.keys(fakes).length) out.fakes = fakes;
+    else delete out.fakes;
+    // saved sets (the vault's display cases): by id, the same way
+    var sets = mergeTree(b.sets || {}, l.sets || {}, r.sets || {}, "sets");
+    if (sets && Object.keys(sets).length) out.sets = sets;
+    else delete out.sets;
     return out;
 }
 
@@ -155,6 +175,29 @@ function mergeShop(b, l, r) {
     return { day: l.day, bought: Object.assign({}, r.bought || {}, l.bought || {}) };
 }
 
+// the card show: the later show; the same show, its stock as first dealt, both sides'
+// purchases, haggles, checks and questions, in when either walked in, out when either left
+function mergeShow(b, l, r) {
+    if (!isObject(l)) return r;
+    if (!isObject(r)) return l;
+    if (l.day !== r.day) return l.day > r.day ? l : r;
+    var first = function (x, y) { return x && y ? Math.min(x, y) : x || y || 0; };
+    return { day: l.day, entered: first(l.entered, r.entered), left: Math.max(l.left || 0, r.left || 0),
+             stock: (l.entered && r.entered ? (l.entered <= r.entered ? l : r) : l.entered ? l : r).stock || l.stock || r.stock,
+             bought: Object.assign({}, r.bought || {}, l.bought || {}), haggled: Object.assign({}, r.haggled || {}, l.haggled || {}),
+             checked: mergeChecked(l.checked, r.checked), asked: Object.assign({}, r.asked || {}, l.asked || {}),
+             looks: Math.max(l.looks || 0, r.looks || 0) };
+}
+
+// what was checked of each listing, on either device
+function mergeChecked(l, r) {
+    var out = {};
+    [r || {}, l || {}].forEach(function (side) {
+        Object.keys(side).forEach(function (id) { out[id] = Object.assign(out[id] || {}, side[id]); });
+    });
+    return out;
+}
+
 // this week's event and bounties: the later week; the same week, each bounty's best progress
 function mergeWeekly(b, l, r) {
     if (!isObject(l)) return r;
@@ -188,11 +231,12 @@ var PROGRESS_RULES = [
     ["version", max], ["freePackClock", max],
     ["streak", mergeStreak], ["income", mergeIncome], ["focus", pickLater("startedAt")], ["bounties", mergeBounties],
     ["achievements.*", earliest], ["graded.*", slab], ["grading.*", slab], ["sealed.*", slab],
-    ["stats.bestCompletion", max], ["stats.backfilled", max], ["stats.value", preferLocal],
+    ["sets.*", slab], ["collections.*", slab],
+    ["stats.bestCompletion", max], ["stats.backfilled", max], ["stats.value", preferLocal], ["stats.setBonus", preferLocal],
     ["stats.bySet.*.completion", max], ["stats.bySet.*.groups.*", max],
     ["stats.bySet.*.present", preferLocal], ["stats.bySet.*.value", preferLocal],
     // the Port
-    ["ship.level", max], ["crew.*", earliest], ["shop", mergeShop],
+    ["ship.level", max], ["crew.*", earliest], ["shop", mergeShop], ["show", mergeShow],
     ["weekly", mergeWeekly], ["season", mergeSeason], ["seasonOf.done.*", earliest], ["seasonOf.tiers.*", earliest],
     ["titles.*", preferLocal], ["seasons.*", preferLocal],
     ["cosmetics.owned.*", earliest], ["cosmetics.backdrop", preferLocal], ["cosmetics.slab", preferLocal]

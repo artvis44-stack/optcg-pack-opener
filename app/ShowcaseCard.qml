@@ -167,18 +167,30 @@ Item {
         if (!card || card.type === "DON!!" || !setId) return;   // DON!! cards aren't priced there
         if (priceHistory.length && priceHistory[priceHistory.length - 1].d === today()) return;
         var forKey = key;
-        var xhr = new XMLHttpRequest();
-        xhr.onreadystatechange = function () {
-            if (xhr.readyState !== XMLHttpRequest.DONE || xhr.status !== 200 || forKey !== show.key) return;
-            try {
-                var list = JSON.parse(xhr.responseText);
-                var m = list.find(c => c.card_image_id === card.id && c.card_name === card.name)
-                        || list.find(c => c.card_image_id === card.id);
-                if (m && m.market_price !== null && m.market_price !== undefined) recordPrice(Number(m.market_price));
-            } catch (e) {}
-        };
-        xhr.open("GET", "https://optcgapi.com/api/sets/" + setId + "/");
-        xhr.send();
+        if (setId === "VINTAGE" || setId === "HYPERBATTLE") {   // no live prices: the reference price the pack opener saved
+            var ref = {};
+            try { ref = JSON.parse(host.readText(dataDir + "/market/" + setId + ".json") || "{}").prices || {}; } catch (e) {}
+            if (ref[card.id + "|" + card.name] > 0) recordPrice(ref[card.id + "|" + card.name]);
+            return;
+        }
+        // a Japanese card: the same printing's English price, scaled (see Stage.loadMarket)
+        var info = sets[setId] || {};
+        var jp = info.lang === "jp";
+        (jp ? info.en || [] : [setId]).forEach(src => {
+            var xhr = new XMLHttpRequest();
+            xhr.onreadystatechange = function () {
+                if (xhr.readyState !== XMLHttpRequest.DONE || xhr.status !== 200 || forKey !== show.key) return;
+                try {
+                    var list = JSON.parse(xhr.responseText);
+                    var m = list.find(c => c.card_image_id === card.id && c.card_name === card.name)
+                            || list.find(c => c.card_image_id === card.id);
+                    if (m && m.market_price !== null && m.market_price !== undefined)
+                        recordPrice(Number(m.market_price) * (jp ? Progress.JP_CARD_PRICE : 1));
+                } catch (e) {}
+            };
+            xhr.open("GET", src === "PROMO" ? "https://optcgapi.com/api/allPromos/" : "https://optcgapi.com/api/sets/" + src + "/");
+            xhr.send();
+        });
     }
 
     readonly property real price: priceHistory.length ? priceHistory[priceHistory.length - 1].p : -1
@@ -237,9 +249,20 @@ Item {
     }
 
     function announce(events) {
+        // a burst of posters (a box opened, a set finished) is one notification, not a pile of them
+        const posters = events.filter(e => e.kind === "achievement");
+        if (posters.length > 2) {
+            const reward = posters.reduce((n, e) => n + (e.a.reward || 0), 0);
+            host.notify(posters.length + " wanted posters", posters.slice(0, 3).map(e => e.a.title).join(", ") + ", ..."
+                        + (reward ? "  ·  +" + Progress.format(reward) : ""));
+            events = events.filter(e => e.kind !== "achievement");
+        }
         events.forEach(e => {
-            if (e.kind === "streak")
+            if (e.kind === "streak") {
                 host.notify("Day " + e.count + " streak", "+" + Progress.format(e.reward) + (e.freePack ? " and a free pack" : ""));
+                if (Progress.canEnterShow(show.progress, Date.now()))   // a new day, and it's a show day
+                    host.notify("The card show is in town", "Today only: open the pack opener and press K. Know your prices!");
+            }
             else if (e.kind === "backfill")
                 host.notify("Back-dated " + e.count + " wanted posters", "For what you'd already done  ·  +" + Progress.format(e.reward)
                             + "  ·  bounty +" + Progress.formatBounty(e.bounty));
@@ -294,6 +317,22 @@ Item {
         onTriggered: {
             show.load();
             show.loadCollection();
+        }
+    }
+    // Downloads happen here, in the background, so the pack opener never waits:
+    // card backs, pack photos, playmats and every set (fetch_cards.py background;
+    // it skips what's already there, and only one runs at a time)
+    function downloadInBackground() {
+        host.run([host.env("OPTCG_PYTHON") || "python3", "-I", "-u", host.appPath("fetch_cards.py"),
+                  "background", JSON.stringify(Progress.playmatDownloads())], null, null);
+    }
+    Timer {   // a couple of minutes after you log in, then every 6 hours for new sets
+        interval: 2 * 60 * 1000
+        running: true
+        repeat: true
+        onTriggered: {
+            interval = 6 * 3600 * 1000;
+            show.downloadInBackground();
         }
     }
     Timer {   // the price, about once a day
@@ -417,7 +456,8 @@ Item {
                     Text {
                         width: parent.width
                         elide: Text.ElideRight
-                        text: show.setId + ((show.sets[show.setId] || {}).name ? "  ·  " + show.sets[show.setId].name : "")
+                        text: show.setId + ((show.sets[show.setId] || Progress.SHOW_SETS[show.setId] || {}).name
+                                           ? "  ·  " + (show.sets[show.setId] || Progress.SHOW_SETS[show.setId]).name : "")
                         color: label.style.sub
                         font { pixelSize: 4.4 * show.u; weight: Font.Bold }
                     }
@@ -427,7 +467,7 @@ Item {
                         font.pixelSize: 4.2 * show.u
                     }
                     Text {
-                        text: show.card && show.card.grade ? Progress.GRADE_NAME[show.card.grade] + "  ·  " + (show.shortTier[show.card.tier] || show.card.tier)
+                        text: show.card && show.card.grade ? Progress.gradeName(show.card) + "  ·  " + (show.shortTier[show.card.tier] || show.card.tier)
                               : show.owned && show.owned.first
                               ? "PULLED  " + new Date(show.owned.first).toLocaleDateString(Qt.locale("en_GB"), "d MMM yyyy").toUpperCase()
                               : "SHOWCASE"
@@ -451,8 +491,8 @@ Item {
                         spacing: 0
                         Text {
                             anchors.horizontalCenter: parent.horizontalCenter
-                            text: !show.card ? "" : show.card.grade ? String(show.card.grade) : show.shortTier[show.card.tier] || show.card.tier
-                            color: show.card && show.card.grade === 10 ? "#ffd700" : show.tier.color
+                            text: !show.card ? "" : show.card.diamond ? "◆10" : show.card.grade ? String(show.card.grade) : show.shortTier[show.card.tier] || show.card.tier
+                            color: show.card && show.card.diamond ? "#7ae8ff" : show.card && show.card.grade === 10 ? "#ffd700" : show.tier.color
                             font { pixelSize: (text.length > 4 ? 6.2 : 9.5) * show.u; weight: Font.Black }
                         }
                         Text {
@@ -592,22 +632,24 @@ Item {
                     }
                 }
 
-                Item {   // market price
+                Item {   // market price (hidden while you're at a card show: no peeking)
                     width: parent.width
                     height: priceText.height
+                    readonly property bool hidden: Progress.atShow(show.progress, show.now)
                     Text {
                         id: priceText
-                        text: show.card && show.card.type === "DON!!" ? "DON!! cards aren't priced"
+                        text: parent.hidden ? "price hidden: you're at the card show"
+                              : show.card && show.card.type === "DON!!" ? "DON!! cards aren't priced"
                               : show.price >= 0 ? "$" + show.price.toFixed(2)
                               : "price: checking…"
-                        color: show.price >= 0 ? "#fff6e0" : "#7a8090"
-                        font { pixelSize: (show.price >= 0 ? 7.2 : 4.2) * show.u; weight: Font.Black }
+                        color: show.price >= 0 && !parent.hidden ? "#fff6e0" : "#7a8090"
+                        font { pixelSize: (show.price >= 0 && !parent.hidden ? 7.2 : 4.2) * show.u; weight: Font.Black }
                     }
                     Text {
                         anchors.left: priceText.right
                         anchors.leftMargin: 2.4 * show.u
                         anchors.baseline: priceText.baseline
-                        visible: show.price >= 0 && show.previousPrice > 0   // needs a second day's price
+                        visible: show.price >= 0 && show.previousPrice > 0 && !parent.hidden   // needs a second day's price
                         readonly property real change: show.previousPrice > 0 ? (show.price - show.previousPrice) / show.previousPrice : 0
                         text: (change > 0 ? "▲ " : change < 0 ? "▼ " : "■ ") + Math.abs(change * 100).toFixed(1) + "%"
                         color: change > 0 ? "#6fdc8c" : change < 0 ? "#ff7a7a" : "#9aa0ad"
@@ -616,7 +658,7 @@ Item {
                     Text {
                         anchors.right: parent.right
                         anchors.baseline: priceText.baseline
-                        visible: show.price >= 0
+                        visible: show.price >= 0 && !parent.hidden
                         text: "TCGplayer market"
                         color: "#7a8090"
                         font.pixelSize: 3.6 * show.u
@@ -709,6 +751,13 @@ Item {
                     text: "day " + show.progress.streak.count
                     color: "#ffb347"
                     font { pixelSize: bar.fs * 0.85; weight: Font.Bold }
+                }
+                Text {   // the card show is in town (K in the pack opener)
+                    anchors.verticalCenter: parent.verticalCenter
+                    visible: Progress.canEnterShow(show.progress, show.now) || Progress.atShow(show.progress, show.now)
+                    text: Progress.atShow(show.progress, show.now) ? "at the show" : "show today"
+                    color: "#ff9ad5"
+                    font { pixelSize: bar.fs * 0.85; weight: Font.Black }
                 }
             }
             PillButton {   // focus session: start / countdown + stop
