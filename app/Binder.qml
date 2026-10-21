@@ -163,10 +163,56 @@ Item {
     }
     property var inspected: null
     property var grading: null          // the card in the grading dialog
+    // bulk grading: pick cards in the grid, then send them all off together
+    property bool picking: false
+    property var picked: ({})            // cardKey -> card
+    property bool bulkOpen: false        // the bulk grading dialog
+    property string bulkCopies: "one"    // one (the best copy of each) | spare (all but one raw) | all
+    readonly property int pickedCount: Object.keys(picked).length
+    function canPick(it) { return it.count > 0; }   // a raw copy to send
+    function togglePick(c) {
+        var m = Object.assign({}, picked), k = stage.cardKey(c);
+        if (m[k]) delete m[k];
+        else m[k] = c;
+        picked = m;
+    }
+    function pickAll(onlyWorth) {
+        var m = Object.assign({}, picked);
+        entries.forEach(it => {
+            if (!canPick(it) || onlyWorth && bulkGain(it.card, "value") <= 0) return;
+            m[stage.cardKey(it.card)] = it.card;
+        });
+        picked = m;
+    }
+    function stopPicking() {
+        picking = false;
+        bulkOpen = false;
+        picked = {};
+    }
+    // what grading a card's best copy makes on average, after the fee
+    function bulkGain(c, service) {
+        var cond = stage.copiesToGrade(c, service)[0];
+        if (!cond) return 0;
+        var v = stage.cardValue(c);
+        return v * (Progress.expectedGradeMult(cond, service) - 1) - Progress.gradingFee(service, v, stage.progress);
+    }
+    // the copies that go: [{ card, cond }]
+    readonly property var bulkPlan: {
+        var out = [];
+        if (!bulkOpen) return out;
+        Object.keys(picked).forEach(k => {
+            var c = picked[k], conds = stage.copiesToGrade(c, "value");
+            var n = bulkCopies === "one" ? Math.min(1, conds.length) : bulkCopies === "spare" ? conds.length - 1 : conds.length;
+            conds.slice(0, Math.max(0, n)).forEach(cond => out.push({ card: c, cond: cond }));
+        });
+        return out;
+    }
     property var hoveredCard: null   // an owned card under the mouse (D shows it on the desktop)
 
     function back() {
-        if (grading) grading = null;
+        if (bulkOpen) bulkOpen = false;
+        else if (grading) grading = null;
+        else if (picking) stopPicking();
         else if (inspected) inspected = null;
         else stage.toggleBinder();
     }
@@ -321,6 +367,13 @@ Item {
                 accent: binder.filtersOpen || binder.activeFilters ? "#ffd56b" : "#7a8090"
                 onClicked: binder.filtersOpen = !binder.filtersOpen
             }
+            PillButton {   // bulk grading: pick cards, send them together
+                visible: !binder.stage.offTheRecord
+                text: binder.picking ? "Picking…" : "Bulk grade"
+                fontSize: 12
+                accent: "#c8a0ff"
+                onClicked: binder.picking ? binder.stopPicking() : binder.picking = true
+            }
             PillButton {
                 visible: binder.activeFilters > 0
                 text: "clear"
@@ -425,7 +478,7 @@ Item {
         readonly property real cardW: Math.min(150, binder.height * 0.19 * 0.716)
         anchors {
             top: header.bottom; topMargin: 22
-            bottom: parent.bottom; bottomMargin: 44
+            bottom: parent.bottom; bottomMargin: binder.picking ? 92 : 44
             horizontalCenter: parent.horizontalCenter
         }
         cellWidth: cardW + 26
@@ -439,6 +492,8 @@ Item {
             id: cell
             required property var modelData
             readonly property bool owned: modelData.count > 0 || modelData.slabs.length > 0
+            readonly property bool pickable: binder.canPick(modelData)
+            readonly property bool isPicked: !!binder.picked[binder.stage.cardKey(modelData.card)]
             width: grid.cellWidth
             height: grid.cellHeight
 
@@ -451,14 +506,37 @@ Item {
                 faceUp: true
                 time: binder.stage.t
                 hoverTilt: cell.owned
-                opacity: cell.owned ? 1 : 0.14
+                opacity: !cell.owned ? 0.14 : binder.picking && !cell.pickable ? 0.35 : 1
                 onClicked: {
+                    if (binder.picking) {
+                        if (cell.pickable) binder.togglePick(cell.modelData.card);
+                        return;
+                    }
                     binder.inspected = cell.modelData.card;
                     binder.stage.forceActiveFocus();   // keys work again after typing in the search
                 }
                 onHoveredChanged: {
                     if (hovered && cell.owned) binder.hoveredCard = cell.modelData.card;
                     else if (binder.hoveredCard === cell.modelData.card) binder.hoveredCard = null;
+                }
+            }
+
+            Rectangle {   // picked for bulk grading
+                visible: cell.isPicked
+                anchors { fill: cardView; margins: -4 }
+                radius: 8
+                color: "transparent"
+                border { color: "#c8a0ff"; width: 3 }
+                Rectangle {
+                    anchors { horizontalCenter: parent.horizontalCenter; bottom: parent.bottom; bottomMargin: 10 }
+                    width: 30; height: 30; radius: 15
+                    color: "#c8a0ff"
+                    Text {
+                        anchors.centerIn: parent
+                        text: "✓"
+                        color: "#14171f"
+                        font { pixelSize: 18; weight: Font.Black }
+                    }
                 }
             }
 
@@ -517,9 +595,54 @@ Item {
         font.pixelSize: 20
     }
 
+    Row {   // bulk grading: what's picked
+        visible: binder.picking
+        anchors { bottom: parent.bottom; bottomMargin: 44; horizontalCenter: parent.horizontalCenter }
+        spacing: 10
+        Text {
+            anchors.verticalCenter: parent.verticalCenter
+            text: binder.pickedCount + (binder.pickedCount === 1 ? " card picked" : " cards picked")
+            color: "#c8a0ff"
+            font { pixelSize: 15; weight: Font.Black }
+        }
+        PillButton {
+            text: "Pick all shown"
+            fontSize: 12
+            accent: "#7a8090"
+            onClicked: binder.pickAll(false)
+        }
+        PillButton {
+            text: "Pick the ones worth grading"
+            fontSize: 12
+            accent: "#7fd1b9"
+            onClicked: binder.pickAll(true)
+        }
+        PillButton {
+            visible: binder.pickedCount > 0
+            text: "clear"
+            fontSize: 12
+            accent: "#ff8a7a"
+            onClicked: binder.picked = {}
+        }
+        PillButton {
+            text: "Grade " + binder.pickedCount + "…"
+            fontSize: 13
+            accent: "#c8a0ff"
+            enabledLook: binder.pickedCount > 0
+            onClicked: if (binder.pickedCount > 0) binder.bulkOpen = true
+        }
+        PillButton {
+            text: "done"
+            fontSize: 12
+            accent: "#7a8090"
+            onClicked: binder.stopPicking()
+        }
+    }
+
     Text {
         anchors { bottom: parent.bottom; bottomMargin: 14; horizontalCenter: parent.horizontalCenter }
-        text: binder.inspected ? "Move the mouse to tilt   ·   D: show on desktop   ·   click or Esc to go back"
+        text: binder.picking ? "Click cards to pick them (only ones with a raw copy)   ·   the filters and search pick faster   ·   Esc: stop picking"
+              : binder.inspected ? "Move the mouse to tilt   ·   D: show on desktop   ·   click or Esc to go back"
               : "Scroll to browse   ·   click a card to inspect   ·   D: show the hovered card on your desktop   ·   Tab: this set / all sets"
                 + "   ·   F: filters   ·   O: owned only / all   ·   B or Esc: back"
         color: "#9aa0ad"
@@ -886,6 +1009,150 @@ Item {
                 }
                 Text {
                     text: "It shows up in the vault (G) when it's back."
+                    color: "#7a8090"
+                    font.pixelSize: 12
+                }
+            }
+        }
+    }
+
+    // ---- the bulk grading dialog: how many copies, and the four services with their totals ----
+    Rectangle {
+        anchors.fill: parent
+        z: 5
+        visible: binder.bulkOpen
+        color: "#cc000000"
+        MouseArea {
+            anchors.fill: parent
+            onClicked: binder.bulkOpen = false
+        }
+        Rectangle {
+            id: bulkDialog
+            anchors.centerIn: parent
+            width: Math.min(820, parent.width - 60)
+            height: bulkCol.height + 44
+            radius: 14
+            color: "#121828"
+            border.color: "#c8a0ff"
+            MouseArea { anchors.fill: parent }   // clicks inside don't close it
+            readonly property var plan: binder.bulkPlan
+            readonly property int raw: plan.reduce((n, it) => n + binder.stage.cardValue(it.card), 0)
+            readonly property bool rush: Progress.eventIs(binder.stage.progress, "grading")
+            readonly property var conds: {   // the copies going, by condition
+                var m = {};
+                plan.forEach(it => m[it.cond] = (m[it.cond] || 0) + 1);
+                return m;
+            }
+            Column {
+                id: bulkCol
+                x: 22; y: 22
+                width: bulkDialog.width - 44
+                spacing: 12
+                Text {
+                    text: "Bulk grade " + bulkDialog.plan.length + (bulkDialog.plan.length === 1 ? " card" : " cards")
+                    color: "#fff6e0"
+                    font { pixelSize: 22; weight: Font.Black }
+                }
+                Text {
+                    width: parent.width
+                    wrapMode: Text.WordWrap
+                    text: "Worth " + Progress.format(bulkDialog.raw) + " raw. Each card sends its best copies (checked ones in good condition before unchecked ones). "
+                          + "The most valuable go first; if the berries run out, the rest stay in the binder."
+                          + (bulkDialog.plan.length ? "  Going: " + ["unchecked"].concat(Progress.CONDITIONS.map(x => x.id))
+                              .filter(id => bulkDialog.conds[id]).map(id => bulkDialog.conds[id] + " " + (Progress.CONDITION[id] ? Progress.CONDITION[id].name : "unchecked")).join(", ") + "." : "")
+                          + (bulkDialog.rush ? "  Grading Rush this week: every service at the Value price, back in half the time." : "")
+                    color: "#c8ccd6"
+                    font.pixelSize: 13
+                }
+                Row {   // how many copies of each card
+                    spacing: 8
+                    Text {
+                        anchors.verticalCenter: parent.verticalCenter
+                        text: "Copies:"
+                        color: "#7a8090"
+                        font { pixelSize: 13; weight: Font.Bold }
+                    }
+                    Repeater {
+                        model: [["one", "the best one of each"], ["spare", "all but one raw"], ["all", "every raw copy"]]
+                        PillButton {
+                            required property var modelData
+                            text: modelData[1]
+                            fontSize: 12
+                            accent: binder.bulkCopies === modelData[0] ? "#ffd56b" : "#7a8090"
+                            onClicked: binder.bulkCopies = modelData[0]
+                        }
+                    }
+                }
+                Row {   // the services
+                    spacing: 10
+                    Repeater {
+                        model: Progress.GRADING
+                        Rectangle {
+                            id: svc
+                            required property var modelData
+                            readonly property int fee: bulkDialog.plan.reduce((n, it) => n + Progress.gradingFee(modelData.id, binder.stage.cardValue(it.card), binder.stage.progress), 0)
+                            readonly property int expected: Math.round(bulkDialog.plan.reduce((n, it) => n + binder.stage.cardValue(it.card) * Progress.expectedGradeMult(it.cond, modelData.id), 0))
+                            readonly property real hours: modelData.hours * (bulkDialog.rush ? 0.5 : 1)
+                            readonly property bool afford: binder.stage.progress.berries >= fee
+                            readonly property bool any: bulkDialog.plan.length > 0
+                            width: (bulkCol.width - 30) / 4
+                            height: 190
+                            radius: 10
+                            color: "#1a2136"
+                            border.color: modelData.id === "elite" ? "#ffd700" : modelData.id === "express" ? "#ffd56b" : "#2c3550"
+                            Column {
+                                x: 12; y: 10
+                                width: parent.width - 24
+                                spacing: 4
+                                Text {
+                                    text: svc.modelData.name
+                                    color: "#e8e8ee"
+                                    font { pixelSize: 16; weight: Font.Black }
+                                }
+                                Text {
+                                    text: "back in " + (svc.hours < 1 ? Math.round(svc.hours * 60) + " minutes" : svc.hours + " hours")
+                                          + (svc.modelData.bestOf ? "\ngraded twice, the best kept" : "")
+                                    color: svc.modelData.bestOf ? "#ffd700" : "#9aa0ad"
+                                    font.pixelSize: 11
+                                }
+                                Text {
+                                    text: "slabs worth ~" + Progress.format(svc.expected)
+                                    width: parent.width
+                                    wrapMode: Text.WordWrap
+                                    color: "#9aa0ad"
+                                    font.pixelSize: 11
+                                }
+                                Text {
+                                    readonly property int gain: svc.expected - bulkDialog.raw - svc.fee
+                                    text: (gain >= 0 ? "+" : "−") + Progress.format(Math.abs(gain)) + " on average"
+                                    color: gain >= 0 ? "#7fd1b9" : "#ff8a7a"
+                                    font { pixelSize: 11; weight: Font.Bold }
+                                }
+                                Text {
+                                    text: Progress.format(svc.fee)
+                                    color: svc.afford ? "#ffd56b" : "#ff8a7a"
+                                    font { pixelSize: 18; weight: Font.Black }
+                                }
+                                PillButton {
+                                    text: svc.afford ? "Send all" : "Send what I can"
+                                    fontSize: 12
+                                    accent: "#c8a0ff"
+                                    enabledLook: svc.any
+                                    onClicked: {
+                                        if (!svc.any) return;
+                                        var plan = bulkDialog.plan, sent = 0;
+                                        binder.keepScroll(() => sent = binder.stage.gradeCards(plan, svc.modelData.id));
+                                        if (sent) binder.stopPicking();
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+                Text {
+                    text: "They show up in the vault (G) when they're back. A big order comes back with a summary; the 9s and 10s still get their moment."
+                    width: parent.width
+                    wrapMode: Text.WordWrap
                     color: "#7a8090"
                     font.pixelSize: 12
                 }
