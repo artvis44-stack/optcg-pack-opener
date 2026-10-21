@@ -574,6 +574,53 @@ Item {
         return true;
     }
 
+    // the copies of a card that grade best, best first: [cond, ...] one per copy ("unchecked" or a condition)
+    function copiesToGrade(c, service) {
+        var counts = Progress.conditions(collection.cards[cardKey(c)]), out = [];
+        ["unchecked"].concat(Progress.CONDITIONS.map(x => x.id))
+            .sort((a, b) => Progress.expectedGradeMult(b, service) - Progress.expectedGradeMult(a, service))
+            .forEach(id => { for (var i = 0; i < counts[id]; i++) out.push(id); });
+        return out;
+    }
+
+    // bulk grading: picks = [{ card, cond }], a copy each (a card can be in there more than
+    // once). The most valuable go first; once the berries run out the rest stay. Returns how many went.
+    function gradeCards(picks, service) {
+        if (offTheRecord || !picks.length) return 0;
+        var col = readCollection(), now = Date.now(), sent = 0, fees = 0, left = 0;
+        picks = picks.slice().sort((a, b) => cardValue(b.card) - cardValue(a.card));
+        prog(p => {
+            picks.forEach(it => {
+                var c = it.card, key = cardKey(c), e = col.cards[key];
+                if (!e || !(Progress.conditions(e)[it.cond] > 0)) return;
+                var card = { id: c.id, name: c.name, tier: c.tier, set: c.set || setId, image: c.image, key: key, cond: it.cond };
+                var fee = Progress.gradingFee(service, cardValue(c), p);
+                if (!Progress.sendToGrading(p, card, service, cardValue(c), now)) {
+                    left++;
+                    return;
+                }
+                fees += fee;
+                sent++;
+                Progress.takeCopy(e, it.cond);
+                if (e.count <= 0) delete col.cards[key];
+            });
+            return [];
+        });
+        if (!sent) {
+            toast("Not enough berries to send any of them.");
+            return 0;
+        }
+        writeCollection(col);
+        refreshValue();
+        sfx("coin");
+        var g = Progress.GRADING.filter(x => x.id === service)[0];
+        var hours = g.hours * (Progress.eventIs(progress, "grading") ? 0.5 : 1);
+        toast("Sent " + sent + (sent === 1 ? " card" : " cards") + " for grading (" + Progress.format(fees) + "): back in "
+              + (hours < 1 ? Math.round(hours * 60) + " minutes" : hours + " hours")
+              + (left ? "  ·  " + left + " stayed, not enough berries" : ""));
+        return sent;
+    }
+
     // pre-grade: look one unchecked copy over; returns its condition ("" if it didn't happen)
     function preGradeCard(c) {
         if (offTheRecord) return "";
@@ -675,6 +722,14 @@ Item {
         writeCollection(col);
         slabs.forEach(s => prog(p => Progress.record(p, { type: "graded", grade: s.grade })));
         refreshRegistry();
+        if (slabs.length > 4) {   // a bulk order: the 9s, 10s and Diamonds get their moment, the rest a line
+            var counts = {};
+            slabs.forEach(s => { var k = s.diamond ? "◆10" : String(s.grade); counts[k] = (counts[k] || 0) + 1; });
+            toast(slabs.length + " slabs are back:  " + Object.keys(counts)
+                  .sort((a, b) => (b[0] === "◆") - (a[0] === "◆") || Number(b) - Number(a))
+                  .map(k => counts[k] + " × " + k).join("  ·  "));
+            slabs = slabs.filter(s => s.diamond || s.grade >= 9);
+        }
         celebrate(slabs.map(s => ({ kind: "graded", slab: s })));
         refreshValue();
     }

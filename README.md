@@ -19,6 +19,7 @@ Boosters EB-01 to EB-03 and the Premium Boosters PRB-01 / PRB-02.
 | B | binder: your collection (from the sealed pack or the summary) |
 | O | binder: show owned only / the whole set |
 | Tab | binder: this set / all sets (everything you own, with set filters and its value) |
+| Bulk grade (binder button) | pick cards (click them, or pick everything shown / the ones worth grading), then send them all to one grading service; a big order comes back with a summary |
 | D | show the card you're looking at on your desktop (inspected, just revealed, or hovered in the binder) |
 | W | the wanted board: today's bounties, achievements, your total bounty (← → switch between the overall board and each set's) |
 | Y | sync: sign in to your sync server (or create an account) to share your saves between computers |

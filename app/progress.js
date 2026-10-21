@@ -273,6 +273,12 @@ function serviceOdds(condId, serviceId) {
     return bestOfOdds(gradeOdds(condId), g.bestOf || 1);
 }
 
+// what grading multiplies a copy's raw worth by, on average (the Diamond Label included)
+function expectedGradeMult(condId, serviceId) {
+    var mult = serviceOdds(condId, serviceId).reduce(function (n, g) { return n + g[1] * (GRADE_MULT[g[0]] || 1); }, 0);
+    return (1 - DIAMOND_CHANCE) * mult + DIAMOND_CHANCE * DIAMOND_MULT;
+}
+
 // crack a slab: the condition the raw copy comes back in (null: unchecked).
 // Slabs from before conditions: a 10 / 9 / 8 comes back Pristine / Clean / Decent;
 // 7 or lower comes back unchecked, a fresh chance, and never with wear.
@@ -2804,7 +2810,9 @@ function sendToGrading(p, card, serviceId, value, now) {
     var g = GRADING.filter(function (x) { return x.id === serviceId; })[0];
     var fee = gradingFee(serviceId, value, p);
     if (!g || !spend(p, fee, "grading")) return null;
-    var id = now.toString(36) + Math.floor(Math.random() * 1e6).toString(36);
+    var id;
+    do id = now.toString(36) + Math.floor(Math.random() * 1e6).toString(36);
+    while (p.grading[id]);   // bulk grading sends many at the same moment
     var hours = g.hours * (eventIs(p, "grading") ? 0.5 : 1);
     var diamond = Math.random() < DIAMOND_CHANCE;
     p.grading[id] = { card: card, service: g.id, fee: fee, grade: diamond ? 10 : rollGrade(serviceOdds(card.cond, g.id)),
