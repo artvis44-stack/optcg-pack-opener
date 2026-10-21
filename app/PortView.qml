@@ -271,7 +271,7 @@ Item {
                             required property var modelData
                             readonly property bool aboard: Progress.hasCrew(port.p, modelData.id)
                             width: (content.width - 24) / 3
-                            height: 124
+                            height: Math.max(124, crewCol.height + 24)   // room for a long perk and Robin's button
                             border.color: aboard ? "#7fd1b9" : "#2c3550"
                             Art {
                                 x: 10; y: 10
@@ -282,6 +282,7 @@ Item {
                                 dim: !parent.aboard
                             }
                             Column {
+                                id: crewCol
                                 x: 126; y: 12
                                 width: parent.width - 138
                                 spacing: 5
@@ -334,7 +335,7 @@ Item {
                     text: Progress.canEnterShow(port.p, port.now)
                           ? "It's in town today! Thirteen tables of chase cards, raw and graded, at prices you'll have to judge "
                             + "yourself: once you're in, nothing shows a market price. Haggle, look closely, and watch out for fakes."
-                          : "Every Saturday. The next one is on " + next + "."
+                          : "You've been to today's. There's one every day: the next one is tomorrow (" + next + ")."
                 }
                 PillButton {
                     visible: Progress.canEnterShow(port.p, port.now) && !port.stage.offTheRecord

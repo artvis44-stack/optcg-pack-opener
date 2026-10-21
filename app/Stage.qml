@@ -59,7 +59,7 @@ Item {
                                        // | board (the wanted board: bounties and achievements)
                                        // | sync (the sync account screen) | port (ship, crew, shop, sealed, cosmetics)
                                        // | vault (graded slabs, grading orders, the set registry)
-                                       // | show (the weekly card show: no prices anywhere until you leave)
+                                       // | show (the daily card show: no prices anywhere until you leave)
     property string boardReturn: "pack"
     property string mode: host.env("OPTCG_MODE") === "box" ? "box" : "pack"
     readonly property bool inBoxScreen: phase === "boxSealed" || phase === "boxGrid" || phase === "boxSummary"
@@ -923,14 +923,6 @@ Item {
         return robinCache;
     }
 
-    // what Robin says a show listing is worth if it's genuine (in its slab, if it's graded):
-    // 0 when it's nothing she knows (not vintage) or she isn't aboard
-    function robinWorth(listing) {
-        if (!listing || !Progress.hasCrew(progress, "robin")) return 0;
-        var x = robinNotes().byKey[listing.key];
-        return !x ? 0 : Math.round(x.value * (listing.grade ? Progress.GRADE_MULT[listing.grade] : 1));
-    }
-
     // every card of your downloaded sets, plus the promos and vintage cards, at its market
     // price: what the vendors stock
     function showPool() {
@@ -965,8 +957,7 @@ Item {
         if (!atShow) {
             if (!Progress.canEnterShow(progress, Date.now())) {
                 var next = Progress.nextShowDay(progress, Date.now());
-                toast(Progress.showDay(Date.now()) ? "You've been to today's card show. The next one is on " + next + "."
-                                                   : "No card show today. The next one is on " + next + " (every Saturday).");
+                toast("You've been to today's card show. There's one every day: the next one is tomorrow (" + next + ").");
                 return;
             }
             var pool = showPool();
@@ -1070,7 +1061,7 @@ Item {
     // A Hyper Battle product: a vending pack (4 cards of its set), a Grand Box (one of its deck
     // variants: the best 12 revealed, the rest of the deck straight to the binder) or a Jump Festa
     // pack (that year's promos).
-    property var vintageRip: null   // { id (the sealed product), set, origin, code, rest } while one's on screen
+    property var vintageRip: null   // { id (the sealed product), set, origin, code, rest, before } while one's on screen
     function openVintagePack(id) {
         var it = (progress.sealed || {})[id];
         if (!it || !it.vintage || offTheRecord) return;
@@ -1078,6 +1069,10 @@ Item {
         var all = (hb ? hyperCards() : vintageCards()).map(c => Object.assign({ set: set }, c));
         var cards = it.cards ? all.filter(c => it.cards.indexOf(c.id) >= 0) : all.filter(c => c.origin === it.setName);
         if (!cards.length) return;
+        // the pack that was on screen before, put back when this one's done
+        var before = vintageRip ? vintageRip.before
+                   : { pack: pack, revealed: revealed, cardsIn: cardsIn, packNew: packNew, packArt: packArt,
+                       packPaid: packPaid, inspectIndex: inspectIndex };
         if (!hb) {
             pack = Tiers.makeVintagePack(cards, !!it.resealed);
         } else if (it.kind === "grandbox") {
@@ -1093,13 +1088,32 @@ Item {
         var art = cards.filter(c => Tiers.tierOf(c).rank >= 7);
         packArt = art.length ? "file://" + art[Math.floor(Math.random() * art.length)].image : "";
         var year = hb ? (cards[0].year || 2000) : it.setName === "The Quest Begins" ? 2005 : 2006;
-        vintageRip = { id: id, set: set, origin: hb ? (it.name || it.setName) : it.setName, code: String(year), rest: rest };
+        vintageRip = { id: id, set: set, origin: hb ? (it.name || it.setName) : it.setName, code: String(year), rest: rest, before: before };
         packPaid = true;
         revealed = 0;
         cardsIn = false;
         inspectIndex = -1;
         phase = "pack";
         sfx("box");
+    }
+
+    // done with a vintage pack (its summary, or backed out before tearing it): the pack that was on
+    // screen before comes back (else its face-down cards stay stuck on screen), and back to the port
+    function endVintageRip() {
+        var b = vintageRip ? vintageRip.before : null;
+        vintageRip = null;
+        if (b) {
+            pack = b.pack;
+            revealed = b.revealed;
+            cardsIn = b.cardsIn;
+            packNew = b.packNew;
+            packArt = b.packArt;
+            packPaid = b.packPaid;
+            inspectIndex = b.inspectIndex;
+        }
+        reloadProgress();
+        phase = "port";
+        stage.forceActiveFocus();
     }
 
     // torn: out of the sealed product, into the collection (a Grand Box's whole deck); counts as
@@ -1287,7 +1301,9 @@ Item {
 
     function togglePort() {
         if (noPeeking()) return;
-        if (phase === "port") {
+        if (vintageRip && ((phase === "pack" && !cardsIn) || phase === "summary")) {
+            endVintageRip();   // a vintage pack came from the port: back there, not on top of it
+        } else if (phase === "port") {
             phase = portReturn;
             stage.forceActiveFocus();
         } else if (phase === "error" || (phase === "pack" && !cardsIn) || phase === "summary" || inBoxScreen || phase === "board") {
@@ -1543,7 +1559,7 @@ Item {
             }
         } else if (phase === "summary") {
             if (inspectIndex >= 0) inspectIndex = -1;
-            else if (vintageRip) { vintageRip = null; phase = "port"; }   // back to the sealed products
+            else if (vintageRip) endVintageRip();   // back to the sealed products
             else if (mode === "box") backToBox();
             else newPack();
         }
@@ -1768,6 +1784,7 @@ Item {
             else if (phase === "vault") vaultView.back();
             else if (phase === "show") showView.back();
             else if (inBoxScreen && boxView.inspected) boxView.inspected = null;
+            else if (vintageRip && ((phase === "pack" && !cardsIn) || (phase === "summary" && inspectIndex < 0))) endVintageRip();
             else if (mode === "box" && phase === "pack" && !cardsIn) backToBox();
             else if (inspectIndex >= 0) inspectIndex = -1;
             else close();

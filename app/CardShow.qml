@@ -12,8 +12,8 @@ import "progress.js" as Progress
 // Click something to pick it up: check it (the loupe, the light, the back... a few
 // checks a visit, Progress.checkListing), ask the vendor about it, haggle once, buy.
 // You find out who was who when you leave (Esc), and the recap shows what you really got.
-// With Nico Robin aboard, her notes (vintage prices) come along, and she says what a vintage
-// listing would be worth if it's genuine (Stage.robinWorth).
+// With Nico Robin aboard, her notes (vintage prices) come along; she won't tell you what a
+// particular listing is worth, though: that's still on you.
 Item {
     id: show
 
@@ -81,19 +81,6 @@ Item {
     }
 
     function bought(id) { return !!(s.bought || {})[id]; }
-
-    // Robin on a listing's price: what a genuine one's worth, and what she makes of the ask
-    function robinText(x, worth) {
-        var r = Progress.showPrice(p, x) / worth;
-        var what = x.sealed ? "Sealed and genuine, that goes for about " : x.grade ? "A genuine one in a " + x.grade + " slab goes for about "
-                 : "A genuine copy goes for about ";
-        return "Robin: \"" + what + Progress.format(worth) + ". "
-               + (r < Progress.SHOW_STEAL ? "At this price it's a steal... if it's real. Too cheap is a warning too."
-                  : r < 0.95 ? "That's under market. Worth a closer look."
-                  : r <= 1.1 ? "That's a fair price."
-                  : r <= 1.35 ? "A bit high. Try haggling."
-                  : "Far too much. Don't pay that.") + "\"";
-    }
 
     // a stall's look: its tablecloth, from its name (the same every visit)
     readonly property var cloths: ["#7a2230", "#24507a", "#2f6b46", "#6b4a8a", "#8a5a24", "#2c6a6e", "#7a6a22", "#4a4f5c", "#8a3a5e"]
@@ -252,7 +239,7 @@ Item {
         readonly property int cols: 5
         readonly property int rows: Math.ceil(show.stock.length / cols)
         readonly property real stallW: (width - 60 - (cols - 1) * 26) / cols
-        readonly property real stallH: Math.min(170, (height - 90 - (rows - 1) * 44) / Math.max(1, rows))
+        readonly property real stallH: Math.min(210, (height - 90 - (rows - 1) * 44) / Math.max(1, rows))
 
         Rectangle {   // the floor: carpet, with the aisles between the rows
             anchors.fill: parent
@@ -313,7 +300,7 @@ Item {
                 Rectangle {   // the table, cloth draped over it
                     id: table
                     anchors { left: parent.left; right: parent.right; bottom: parent.bottom }
-                    height: parent.height * 0.62
+                    height: parent.height * 0.76
                     radius: 8
                     gradient: Gradient {
                         GradientStop { position: 0; color: Qt.lighter(booth.cloth, 1.25) }
@@ -322,27 +309,29 @@ Item {
                     }
                     border.color: boothMouse.containsMouse ? "#ffd56b" : Qt.darker(booth.cloth, 1.8)
                     border.width: boothMouse.containsMouse ? 2 : 1
-                    Row {   // what's on it, from the aisle: a peek at a few of the cards
-                        anchors { left: parent.left; leftMargin: 10; top: parent.top; topMargin: 8 }
-                        spacing: 5
+                    Row {   // what's on it, from the aisle: a peek at the cards, as big as the table allows
+                        id: peeks
+                        readonly property real h: Math.max(30, table.height - 30)
+                        anchors { left: parent.left; leftMargin: 8; top: parent.top; topMargin: 6 }
+                        spacing: 4
                         Repeater {
-                            model: booth.modelData.listings.slice(0, Math.max(1, Math.floor((map.stallW - 20) / 30)))
+                            model: booth.modelData.listings.slice(0, Math.max(1, Math.floor((map.stallW - 16) / (peeks.h * 0.716 + 4))))
                             Rectangle {
                                 id: peek
                                 required property var modelData
-                                width: modelData.sealed ? 30 : 25
-                                height: modelData.sealed && modelData.sealed.kind === "box" ? 26 : 35
+                                width: modelData.sealed ? peeks.h * 0.86 : peeks.h * 0.716
+                                height: modelData.sealed && modelData.sealed.kind === "box" ? peeks.h * 0.74 : peeks.h
                                 radius: 2
                                 color: modelData.sealed ? "#d4421c" : modelData.grade ? "#d8dde4" : "#1a1a1a"
                                 border.color: modelData.grade ? "#ffffff" : "#00000000"
                                 Image {
                                     anchors.fill: parent
                                     anchors.margins: peek.modelData.grade ? 3 : 1
-                                    anchors.topMargin: peek.modelData.grade ? 8 : 1
+                                    anchors.topMargin: peek.modelData.grade ? peeks.h * 0.2 : 1
                                     visible: !peek.modelData.sealed
                                     source: !peek.modelData.sealed && show.stage
                                             ? "file://" + show.stage.localCard(Object.assign({ key: peek.modelData.key }, peek.modelData.card)).image : ""
-                                    sourceSize.width: 60
+                                    sourceSize.width: 120
                                     asynchronous: true
                                     fillMode: Image.Stretch
                                 }
@@ -357,7 +346,7 @@ Item {
                     }
                 }
                 Rectangle {   // the stall's sign, on its pole
-                    width: 3; height: parent.height * 0.42
+                    width: 3; height: parent.height * 0.24 - 6
                     x: parent.width / 2 - 1.5
                     y: 6
                     color: "#2a2230"
@@ -525,15 +514,6 @@ Item {
                         text: info.lst ? (info.sold ? "Bought for " + Progress.format(show.s.bought[info.lst.id].price) : "Asking " + show.priceText(info.lst)) : ""
                         color: "#ffd56b"
                         font { pixelSize: 22; weight: Font.Black }
-                    }
-                    Text {   // Robin knows the vintage market
-                        readonly property int worth: show.robin && info.lst && !info.sold ? show.stage.robinWorth(info.lst) : 0
-                        width: parent.width
-                        visible: worth > 0
-                        wrapMode: Text.WordWrap
-                        text: worth > 0 ? show.robinText(info.lst, worth) : ""
-                        color: "#c8a0ff"
-                        font { pixelSize: 14; italic: true; weight: Font.Bold }
                     }
 
                     // the checks: each one a look at one thing about it

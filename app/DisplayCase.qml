@@ -2,9 +2,9 @@ import QtQuick
 import "tiers.js" as Tiers
 import "progress.js" as Progress
 
-// A saved set in its display case (the vault's Sets tab): a framed case with a
-// velvet back, its slabs laid out in rows, glass over them, a light above and a
-// brass nameplate. The frame and velvet go with what kind of set it is; a Gem
+// A saved set in its display case (the vault's Sets tab): a slim bevelled frame
+// round a shadow box with a velvet back, a light strip along the top, its slabs
+// standing off the velvet in rows under glass, and an engraved plaque beneath them. The frame and velvet go with what kind of set it is; a Gem
 // Set (every slab a 10) gets a gold frame that glows, a shimmer and sparkles.
 Item {
     id: dcase
@@ -41,82 +41,80 @@ Item {
     readonly property color frameA: gem ? "#ffe9a0" : st.frameA
     readonly property color frameB: gem ? "#a8780a" : st.frameB
 
-    // the slabs' grid: as many columns as makes them biggest in the case's window
-    readonly property real winW: width - 14 * u
-    readonly property real winH: height - 30 * u
+    // the slabs' grid: as many columns as makes them biggest in the case's window (above the plaque)
+    readonly property real gap: 3 * u
+    readonly property real winW: width - 10 * u
+    readonly property real plateH: Math.min(13 * u, 72)
+    readonly property real winH: height - 5.2 * u - 4 * u - plateH - 6 * u   // the velvet, less the light strip and the plaque
     readonly property int count: Math.max(1, slabs.length)
     readonly property int cols: {
         var best = 1, size = 0;
         for (var c = 1; c <= count; c++) {
             var rows = Math.ceil(count / c);
-            var w = Math.min(winW / c, winH / rows * 0.62);   // a slab is about 0.62 wide for its height
+            var w = Math.min((winW - (c - 1) * gap) / c, ((winH - (rows - 1) * gap) / rows) * 0.62);   // a slab is about 0.62 wide for its height
             if (w > size) { size = w; best = c; }
         }
         return best;
     }
-    readonly property real cellW: Math.min(winW / cols, winH / Math.ceil(count / cols) * 0.62)
+    readonly property int rows: Math.ceil(count / cols)
+    readonly property real cellW: Math.min((winW - (cols - 1) * gap) / cols, ((winH - (rows - 1) * gap) / rows) * 0.62)
 
     // glow behind a Gem Set's case
     Rectangle {
         visible: dcase.gem
         anchors.fill: parent
-        anchors.margins: -3 * dcase.u
-        radius: 4 * dcase.u
+        anchors.margins: -2.4 * dcase.u
+        radius: 2.4 * dcase.u
         color: "transparent"
         border.color: "#ffd700"
-        border.width: 2.2 * dcase.u
-        opacity: 0.35 + 0.25 * Math.sin(dcase.time * 2.2)
+        border.width: 1.4 * dcase.u
+        opacity: 0.3 + 0.25 * Math.sin(dcase.time * 2.2)
     }
-    Rectangle {   // shadow
-        x: 1.6 * dcase.u; y: 2.4 * dcase.u
-        width: parent.width; height: parent.height
-        radius: 3 * dcase.u
-        color: "#000000"
-        opacity: 0.55
-    }
-    Rectangle {   // the frame
-        id: frame
+
+    Item {
+        id: body
         anchors.fill: parent
-        radius: 3 * dcase.u
-        gradient: Gradient {
-            GradientStop { position: 0.0; color: dcase.frameA }
-            GradientStop { position: 0.5; color: Qt.darker(dcase.frameA, 1.25) }
-            GradientStop { position: 1.0; color: dcase.frameB }
-        }
-        border.color: Qt.darker(dcase.frameB, 1.4)
-        border.width: Math.max(1, 0.4 * dcase.u)
         scale: dcase.hovered ? 1.015 : 1
         Behavior on scale { NumberAnimation { duration: 140 } }
 
-        Rectangle {   // the velvet back
-            id: velvet
-            x: 4 * dcase.u; y: 4 * dcase.u
-            width: parent.width - 8 * dcase.u
-            height: parent.height - 18 * dcase.u
-            radius: 1.5 * dcase.u
+        Rectangle {   // its shadow on the wall
+            x: 0.8 * dcase.u; y: 2.2 * dcase.u
+            width: parent.width; height: parent.height
+            radius: 1.2 * dcase.u
+            color: "#000000"
+            opacity: 0.5
+        }
+        Rectangle {   // the frame: a slim bevelled moulding, lit from above
+            id: frame
+            anchors.fill: parent
+            radius: 1.2 * dcase.u
             gradient: Gradient {
-                GradientStop { position: 0.0; color: dcase.st.velvetA }
+                GradientStop { position: 0.0; color: Qt.lighter(dcase.frameA, 1.25) }
+                GradientStop { position: 0.08; color: dcase.frameA }
+                GradientStop { position: 0.92; color: dcase.frameB }
+                GradientStop { position: 1.0; color: Qt.darker(dcase.frameB, 1.4) }
+            }
+            border.color: Qt.darker(dcase.frameB, 1.6)
+            border.width: Math.max(1, 0.3 * dcase.u)
+        }
+
+        Rectangle {   // the shadow box: velvet back, a few centimetres deep
+            id: velvet
+            x: 2.6 * dcase.u; y: 2.6 * dcase.u
+            width: parent.width - 5.2 * dcase.u
+            height: parent.height - 5.2 * dcase.u
+            radius: 0.4 * dcase.u
+            gradient: Gradient {
+                GradientStop { position: 0.0; color: Qt.lighter(dcase.st.velvetA, 1.12) }
+                GradientStop { position: 0.55; color: dcase.st.velvetA }
                 GradientStop { position: 1.0; color: dcase.st.velvetB }
             }
-            border.color: Qt.darker(dcase.frameB, 1.8)
-            border.width: Math.max(1, 0.8 * dcase.u)
             clip: true
 
-            Rectangle {   // the light above, falling on the velvet
-                anchors.horizontalCenter: parent.horizontalCenter
-                y: -parent.height * 0.55
-                width: parent.width * 1.1
-                height: parent.height
-                radius: width / 2
-                gradient: Gradient {
-                    GradientStop { position: 0.6; color: "#00ffffff" }
-                    GradientStop { position: 1.0; color: Qt.rgba(1, 0.95, 0.85, 0.16) }
-                }
-            }
             Canvas {   // manga cases: a halftone screen in the velvet
                 visible: dcase.saved.style === "manga"
                 anchors.fill: parent
-                opacity: 0.12
+                opacity: 0.1
                 onPaint: {
                     var g = getContext("2d");
                     g.reset();
@@ -132,10 +130,43 @@ Item {
                 onWidthChanged: requestPaint()
             }
 
-            Grid {   // the slabs
-                anchors.centerIn: parent
+            Rectangle {   // the light strip along the top, and the light it throws down the back
+                width: parent.width
+                height: parent.height * 0.6
+                gradient: Gradient {
+                    GradientStop { position: 0.0; color: Qt.rgba(1, 0.96, 0.86, 0.26) }
+                    GradientStop { position: 0.35; color: Qt.rgba(1, 0.96, 0.86, 0.07) }
+                    GradientStop { position: 1.0; color: "#00ffffff" }
+                }
+            }
+            Rectangle {
+                width: parent.width
+                height: Math.max(1, 0.5 * dcase.u)
+                color: "#fff6e0"
+                opacity: 0.85
+            }
+            Repeater {   // the box's depth: shade along the sides and the bottom
+                model: [[0, 0, 1, 0], [1, 0, 1, 0], [0, 1, 0, 1]]
+                Rectangle {
+                    required property var modelData
+                    readonly property bool side: modelData[2] === 1
+                    x: side && modelData[0] ? parent.width - width : 0
+                    y: !side ? parent.height - height : 0
+                    width: side ? 2.4 * dcase.u : parent.width
+                    height: side ? parent.height : 2.4 * dcase.u
+                    gradient: Gradient {
+                        orientation: side ? Gradient.Horizontal : Gradient.Vertical
+                        GradientStop { position: 0.0; color: side && !modelData[0] ? "#66000000" : "#00000000" }
+                        GradientStop { position: 1.0; color: side && !modelData[0] ? "#00000000" : "#66000000" }
+                    }
+                }
+            }
+
+            Grid {   // the slabs, standing off the velvet
+                x: (parent.width - width) / 2
+                y: 4 * dcase.u + (dcase.winH - height) / 2
                 columns: dcase.cols
-                spacing: 0
+                spacing: dcase.gap
                 Repeater {
                     model: dcase.slabs
                     Item {
@@ -143,40 +174,53 @@ Item {
                         required property var modelData
                         width: dcase.cellW
                         height: dcase.cellW / 0.62
-                        readonly property real m: width * 0.08
-                        Rectangle {   // acrylic
-                            x: mini.m; y: mini.m
-                            width: parent.width - 2 * mini.m
-                            height: parent.height - 2 * mini.m
+                        Rectangle {   // its shadow on the velvet
+                            x: parent.width * 0.05; y: parent.width * 0.07
+                            width: parent.width; height: parent.height
                             radius: width * 0.05
-                            color: "#30e8f4ff"
+                            color: "#000000"
+                            opacity: 0.45
+                        }
+                        Rectangle {   // acrylic
+                            anchors.fill: parent
+                            radius: width * 0.05
+                            gradient: Gradient {
+                                GradientStop { position: 0.0; color: "#5cf2f8ff" }
+                                GradientStop { position: 1.0; color: "#30d8e4f0" }
+                            }
                             border.color: !mini.modelData ? "#60ff8a7a" : mini.modelData.diamond ? Qt.hsla((dcase.time * 0.2) % 1, 0.9, 0.75, 1)
-                                          : mini.modelData.grade === 10 ? "#ffd700" : "#a0ffffff"
-                            border.width: Math.max(1, width * 0.03)
+                                          : mini.modelData.grade === 10 ? "#ffd700" : "#c0ffffff"
+                            border.width: Math.max(1, width * 0.025)
                             Rectangle {   // label: the grade
                                 x: parent.width * 0.06; y: parent.width * 0.06
                                 width: parent.width * 0.88
-                                height: parent.height * 0.17
+                                height: parent.height * 0.15
                                 radius: 2
                                 color: mini.modelData && mini.modelData.diamond ? "#dff6ff" : "#f4f1ea"
+                                Rectangle {   // the label's coloured stripe
+                                    anchors { left: parent.left; top: parent.top; bottom: parent.bottom }
+                                    width: parent.width * 0.06
+                                    radius: 2
+                                    color: !mini.modelData ? "#a03a2a" : mini.modelData.grade === 10 ? "#d4a017" : dcase.st.accent
+                                }
                                 Text {
                                     anchors.centerIn: parent
-                                    text: !mini.modelData ? "gone" : (mini.modelData.diamond ? "◆" : "") + mini.modelData.grade
+                                    text: !mini.modelData ? "gone" : (mini.modelData.diamond ? "◆ " : "") + mini.modelData.grade
                                     color: !mini.modelData ? "#a03a2a" : mini.modelData.grade === 10 ? "#b8860b" : "#14171f"
-                                    font { pixelSize: Math.max(7, parent.height * 0.7); weight: Font.Black }
+                                    font { pixelSize: Math.max(7, parent.height * 0.68); weight: Font.Black }
                                 }
                             }
                             Image {   // the card
                                 id: miniCard
-                                x: parent.width * 0.08
-                                y: parent.height * 0.26
-                                width: parent.width * 0.84
-                                height: parent.height * 0.7
+                                x: parent.width * 0.07
+                                y: parent.height * 0.24
+                                width: parent.width * 0.86
+                                height: parent.height * 0.72
                                 fillMode: Image.PreserveAspectFit
                                 asynchronous: true
                                 smooth: true
                                 mipmap: true
-                                sourceSize.width: 240
+                                sourceSize.width: 300
                                 source: mini.modelData && mini.modelData.image ? "file://" + mini.modelData.image : ""
                             }
                             Loader {   // no picture of it: drawn
@@ -185,6 +229,13 @@ Item {
                                 height: width / 0.716
                                 active: miniCard.status === Image.Error
                                 sourceComponent: DrawnFace { card: mini.modelData }
+                            }
+                            Rectangle {   // a glint on the acrylic
+                                x: parent.width * 0.06
+                                y: parent.height * 0.22
+                                width: Math.max(1, parent.width * 0.025)
+                                height: parent.height * 0.7
+                                color: "#40ffffff"
                             }
                             MouseArea {
                                 anchors.fill: parent
@@ -197,14 +248,64 @@ Item {
                 }
             }
 
-            Rectangle {   // the glass: a reflection across it
-                anchors.fill: parent
+            Rectangle {   // the plaque, engraved, on the velvet under the slabs
+                id: plate
+                anchors { horizontalCenter: parent.horizontalCenter; bottom: parent.bottom; bottomMargin: 3 * dcase.u }
+                width: Math.min(parent.width * 0.86, Math.max(plateTitle.implicitWidth, plateLine.implicitWidth) + Math.min(8 * dcase.u, 48))
+                height: dcase.plateH
+                radius: 0.6 * dcase.u
                 gradient: Gradient {
                     orientation: Gradient.Horizontal
-                    GradientStop { position: 0.0; color: "#14ffffff" }
-                    GradientStop { position: 0.3; color: "#06ffffff" }
-                    GradientStop { position: 0.32; color: "#00ffffff" }
-                    GradientStop { position: 1.0; color: "#0affffff" }
+                    GradientStop { position: 0.0; color: dcase.gem ? "#c99a2e" : "#a8823c" }
+                    GradientStop { position: 0.45; color: dcase.gem ? "#ffe9a0" : "#e6c77e" }
+                    GradientStop { position: 1.0; color: dcase.gem ? "#b8860b" : "#9a7432" }
+                }
+                border.color: "#4a330c"
+                border.width: Math.max(1, 0.25 * dcase.u)
+                Rectangle {   // its shadow
+                    z: -1
+                    x: 0.5 * dcase.u; y: 0.8 * dcase.u
+                    width: parent.width; height: parent.height
+                    radius: parent.radius
+                    color: "#000000"
+                    opacity: 0.5
+                }
+                Column {
+                    anchors.centerIn: parent
+                    spacing: 0.3 * dcase.u
+                    Text {
+                        id: plateTitle
+                        anchors.horizontalCenter: parent.horizontalCenter
+                        width: Math.min(implicitWidth, dcase.width * 0.8)
+                        horizontalAlignment: Text.AlignHCenter
+                        elide: Text.ElideRight
+                        text: (dcase.saved.title || "").toUpperCase()
+                        color: "#2e1e04"
+                        style: Text.Raised; styleColor: "#fbe9b4"
+                        font { pixelSize: Math.max(9, Math.min(3.8 * dcase.u, 24)); weight: Font.Black; letterSpacing: Math.min(0.3 * dcase.u, 2) }
+                    }
+                    Text {
+                        id: plateLine
+                        anchors.horizontalCenter: parent.horizontalCenter
+                        text: (dcase.gem ? "★ GEM SET ★" : "avg grade " + Number(dcase.saved.avg || 0).toFixed(1))
+                              + "   ·   " + dcase.slabs.length + " slabs   ·   " + Progress.format(dcase.worth)
+                        color: "#4a3008"
+                        font { pixelSize: Math.max(7, Math.min(2.6 * dcase.u, 16)); weight: Font.Bold }
+                    }
+                }
+            }
+
+            Rectangle {   // the glass: one soft diagonal reflection
+                x: parent.width * 0.58
+                y: -parent.height * 0.3
+                width: parent.width * 0.16
+                height: parent.height * 1.6
+                rotation: 24
+                gradient: Gradient {
+                    orientation: Gradient.Horizontal
+                    GradientStop { position: 0.0; color: "#00ffffff" }
+                    GradientStop { position: 0.5; color: "#0dffffff" }
+                    GradientStop { position: 1.0; color: "#00ffffff" }
                 }
             }
             Rectangle {   // a Gem Set's shimmer, sweeping across the glass
@@ -237,52 +338,12 @@ Item {
                 }
             }
         }
-
-        Rectangle {   // the brass nameplate
-            id: plate
-            anchors.horizontalCenter: parent.horizontalCenter
-            y: velvet.y + velvet.height + 2.2 * dcase.u
-            width: parent.width * 0.78
-            height: 10 * dcase.u
-            radius: 1.2 * dcase.u
-            gradient: Gradient {
-                GradientStop { position: 0.0; color: "#f2d48a" }
-                GradientStop { position: 0.5; color: "#c79a3c" }
-                GradientStop { position: 1.0; color: "#8a6420" }
-            }
-            border.color: "#5a4010"
-            Column {
-                anchors.centerIn: parent
-                spacing: 0
-                Text {
-                    anchors.horizontalCenter: parent.horizontalCenter
-                    width: plate.width * 0.94
-                    horizontalAlignment: Text.AlignHCenter
-                    elide: Text.ElideRight
-                    text: (dcase.saved.title || "").toUpperCase()
-                    color: "#3a2606"
-                    style: Text.Raised; styleColor: "#f8e4a8"
-                    font { pixelSize: Math.max(8, 3.4 * dcase.u); weight: Font.Black; letterSpacing: 0.25 * dcase.u; family: "serif" }
-                }
-                Text {
-                    anchors.horizontalCenter: parent.horizontalCenter
-                    text: (dcase.gem ? "★ GEM SET ★" : "avg grade " + Number(dcase.saved.avg || 0).toFixed(1))
-                          + "   ·   " + dcase.slabs.length + " slabs   ·   " + Progress.format(dcase.worth)
-                    color: "#4a3008"
-                    font { pixelSize: Math.max(7, 2.4 * dcase.u); weight: Font.Bold; family: "serif" }
-                }
-            }
-        }
-        Repeater {   // brass screws in the corners
-            model: [[0, 0], [1, 0], [0, 1], [1, 1]]
-            Rectangle {
-                required property var modelData
-                width: 1.8 * dcase.u; height: width; radius: width / 2
-                x: modelData[0] ? frame.width - width - 1.1 * dcase.u : 1.1 * dcase.u
-                y: modelData[1] ? frame.height - height - 1.1 * dcase.u : 1.1 * dcase.u
-                color: "#d8b060"
-                border.color: "#6a4a14"
-            }
+        Rectangle {   // the glass's edge, catching the light
+            x: velvet.x; y: velvet.y
+            width: velvet.width; height: velvet.height
+            color: "transparent"
+            border.color: "#26ffffff"
+            border.width: Math.max(1, 0.25 * dcase.u)
         }
     }
 

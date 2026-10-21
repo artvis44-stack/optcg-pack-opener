@@ -25,7 +25,7 @@ Boosters EB-01 to EB-03 and the Premium Boosters PRB-01 / PRB-02.
 | M | sound on / off (remembered) |
 | P | the Port: ship and crew, card shop, sealed products, cosmetics (← → switch tabs) |
 | G | the Vault: your graded slabs (filter by set and grade), sets and their display cases, cards out for grading, the set registry, fakes from card shows |
-| K | the card show (on show days: every Saturday) |
+| K | the card show (every day, one visit a day) |
 | F | in the binder: filters (rarity, card type, colour, owned / missing / duplicates / graded); there's also a search box and sorting by rarity, number, value or copies |
 | C | box mode: buy the rest of the case (15% off) |
 | U | Mac: check for an update, or install the one that's out |
@@ -56,7 +56,7 @@ The app is split into a platform-independent part (`app/`) and a thin host.
   `OPTCG_MUTE=1` starts muted
 - `app/Pack.qml`, `app/PackFace.qml`: the booster wrapper (official photo, or the drawn fallback) and the tear animation
 - `app/BoxView.qml`: box mode (the sealed display box, the grid of 24 packs, the box summary)
-- `app/CardShow.qml`, `app/StallTable.qml`: the weekly card show (the hall map, a vendor's table, checking and haggling, the recap)
+- `app/CardShow.qml`, `app/StallTable.qml`: the daily card show (the hall map, a vendor's table, checking and haggling, the recap)
 - `app/vintage.json`, `app/DrawnFace.qml`: the 2005-06 CCG's cards (list, prices, pictures, sealed prices), and the drawn face of a card or sealed product with no picture
 - `app/hyperbattle.json`: Carddass Hyper Battle's cards, sets and sealed products (its pictures: a release asset)
 - `app/collections.js`, `app/SetsView.qml`, `app/DisplayCase.qml`: the collections to complete with graded cards, the vault's Sets tab, and the display cases saved sets go in
@@ -151,17 +151,15 @@ there are wanted posters for them
   Straw Hats, each with a perk: Zoro doubles focus berries, Nami +25% income, Usopp better hit odds
   in single packs, Sanji cheaper packs, Chopper saves a streak that missed one day, Robin knows
   the vintage market (her notes, from the Port or at the card show, price every vintage card and
-  sealed product, raw and graded; at the show she says what a vintage listing is worth if it's
-  genuine, and what she makes of the price), Franky cheaper boxes and cases, Brook +10% when selling, Jinbe a fourth
+  sealed product, raw and graded; she won't appraise a listing for you at the show), Franky cheaper boxes and cases, Brook +10% when selling, Jinbe a fourth
   daily bounty, Luffy (Gear 5) god packs twice as likely.
 - **Card shop.** Eight deals a day from your downloaded sets at market price + 10% (once each), random
   each day; they can be cards you already have, and each deal says how many you own. You can't
   order cards from the binder: the shop and the card show are the only places to buy cards.
-- **The card show** (K, or the Port's card shop tab). Every Saturday (the very first one: Tuesday
-  20 October 2026), one visit a show. You walk in to a map of the hall: fifteen stalls (about 290
+- **The card show** (K, or the Port's card shop tab). Every day, one visit a show. You walk in to a map of the hall: fifteen stalls (about 290
   cards, slabs and sealed products), honest or not, all looking alike from the aisle. Click one to walk
-  over to its table: slabs in a glass case, raw cards in the pages of an open binder, sealed product
-  stacked beside them, a price sticker on everything. Once you walk in, the app shows no prices at
+  over to its table: everything it has (sealed product, slabs, raw cards) laid out big in one grid,
+  with a price sticker and its name under each. Once you walk in, the app shows no prices at
   all (no binder, vault, port or wanted board, and the desktop showcase hides its price) until you
   leave: you have to know the market. Vendors are honest dealers, bargain tables, premium dealers,
   vintage specialists or scammers, and you only find out which after you leave.
