@@ -174,6 +174,7 @@ def run_showcase(app):
         return 0
     QLocalServer.removeServer(SHOWCASE_SOCKET)
     server = QLocalServer()
+    server.setSocketOptions(QLocalServer.SocketOption.UserAccessOption)   # only this user can send commands
     server.listen(SHOWCASE_SOCKET)
     host = Host()
     engine = QQmlApplicationEngine()
@@ -229,6 +230,7 @@ def main():
 
     QLocalServer.removeServer(SOCKET)   # a stale socket from a crash
     server = QLocalServer()
+    server.setSocketOptions(QLocalServer.SocketOption.UserAccessOption)   # only this user can send commands
     server.listen(SOCKET)
 
     def on_connection():

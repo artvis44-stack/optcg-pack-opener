@@ -381,7 +381,10 @@ function useAccountData(host, dataDir, sets, cb) {
     var acc = account(host, dataDir), stamp = new Date().toISOString().replace(/[:.]/g, "-");
     request(acc, "GET", "/v1/docs", undefined, function (status, json) {
         if (status !== 200) { cb(errorText(status, json)); return; }
-        var names = Object.keys(json.docs || {}), s = state(host, dataDir);
+        // only names the server itself allows: they become file names here
+        var names = Object.keys(json.docs || {}).filter(function (n) {
+            return /^(collection|progress|case-[A-Za-z0-9-]{1,24})$/.test(n);
+        }), s = state(host, dataDir);
         var next = function (i) {
             if (i >= names.length) { saveState(host, dataDir, s); cb(""); return; }
             request(acc, "GET", "/v1/docs/" + names[i], undefined, function (st, doc) {
