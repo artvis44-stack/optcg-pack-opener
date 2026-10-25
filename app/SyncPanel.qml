@@ -319,6 +319,7 @@ Item {
                             anchors.verticalCenter: parent.verticalCenter
                             width: 300
                             elide: Text.ElideRight
+                            textFormat: Text.PlainText   // from the server: never rich text
                             text: modelData.device + (modelData.current ? "  (this one)" : "")
                                   + "  ·  last synced " + new Date(modelData.last_used * 1000).toLocaleString(Qt.locale(), "d MMM HH:mm")
                             color: "#d0d4dc"
@@ -365,6 +366,7 @@ Item {
                 width: parent.width
                 wrapMode: Text.WordWrap
                 visible: panel.message !== ""
+                textFormat: Text.PlainText   // can be the server's error text
                 text: panel.message
                 color: panel.messageIsError ? "#ff8a7a" : "#7fd1b9"
                 font { pixelSize: 14; weight: Font.Bold }

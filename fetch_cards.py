@@ -216,6 +216,9 @@ def jp_cards(set_id, info):
 
 
 def fetch(url):
+    # URLs come from third-party JSON: no file:// (or anything else) reading local files
+    if not url.startswith("https://"):
+        raise ValueError("not an https URL: " + url)
     with urllib.request.urlopen(urllib.request.Request(url, headers=UA), timeout=30) as r:
         return r.read()
 

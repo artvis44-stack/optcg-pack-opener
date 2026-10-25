@@ -55,7 +55,8 @@ def log(msg):
 
 def notify(text):
     if sys.platform == "darwin":
-        script = f'display notification "{text}" with title "OPTCG"'
+        esc = text.replace("\\", "\\\\").replace('"', '\\"')   # the tag name comes from GitHub
+        script = f'display notification "{esc}" with title "OPTCG"'
         subprocess.run(["osascript", "-e", script], check=False)
 
 
