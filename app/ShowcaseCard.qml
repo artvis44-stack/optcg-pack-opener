@@ -183,7 +183,8 @@ Item {
                 try {
                     var list = JSON.parse(xhr.responseText);
                     var m = list.find(c => c.card_image_id === card.id && c.card_name === card.name)
-                            || list.find(c => c.card_image_id === card.id);
+                            || list.find(c => c.card_image_id === card.id)
+                            || list.find(c => !c.card_image_id && c.card_name === card.name);   // a set that's just out
                     if (m && m.market_price !== null && m.market_price !== undefined)
                         recordPrice(Number(m.market_price) * (jp ? Progress.JP_CARD_PRICE : 1));
                 } catch (e) {}

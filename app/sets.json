@@ -1035,6 +1035,30 @@
   },
   "note": "TCGTalk OP17 case mapping data (1,000+ packs); no fixed hit mapping."
  },
+ "EB-05": {
+  "name": "Extra Booster: One Piece Heroines Edition Vol. 2",
+  "family": "extra",
+  "era": "random",
+  "god": ["sp"],
+  "confidence": "rough",
+  "series": "569205",
+  "tcgGroup": 24820,
+  "pack": 711383,
+  "box": 711385,
+  "boxUsd": 248,
+  "dons": [
+   [728077, "DON!! Card (Heroines Vol. 2)", "DON"],
+   [725205, "DON!! Card (Heroines Vol. 2) (Alternate Art)", "DON"],
+   [728606, "DON!! Card (Heroines Vol. 2) (Gold)", "DON_GOLD"],
+   [728608, "DON!! Card (Heroines Vol. 2) (Alternate Art) (Gold)", "DON_GOLD"]
+  ],
+  "case": {
+   "L_AA": 4,
+   "SUPER_L": 0.15,
+   "SIGNED": 0.05
+  },
+  "note": "Out 30 Oct 2026. Seven Heroine Leader parallels, a Super Leader parallel (Nico Robin), a Manga Rare (Shirahoshi) and Kentaro Yabuki's Nami, also gold-stamped."
+ },
  "OP-01-JP": {
   "name": "Romance Dawn",
   "nameJp": "ROMANCE DAWN",
@@ -1364,5 +1388,24 @@
   "boxJpy": 12000,
   "dons": [],
   "note": "¥240 a pack from here (¥220 before, ¥198 for OP-01 to OP-03)."
+ },
+ "EB-05-JP": {
+  "name": "Extra Booster: One Piece Heroines Edition Vol. 2",
+  "nameJp": "ONE PIECE Heroines Edition vol.2",
+  "lang": "jp",
+  "series": "550205",
+  "en": ["EB-05"],
+  "family": "extra",
+  "era": "random",
+  "confidence": "rough",
+  "packPhoto": "https://www.onepiece-cardgame.com/onepiececg/bccard/jp/products/2026/09/28/2BJZRU4q4CNMMIA9/img_item01.webp",
+  "boxPhoto": "https://www.onepiece-cardgame.com/onepiececg/bccard/jp/products/2026/09/28/7bozOQs6jMEwS6rz/img_item02.webp",
+  "boxJpy": 11600,
+  "dons": [],
+  "god": ["sp"],
+  "case": {
+   "SUPER_L": 0.1,
+   "SIGNED": 0.05
+  }
  }
 }

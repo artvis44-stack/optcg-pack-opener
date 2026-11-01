@@ -1511,7 +1511,7 @@ Item {
                 try {
                     if (xhr.status === 200) JSON.parse(xhr.responseText).forEach(c => {
                         if (c.market_price !== null && c.market_price !== undefined)
-                            prices[c.card_image_id + "|" + c.card_name] = Number(c.market_price) * scale;
+                            prices[(c.card_image_id || "") + "|" + c.card_name] = Number(c.market_price) * scale;
                     });
                 } catch (e) {}
                 if (--left > 0 || !Object.keys(prices).length) return;   // all in, and something came back

@@ -186,8 +186,8 @@ function setConfig(setInfo) {
         cfg[k] = setInfo && setInfo[k] !== undefined ? setInfo[k] : fam[k];
     });
     var over = (setInfo && setInfo.case) || {};
-    Object.keys(over).forEach(function (t) {
-        if (cfg.fixed[t] !== undefined || cfg.lottery[t] === undefined) cfg.fixed[t] = over[t];
+    Object.keys(over).forEach(function (t) {   // a tier new to the family: fixed, or a lottery if under 1 a case
+        if (cfg.fixed[t] !== undefined || (cfg.lottery[t] === undefined && over[t] >= 1)) cfg.fixed[t] = over[t];
         else cfg.lottery[t] = over[t];
     });
     cfg.packsPerCase = cfg.packsPerBox * cfg.boxes;
@@ -207,7 +207,7 @@ function tierOf(card) {
 
 // "Kaido (062) (Super Alternate Art)" -> "Kaido (062)"; the tier label says the rest
 function displayName(card) {
-    return card.name.replace(/\s*\((Alternate Art|Parallel|Manga|SP|SPR|TR|Super .*Alternate Art|Red Super Alternate Art|Pandaman Art|Gold|Silver|Special Foil|Box Topper|Wanted Poster|Full Art|Textured Foil|Jolly Roger Foil|Pirate Foil|Reprint|Gold-Stamped Signature)\)/g, "");
+    return card.name.replace(/\s*\((Alternate Art|Parallel|Manga|SP|SPR|TR|Super .*Alternate Art|Red Super Alternate Art|Pandaman Art|Gold|Silver|Special Foil|Box Topper|Wanted Poster|Full Art|Textured Foil|Jolly Roger Foil|Pirate Foil|Reprint|Gold-Stamped Signature|Gold Stamped)\)/g, "");
 }
 
 // ---- randomness -------------------------------------------------------------
@@ -359,7 +359,7 @@ function makePack(cards, setInfo, forceHit, opts) {
 //   parallel  every card a parallel (alt arts, SEC, SP...), the default
 //   manga     PRB-01: every card a Manga Rare (comic parallel)
 //   golddon   PRB-02: every card a Gold DON!!
-//   sp        EB-03: every card an SP
+//   sp        EB-03, EB-05: every card an SP
 //   demon     OP-13 "Demon Pack": the Five Elders parallels
 // Card counts that a set can't fill (only 9 SPs in a 12-card pack) are
 // topped up with parallels.
