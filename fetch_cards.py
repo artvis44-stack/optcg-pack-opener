@@ -54,6 +54,13 @@ TCGPLAYER_IMG = "https://tcgplayer-cdn.tcgplayer.com/product/{}_in_1000x1000.jpg
 JP_DATA = "https://raw.githubusercontent.com/buhbbl/punk-records/HEAD/japanese/data/{}.json"
 JP_CARDLIST = "https://www.onepiece-cardgame.com/cardlist/?series={}"
 JP_SITE = "https://www.onepiece-cardgame.com/cardlist/"
+# a new English set before optcgapi has its pictures (sets.json "series" / "tcgGroup"):
+# Bandai's English card list, through punk-records or the page itself, named after
+# TCGplayer's listing (tcgcsv.com mirrors it; category 68 = One Piece)
+EN_DATA = "https://raw.githubusercontent.com/buhbbl/punk-records/HEAD/english/data/{}.json"
+EN_CARDLIST = "https://en.onepiece-cardgame.com/cardlist/?series={}"
+EN_SITE = "https://en.onepiece-cardgame.com/cardlist/"
+TCGCSV = "https://tcgcsv.com/tcgplayer/68/{}/{}"
 UA = {"User-Agent": "Mozilla/5.0 (optcg-pack-widget/1.0)"}
 
 HERE = os.path.dirname(os.path.realpath(__file__))
@@ -61,6 +68,9 @@ with open(os.path.join(HERE, "app", "sets.json")) as f:
     SETS = json.load(f)
 ROOT = os.path.join(os.environ.get("XDG_CACHE_HOME") or os.path.expanduser("~/.cache"), "optcg")
 ASSETS = os.path.join(ROOT, "assets")
+
+
+GUEST_ARTIST = {"Kentaro Yabuki"}
 
 
 def tier_of(card):
@@ -78,10 +88,16 @@ def tier_of(card):
         return "TOPPER"
     if "Pandaman Art" in tags:
         return "PANDA"
-    if "Gold-Stamped Signature" in tags:
+    if tags & {"Gold-Stamped Signature", "Gold Stamped"}:
         return "SIGNED"
     if "SP" in tags and tags & {"Gold", "Silver"}:
         return "SP_GOLD"
+    if "Super Rare Alternate Art" in tags:   # EB-05's name for an SR's plain parallel
+        return "AA"
+    if "Heroine Leader" in tags:             # the Heroines boosters' Leader parallels
+        return "L_AA"
+    if tags & GUEST_ARTIST:                  # a parallel drawn by a guest artist
+        return "SEC_AA" if rarity == "SEC" else "L_AA" if leader else "AA"
     if any("Super" in t and "Alternate Art" in t for t in tags):
         return "SUPER_L" if leader else "SUPER"
     if "Manga" in tags:
@@ -131,11 +147,11 @@ def jp_tier(card_id, rarity, premium=False):
     return "AA"
 
 
-def jp_card_list(series):
-    """[{id, rarity, type, color, name, url}] of a Japanese set, from the
-    punk-records JSON, else parsed off Bandai's card list page."""
+def jp_card_list(series, english=False):
+    """[{id, rarity, type, color, name, url}] of a Japanese set (or, english, an
+    English one), from the punk-records JSON, else parsed off Bandai's card list page."""
     try:
-        raw = json.loads(fetch(JP_DATA.format(series)))
+        raw = json.loads(fetch((EN_DATA if english else JP_DATA).format(series)))
         out = [{"id": c["id"], "rarity": JP_RARITY.get(c.get("rarity"), "C"),
                 "type": c.get("category") or "", "color": " ".join(c.get("colors") or []),
                 "name": c.get("name") or c["id"],
@@ -144,10 +160,11 @@ def jp_card_list(series):
             return out
     except Exception as e:
         print(f"punk-records has no {series} ({e}); reading Bandai's card list", flush=True)
-    return parse_jp_cardlist(fetch(JP_CARDLIST.format(series)).decode("utf-8", "replace"))
+    page = fetch((EN_CARDLIST if english else JP_CARDLIST).format(series)).decode("utf-8", "replace")
+    return parse_jp_cardlist(page, EN_SITE if english else JP_SITE)
 
 
-def parse_jp_cardlist(html):
+def parse_jp_cardlist(html, site=JP_SITE):
     out = []
     for block in re.findall(r'<dl class="modalCol" id="([^"]+)">(.*?)</dl>', html, re.S):
         card_id, body = block
@@ -161,7 +178,7 @@ def parse_jp_cardlist(html):
                     "type": info.group(3).strip().title(),
                     "color": " ".join(JP_COLOR.get(c, c) for c in (color.group(1) if color else "").strip().split("/") if c),
                     "name": name.group(1).strip() if name else card_id,
-                    "url": urllib.parse.urljoin(JP_SITE, img.group(1)).split("?")[0]})
+                    "url": urllib.parse.urljoin(site, img.group(1)).split("?")[0]})
     return out
 
 
@@ -212,6 +229,43 @@ def jp_cards(set_id, info):
         cards.append({"id": c["id"], "name": name, "nameJp": c["name"], "rarity": c["rarity"], "tier": tier,
                       "color": c["color"], "type": c["type"],
                       "url": c["url"]})
+    return cards
+
+
+def bandai_english_cards(info):
+    """A new English set's cards (still to download) before optcgapi has their pictures:
+    Bandai's English card list, each printing named and tiered as TCGplayer lists it.
+    Bandai numbers a card's printings EB05-055, _p1, _p2...; TCGplayer's names don't
+    say which is which, so the printings of a number pair up cheapest first (the base
+    card, then the rarer and rarer parallels). Unpriced listings count as the dearest."""
+    products = json.loads(fetch(TCGCSV.format(info["tcgGroup"], "products")))["results"]
+    usd = {p["productId"]: p.get("marketPrice") for p in json.loads(fetch(TCGCSV.format(info["tcgGroup"], "prices")))["results"]}
+    listed = {}
+    for p in products:
+        ext = {e["name"]: e["value"] for e in p.get("extendedData", [])}
+        if "Number" not in ext or "DON!!" in p["name"]:
+            continue
+        card = {"card_name": p["name"], "rarity": ext.get("Rarity", ""),
+                "card_type": ext.get("CardType", "")}
+        listed.setdefault(ext["Number"], []).append((usd.get(p["productId"]) or float("inf"), card))
+    printings = {}
+    for c in jp_card_list(info["series"], english=True):
+        printings.setdefault(c["id"].split("_")[0], []).append(c)
+    cards = []
+    for number, prints in printings.items():
+        prints.sort(key=lambda c: int(c["id"].rsplit("_p", 1)[1]) if "_p" in c["id"] else -1)
+        names = [card for _, card in sorted(listed.get(number, []), key=lambda x: x[0])]
+        if len(names) > len(prints):   # a reprint: only its newest printings are in this set
+            names = names[-len(prints):]
+        for c, named in zip(prints, names if len(names) == len(prints) else [None] * len(prints)):
+            named = named or {"card_name": c["name"], "rarity": c["rarity"], "card_type": c["type"]}
+            tier = tier_of(named)
+            if "_p" in c["id"] and tier == named["rarity"]:   # a parallel TCGplayer hasn't tagged
+                tier = jp_tier(c["id"], c["rarity"])
+            if tier is None:
+                continue
+            cards.append({"id": c["id"], "name": named["card_name"], "rarity": c["rarity"], "tier": tier,
+                          "color": c["color"], "type": c["type"], "url": c["url"]})
     return cards
 
 
@@ -474,6 +528,10 @@ def fetch_set_locked(set_id, info, cache):
             json.dump(out, f, indent=1)
         print("done")
         return
+    if "series" in info and not any(c.get("card_image") for c in raw):
+        # optcgapi lists a brand-new set before it has the pictures
+        print(f"optcgapi has no pictures of {set_id} yet; using Bandai's card list", flush=True)
+        return save_set(set_id, info, cache, bandai_english_cards(info))
 
     cards, seen = [], set()
     for c in raw:

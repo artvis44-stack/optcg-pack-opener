@@ -577,7 +577,7 @@ var SHOW_REGULARS = [
     { id: "skypiea", name: "Skypiea Slabs & Singles", blurb: "Every card checked twice.", kind: "honest", come: 0.4, focus: { slabs: 0.55 } },
     { id: "zou", name: "Zou Trading Post", blurb: "Fair and square, every time.", kind: "honest", come: 0.3 },
     { id: "wano", name: "Wano Card House", blurb: "Japanese and English, side by side.", kind: "honest", come: 0.35, focus: { jp: true } },
-    { id: "punkhazard", name: "Punk Hazard Hobby", blurb: "New sets the day they land.", kind: "honest", come: 0.4, focus: { sets: ["OP-16", "OP-17", "OP15-EB04"] } },
+    { id: "punkhazard", name: "Punk Hazard Hobby", blurb: "New sets the day they land.", kind: "honest", come: 0.4, focus: { sets: ["OP-16", "OP-17", "OP15-EB04", "EB-05"] } },
     { id: "enies", name: "Enies Lobby Exchange", blurb: "Trade-ins welcome.", kind: "honest", come: 0.35 },
     { id: "cocoyasi", name: "Cocoyasi Cards", blurb: "Small shop, honest prices.", kind: "honest", come: 0.3, focus: { slabs: 0.2 } },
     { id: "syrup", name: "Syrup Village Singles", blurb: "Started with one binder. Still at it.", kind: "honest", come: 0.25 },
@@ -2611,9 +2611,11 @@ function finishFocus(p) {
 
 // ---- what cards are worth ----------------------------------------------------------
 
-// market: { "<card id>|<name>": usd } from optcgapi (see Stage.loadMarket)
+// market: { "<card id>|<name>": usd } from optcgapi (see Stage.loadMarket); "|<name>"
+// for a card it lists before it has the card's picture (a set that's just out)
 function cardValue(card, market) {
     var usd = market ? market[card.id + "|" + card.name] : undefined;
+    if (usd === undefined && market) usd = market["|" + card.name];
     if (usd !== undefined && usd !== null && usd > 0) return Math.max(1, Math.round(usd * USD_TO_BERRY));
     return BASE_VALUE[card.tier] || 5;
 }

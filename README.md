@@ -3,7 +3,7 @@
 A Quickshell overlay for Hyprland that opens One Piece Card Game booster
 packs and boxes, card by card, with holo foil shaders. Every English booster
 set is supported: OP-01 to OP-17 (incl. OP14-EB04 / OP15-EB04), the Extra
-Boosters EB-01 to EB-03 and the Premium Boosters PRB-01 / PRB-02.
+Boosters EB-01 to EB-05 and the Premium Boosters PRB-01 / PRB-02.
 
 **SUPER+SHIFT+P** opens a single pack and **SUPER+SHIFT+B** opens a booster box. Pressing either again closes it.
 
@@ -89,7 +89,7 @@ The app is split into a platform-independent part (`app/`) and a thin host.
 
 ## Japanese sets
 
-Every Japanese booster up to OP-17 (OP-01–OP-17, EB-01–EB-04, PRB-01/02), on the picker's
+Every Japanese booster up to EB-05 (OP-01–OP-17, EB-01–EB-05, PRB-01/02), on the picker's
 Japanese tab. They open like the real product: 6-card packs (4 commons, an uncommon and an
 "R or better" slot), 24 a box, 12 boxes a case, with ~3.5 SRs and 4 Leaders a box and just
 1–2 hits (every box has an alt art or a SEC: 2 alt arts 25%, 1 alt art 42%, a SEC 33%); a
@@ -337,8 +337,9 @@ Bandai publishes no odds for any set. Each set is labelled in the picker:
 - **estimated** (OP-01 to OP14-EB04): era defaults (about 7 SR / box, 1 SEC per 2 boxes, ~1 alt art
   per box, SP ~1 per case) plus what's known per set (OP-01's lower SEC rate, OP-05's extra SPs,
   OP-09's gold Roger, box toppers in OP-01/02...). Base print runs match Bandai's official lists.
-- **rough** (EB-01 to EB-03, PRB-01/02): nothing published; the pack layout comes from the official
-  rarity lists and the rates are guesses.
+- **rough** (EB-01 to EB-03, EB-05, PRB-01/02): nothing published; the pack layout comes from the official
+  rarity lists and the rates are guesses. A set that's just out (EB-05) comes from Bandai's English
+  card list, named after TCGplayer's listing, until optcgapi has its pictures.
 
 How hits sit in a case follows the era: up to OP-15 a fixed collated pattern that repeats every
 case (and a Leader pack is a "dead pack"), OP-16 random positions where a Leader pack can still
