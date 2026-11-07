@@ -354,19 +354,27 @@ Item {
                     readonly property string next: Progress.nextShowDay(port.p, port.now)
                     readonly property string expo: Progress.nextExpoDay(port.now)
                     readonly property bool expoToday: expo === Progress.dayOf(port.now)
+                    readonly property string vday: Progress.nextVintageDay(port.now)
+                    readonly property bool vdayToday: vday === Progress.dayOf(port.now)
                     text: (Progress.canEnterShow(port.p, port.now)
                            ? expoToday ? "It's the Grand Line Expo today! Twenty-four tables, the rarest dealers in the trade, "
                                          + "grails for sure, the auction and the authentication booth, and a big crowd. Nothing "
                                          + "shows a market price in there, not even on your own cards."
+                           : vdayToday ? "It's Vintage Day! Every Wednesday the hall is old cards only: the 2005-06 English game "
+                                         + "and Carddass Hyper Battle, singles, slabs and sealed packs, with the vintage dealers out "
+                                         + "in force and a grail likelier than usual. No modern cards at all. Nothing shows a market "
+                                         + "price in there, and the scammers love vintage: look closely."
                            : "It's in town today! Sixteen tables of chase cards, raw and graded, at prices you'll have to judge "
                              + "yourself: once you're in, nothing shows a market price, not even on your own cards. Haggle, look "
                              + "closely, and watch out for fakes."
                            : "You've been to today's. There's one every day: the next one is tomorrow (" + next + ").")
                           + (expoToday ? "" : "  The next Grand Line Expo is on " + expo + ".")
+                          + (vdayToday || !vday ? "" : "  Next Vintage Day (old cards only): Wednesday " + vday + ".")
                 }
                 PillButton {
                     visible: Progress.canEnterShow(port.p, port.now) && !port.stage.offTheRecord
-                    text: "Go to the " + (Progress.isExpoDay(Progress.dayOf(port.now)) ? "expo" : "card show") + " (K)  ·  "
+                    text: "Go to the " + (Progress.isExpoDay(Progress.dayOf(port.now)) ? "expo"
+                                          : Progress.isVintageDay(Progress.dayOf(port.now)) ? "Vintage Day show" : "card show") + " (K)  ·  "
                           + Progress.format(Progress.entryFee(port.now)) + " entry"
                     accent: "#ff9ad5"
                     onClicked: port.stage.toggleShow()

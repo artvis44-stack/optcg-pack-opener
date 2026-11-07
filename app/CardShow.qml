@@ -34,6 +34,7 @@ Item {
     property bool notesOpen: false       // your notes, open
     property bool auctionOpen: false     // the expo's auction, open
     readonly property bool expo: !!s.expo
+    readonly property bool vintageDay: !!s.vintageDay
     readonly property var auction: Progress.showAuction(p)
     // the first visit: a tour of how it all works (ShowGuide), until you've been through it
     readonly property bool touring: visible && !recap && !!stage && !stage.offTheRecord && !Progress.showTutorialSeen(p, "hall")
@@ -207,7 +208,7 @@ Item {
         spacing: 6
         Text {
             anchors.horizontalCenter: parent.horizontalCenter
-            text: show.stall && !show.recap ? show.stall.name : show.expo ? "The Grand Line Expo" : "The Card Show"
+            text: show.stall && !show.recap ? show.stall.name : show.expo ? "The Grand Line Expo" : show.vintageDay ? "The Card Show  ·  Vintage Day" : "The Card Show"
             color: "#ff9ad5"
             font { pixelSize: 30; weight: Font.Black; italic: true }
         }

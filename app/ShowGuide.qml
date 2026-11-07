@@ -247,6 +247,8 @@ Rectangle {
                               + "shows: Familiar Face, Regular, Insider, Legend, each with its own perks (the Port's card shop tab). "
                               + "And on the 1st of every month, the Grand Line Expo: a bigger hall, dealers you'll only see there, "
                               + "an auction and a booth that tells you for sure if a card's real. "
+                              + "Every Wednesday is Vintage Day: the whole hall is old cards, the 2005-06 game and Hyper Battle, "
+                              + "and nothing modern. "
                               + "Good luck out there."
                     }
                 }

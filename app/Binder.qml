@@ -7,11 +7,20 @@ import "progress.js" as Progress
 // "All sets" (Tab): everything you own from every set, best pulls first, with
 // set filter chips and an estimated value. Both can be searched, filtered (F:
 // rarity, card type, colour, owned / missing / duplicates / graded) and sorted.
+// With Nico Robin aboard, "This set" can also be one of the vintage sets: they're
+// never in packs, but you can see what you have of them and what's missing.
 Item {
     id: binder
 
     property Item stage
     property bool allSets: false
+    // "This set": a vintage set (Robin's) instead of the one you're opening ("" = that one)
+    property string viewSet: ""
+    readonly property bool robin: !!stage && Progress.hasCrew(stage.progress, "robin")
+    readonly property string shownSet: robin ? viewSet : ""
+    readonly property var vintageSets: !robin ? [] : [["VINTAGE", "One Piece CCG"]]
+        .concat(stage.hyperReady() ? [["HYPERBATTLE", "Hyper Battle"]] : [])
+    property string origin: ""        // a vintage set: just this one of its sets ("The Quest Begins")
 
     // ---- search, filters, sort ----
     property string search: ""
@@ -22,18 +31,20 @@ Item {
     property string sortBy: "rarity"  // rarity | number | value | count
     property bool filtersOpen: false
     readonly property int activeFilters: (search ? 1 : 0) + (rarity ? 1 : 0) + (cardType ? 1 : 0) + (cardColor ? 1 : 0) + (show ? 1 : 0)
-    readonly property var rarities: [
-        ["common", "Common", ["C"]], ["uncommon", "Uncommon", ["UC"]], ["rare", "Rare", ["R", "FOIL"]],
-        ["leader", "Leader", ["L"]], ["sr", "Super Rare", ["SR"]], ["sec", "Secret Rare", ["SEC"]],
-        ["alt", "Alt Art", ["AA", "L_AA", "TEX", "SEC_AA"]], ["sp", "SP", ["SP", "SP_GOLD"]],
-        ["chase", "Chase (TR, Manga, Super)", ["TR", "MANGA", "SUPER", "SUPER_L", "SIGNED"]],
-        ["special", "Pandaman / topper", ["PANDA", "TOPPER"]], ["don", "DON!!", ["DON", "DON_GOLD", "DON_SP"]]
-    ]
+                                         + (origin ? 1 : 0)
     readonly property var types: ["Leader", "Character", "Event", "Stage", "DON!!"]
     readonly property var colors: ["Red", "Green", "Blue", "Purple", "Black", "Yellow"]
     function clearFilters() {
         searchInput.text = "";
-        search = ""; rarity = ""; cardType = ""; cardColor = ""; show = "";
+        search = ""; rarity = ""; cardType = ""; cardColor = ""; show = ""; origin = "";
+    }
+    function viewThis(id) {   // "This set": the one you're opening ("") or a vintage set
+        allSets = false;
+        if (viewSet === id) return;
+        viewSet = id;
+        rarity = ""; origin = "";
+        inspected = null;
+        if (id) stage.loadMarket(id);
     }
     function toggleOwned() {   // O
         show = show === "owned" ? "" : "owned";
@@ -64,10 +75,8 @@ Item {
             var q = search.toLowerCase();
             if (Tiers.displayName(c).toLowerCase().indexOf(q) < 0 && c.id.toLowerCase().indexOf(q) < 0) return false;
         }
-        if (rarity) {
-            var g = rarities.filter(r => r[0] === rarity)[0];
-            if (g && g[2].indexOf(c.tier) < 0) return false;
-        }
+        if (rarity && !Tiers.inRarity(c, rarity)) return false;
+        if (origin && c.origin !== origin) return false;
         if (cardType || cardColor) {
             var info = infoOf(c);
             if (cardType && info.type !== cardType) return false;
@@ -147,6 +156,7 @@ Item {
             stage.loadAllMarkets();
             loadMeta();
         }
+        rarity = ""; origin = "";
     }
     onCardTypeChanged: loadMeta()
     onCardColorChanged: loadMeta()
@@ -217,13 +227,29 @@ Item {
         else stage.toggleBinder();
     }
 
+    // "This set"'s cards: the one you're opening, or a vintage set (carrying its set)
+    readonly property var setCards: !stage ? []
+        : shownSet ? stage.cardsOf(shownSet).map(c => Object.assign({ set: shownSet }, c))
+        : stage.db ? stage.db.cards : []
+    // a vintage set's own sets, in its order, with how many of each you have: [name, owned, total]
+    readonly property var origins: {
+        if (!shownSet || allSets) return [];
+        var out = [], at = {};
+        all.forEach(it => {
+            var o = it.card.origin || "";
+            if (!(o in at)) { at[o] = out.length; out.push([o, 0, 0]); }
+            out[at[o]][2]++;
+            if (it.count > 0 || it.slabs.length > 0) out[at[o]][1]++;
+        });
+        return out.length > 1 ? out : [];
+    }
+
     // everything this view holds, before search / filters
     readonly property var all: {
         if (!stage) return [];
         if (allSets) return stage.allOwned.filter(it => !setFilter || it.card.set === setFilter);
-        if (!stage.db) return [];
         var seen = {}, list = [];
-        stage.db.cards.forEach(c => {
+        setCards.forEach(c => {
             var k = stage.cardKey(c);
             if (seen[k]) return;
             seen[k] = true;
@@ -250,7 +276,7 @@ Item {
     }
 
     readonly property var stats: {
-        var res = { owned: 0, total: 0, pulled: 0, packs: 0, value: 0 };
+        var res = { owned: 0, total: 0, pulled: 0, packs: 0, value: 0, missing: 0 };
         if (!stage) return res;
         res.packs = stage.collection.packs || 0;
         if (allSets) {
@@ -261,21 +287,21 @@ Item {
             });
             return res;
         }
-        if (!stage.db) return res;
-        var inSet = {};
-        stage.db.cards.forEach(c => inSet[stage.cardKey(c)] = true);
-        res.total = Object.keys(inSet).length;
-        var cards = stage.ownedKeys();   // graded cards are still yours
-        Object.keys(cards).forEach(k => {
-            if (!inSet[k]) return;
-            res.pulled += cards[k].count + (stage.slabsByKey[k] || []).length;
-            res.owned++;
+        all.forEach(it => {   // graded cards are still yours
+            res.total++;
+            if (it.count > 0 || it.slabs.length > 0) {
+                res.owned++;
+                res.pulled += it.count + it.slabs.length;
+            } else {
+                res.missing += stage.cardValue(it.card);   // what the missing ones go for
+            }
         });
         return res;
     }
 
     readonly property var bulk: !stage ? [] : allSets
         ? stage.allBulkDuplicates.filter(it => !setFilter || it.card.set === setFilter)
+        : shownSet ? stage.allBulkDuplicates.filter(it => it.card.set === shownSet)
         : stage.bulkDuplicates
     readonly property int bulkValue: bulk.reduce((a, it) => a + it.count * stage.cardValue(it.card), 0)
 
@@ -296,24 +322,42 @@ Item {
         Text {
             anchors.horizontalCenter: parent.horizontalCenter
             text: binder.allSets ? "Binder  ·  all sets" + (binder.setFilter ? "  ·  " + binder.setFilter : "")
+                  : binder.shownSet ? "Binder  ·  " + Progress.SHOW_SETS[binder.shownSet].name
                   : binder.stage && binder.stage.db ? "Binder  ·  " + binder.stage.db.set + "  " + binder.stage.db.set_name : "Binder"
             color: "#ffd56b"
             font { pixelSize: 28; weight: Font.Black; italic: true }
         }
-        Row {   // this set / all sets
+        Row {   // this set / all sets, and with Robin aboard the vintage sets
             anchors.horizontalCenter: parent.horizontalCenter
             spacing: 8
             PillButton {
                 text: "This set"
                 fontSize: 13
-                accent: binder.allSets ? "#7a8090" : "#ffd56b"
-                onClicked: binder.allSets = false
+                accent: !binder.allSets && !binder.shownSet ? "#ffd56b" : "#7a8090"
+                onClicked: binder.viewThis("")
             }
             PillButton {
                 text: "All sets"
                 fontSize: 13
                 accent: binder.allSets ? "#ffd56b" : "#7a8090"
                 onClicked: binder.allSets = true
+            }
+            Text {
+                visible: binder.vintageSets.length > 0
+                anchors.verticalCenter: parent.verticalCenter
+                text: "   vintage:"
+                color: "#7a8090"
+                font.pixelSize: 12
+            }
+            Repeater {
+                model: binder.vintageSets
+                PillButton {
+                    required property var modelData
+                    text: modelData[1]
+                    fontSize: 13
+                    accent: !binder.allSets && binder.shownSet === modelData[0] ? "#e8c37a" : "#7a8090"
+                    onClicked: binder.viewThis(modelData[0])
+                }
             }
         }
         Text {
@@ -322,6 +366,11 @@ Item {
                   ? binder.stats.owned + " different cards   ·   " + binder.stats.pulled + " cards   ·   "
                     + (binder.setFilter ? binder.setFilter : binder.ownedSets.length + " sets")
                     + "   ·   worth about " + Progress.format(binder.stats.value)
+                  : binder.shownSet
+                  ? binder.stats.owned + " / " + binder.stats.total + " collected   ·   "
+                    + (binder.stats.total - binder.stats.owned) + " missing, worth about " + Progress.format(binder.stats.missing)
+                    + "   ·   not in any pack: find them at the card show"
+                    + (binder.activeFilters ? "   ·   showing " + binder.entries.length : "")
                   : binder.stats.owned + " / " + binder.stats.total + " collected   ·   "
                     + binder.stats.pulled + " cards pulled   ·   " + binder.stats.packs + " packs opened"
                     + (binder.activeFilters ? "   ·   showing " + binder.entries.length : "")
@@ -405,7 +454,7 @@ Item {
             Chips {
                 label: "Rarity"
                 // only the rarities this view has
-                options: binder.rarities.filter(r => binder.all.some(it => r[2].indexOf(it.card.tier) >= 0)).map(r => [r[0], r[1]])
+                options: Tiers.rarityOptions(binder.all.map(it => it.card))
                 value: binder.rarity
                 onPicked: v => binder.rarity = v
             }
@@ -416,6 +465,7 @@ Item {
                 onPicked: v => binder.cardType = v
             }
             Chips {
+                visible: !binder.shownSet || binder.allSets   // the vintage cards have none
                 label: "Colour"
                 options: binder.colors.map(c => [c, c])
                 value: binder.cardColor
@@ -426,6 +476,28 @@ Item {
                 options: [["owned", "owned"], ["missing", "missing"], ["dupes", "duplicates"], ["graded", "graded"]]
                 value: binder.show
                 onPicked: v => binder.show = v
+            }
+        }
+        Flow {   // a vintage set: just one of its own sets, with how many of it you have
+            visible: binder.origins.length > 0
+            anchors.horizontalCenter: parent.horizontalCenter
+            width: Math.min(binder.width * 0.9, 1200)
+            spacing: 6
+            PillButton {
+                text: "every set"
+                fontSize: 11
+                accent: binder.origin === "" ? "#e8c37a" : "#7a8090"
+                onClicked: binder.origin = ""
+            }
+            Repeater {
+                model: binder.origins
+                PillButton {
+                    required property var modelData
+                    text: modelData[0] + "  " + modelData[1] + "/" + modelData[2]
+                    fontSize: 11
+                    accent: binder.origin === modelData[0] ? "#e8c37a" : modelData[1] === modelData[2] ? "#7fd1b9" : "#7a8090"
+                    onClicked: binder.origin = binder.origin === modelData[0] ? "" : modelData[0]
+                }
             }
         }
         Flow {   // all sets: filter by set
@@ -580,6 +652,7 @@ Item {
                 horizontalAlignment: Text.AlignHCenter
                 elide: Text.ElideRight
                 text: (binder.allSets ? cell.modelData.card.set + " · " : "") + Tiers.tierOf(cell.modelData.card).label
+                      + (binder.shownSet && !cell.owned ? " · " + Progress.format(binder.stage.cardValue(cell.modelData.card)) : "")
                 color: Tiers.tierOf(cell.modelData.card).color
                 opacity: cell.owned ? 1 : 0.35
                 font { pixelSize: 12; weight: Font.Bold }

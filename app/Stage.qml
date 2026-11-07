@@ -1051,7 +1051,8 @@ Item {
             prog(p => { walkedIn = Progress.enterShow(p, Date.now(), pool, vintageSealed()); return []; });
             if (!walkedIn) return;
             toast(Progress.showState(progress).expo ? "Paid " + Progress.format(fee) + " at the door. Welcome to the Grand Line Expo!"
-                                                    : "Paid " + Progress.format(fee) + " at the door.");
+                  : Progress.showState(progress).vintageDay ? "Paid " + Progress.format(fee) + " at the door. It's Vintage Day: old cards only!"
+                  : "Paid " + Progress.format(fee) + " at the door.");
             sfx("chime");
         }
         showReturn = phase === "board" ? boardReturn : phase === "port" ? portReturn : phase;
@@ -2175,6 +2176,7 @@ Item {
             break;
         case Qt.Key_F:
             if (phase === "binder") binderView.filtersOpen = !binderView.filtersOpen;
+            else if (phase === "vault" && vaultView.tab === "slabs") vaultView.filtersOpen = !vaultView.filtersOpen;
             else return;
             break;
         case Qt.Key_C:
