@@ -72,6 +72,28 @@ var info = {
 var SHOW_ONLY_TIERS = ["PROMO", "V_C", "V_FOIL", "V_SR", "V_SILVER", "V_GOLD", "V_PROMO",
                        "V_HB", "V_HB_HOLO", "V_HB_GOLD", "V_HB_SECRET", "V_HB_PROMO"];
 
+// the binder's and vault's rarity filter: [id, label, tiers]; the show-only tiers are an option each
+var RARITY_GROUPS = [
+    ["common", "Common", ["C"]], ["uncommon", "Uncommon", ["UC"]], ["rare", "Rare", ["R", "FOIL"]],
+    ["leader", "Leader", ["L"]], ["sr", "Super Rare", ["SR"]], ["sec", "Secret Rare", ["SEC"]],
+    ["alt", "Alt Art", ["AA", "L_AA", "TEX", "SEC_AA"]], ["sp", "SP", ["SP", "SP_GOLD"]],
+    ["chase", "Chase (TR, Manga, Super)", ["TR", "MANGA", "SUPER", "SUPER_L", "SIGNED"]],
+    ["special", "Pandaman / topper", ["PANDA", "TOPPER"]], ["don", "DON!!", ["DON", "DON_GOLD", "DON_SP"]]
+].concat(SHOW_ONLY_TIERS.map(function (t) { return [t, info[t].label, [t]]; }));
+
+// the rarity options some cards have: [id, label]
+function rarityOptions(cards) {
+    var has = {};
+    cards.forEach(function (c) { has[c.tier] = true; });
+    return RARITY_GROUPS.filter(function (g) { return g[2].some(function (t) { return has[t]; }); })
+                        .map(function (g) { return [g[0], g[1]]; });
+}
+
+function inRarity(card, id) {
+    var g = RARITY_GROUPS.filter(function (r) { return r[0] === id; })[0];
+    return !g || g[2].indexOf(card.tier) >= 0;
+}
+
 function isVintage(card) {
     return !!card && String(card.tier).indexOf("V_") === 0;
 }

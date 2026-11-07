@@ -2175,6 +2175,7 @@ Item {
             break;
         case Qt.Key_F:
             if (phase === "binder") binderView.filtersOpen = !binderView.filtersOpen;
+            else if (phase === "vault" && vaultView.tab === "slabs") vaultView.filtersOpen = !vaultView.filtersOpen;
             else return;
             break;
         case Qt.Key_C:

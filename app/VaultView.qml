@@ -2,8 +2,8 @@ import QtQuick
 import "tiers.js" as Tiers
 import "progress.js" as Progress
 
-// The Vault (G): your graded cards. Tabs (← →): your slabs (filter by set and
-// grade; click one to see it big, sell it or put it on the desktop), what's out
+// The Vault (G): your graded cards. Tabs (← →): your slabs (search, filter by set,
+// grade, rarity and where they are, sort by grade, value, rarity, set or date; click one to see it big, sell it or put it on the desktop), what's out
 // for grading, the set registry (best grade of each card, Gem Mint progress), and
 // the fakes you bought at card shows (worth nothing; keep them or destroy them).
 // Cards are sent for grading from the binder: click a card you own, "Grade / pre-grade".
@@ -17,6 +17,22 @@ Item {
     property string tab: "slabs"
     property string setFilter: ""
     property int gradeFilter: 0          // 0: every grade, 7: 7 or lower
+    property string search: ""
+    property string rarity: ""           // a Tiers.RARITY_GROUPS id
+    property string show: ""             // "" | free (not in a case) | cased | diamond | reviewable
+    property string sortBy: "grade"      // grade | value | rarity | set | newest
+    property bool sortUp: false          // the other way round
+    property string regSort: "score"     // the registry: score | done (share graded) | gems
+    property bool filtersOpen: false     // the filter chips (F); folded away, only search and sort show
+    readonly property int activeFilters: (setFilter ? 1 : 0) + (gradeFilter ? 1 : 0) + (search ? 1 : 0) + (rarity ? 1 : 0) + (show ? 1 : 0)
+    function clearFilters() {
+        searchInput.text = "";
+        setFilter = ""; gradeFilter = 0; search = ""; rarity = ""; show = "";
+    }
+    function sortOn(id) {   // a sort again: the other way round
+        if (sortBy === id) sortUp = !sortUp;
+        else { sortBy = id; sortUp = false; }
+    }
     property var inspected: null         // a slab shown big
     property real now: Date.now()
 
@@ -47,13 +63,45 @@ Item {
                      .sort((a, b) => b.grade - a.grade || Tiers.tierOf(b).rank - Tiers.tierOf(a).rank
                                      || (b.gradedAt || 0) - (a.gradedAt || 0));
     }
-    readonly property var slabs: allSlabs.filter(s => (!setFilter || s.set === setFilter)
-        && (!gradeFilter || (gradeFilter === 7 ? s.grade <= 7 : s.grade === gradeFilter)))
-    readonly property var slabSets: {
-        var seen = {};
-        allSlabs.forEach(s => seen[s.set] = true);
-        return stage ? Object.keys(stage.sets).filter(id => seen[id]) : [];
+    function slabMatches(s) {
+        if (setFilter && s.set !== setFilter) return false;
+        if (gradeFilter && (gradeFilter === 7 ? s.grade > 7 : s.grade !== gradeFilter)) return false;
+        if (rarity && !Tiers.inRarity(s, rarity)) return false;
+        if (search) {
+            var q = search.toLowerCase();
+            if (Tiers.displayName(s).toLowerCase().indexOf(q) < 0 && String(s.id).toLowerCase().indexOf(q) < 0) return false;
+        }
+        var cased = !!stage.lockedSlabs[s.slabId];
+        if (show === "free" && cased || show === "cased" && !cased || show === "diamond" && !s.diamond) return false;
+        if (show === "reviewable" && (cased || Progress.reviewChance(s) <= 0)) return false;
+        return true;
     }
+    readonly property var slabs: {
+        var list = allSlabs.filter(s => slabMatches(s)), order = slabSets;
+        var byGrade = (a, b) => b.grade - a.grade || !!b.diamond - !!a.diamond;
+        var byRank = (a, b) => Tiers.tierOf(b).rank - Tiers.tierOf(a).rank;
+        var newest = (a, b) => (b.gradedAt || 0) - (a.gradedAt || 0);
+        var cmp = sortBy === "value" ? (a, b) => stage.slabValue(b) - stage.slabValue(a) || byGrade(a, b)
+                : sortBy === "rarity" ? (a, b) => byRank(a, b) || byGrade(a, b)
+                : sortBy === "set" ? (a, b) => order.indexOf(a.set) - order.indexOf(b.set) || String(a.id).localeCompare(String(b.id)) || byGrade(a, b)
+                : sortBy === "newest" ? (a, b) => newest(a, b) || byGrade(a, b)
+                : (a, b) => byGrade(a, b) || byRank(a, b) || newest(a, b);
+        list.sort(cmp);
+        return sortUp ? list.reverse() : list;
+    }
+    // the sets you have slabs of, in release order (then the show's own)
+    readonly property var slabSets: {
+        if (!stage) return [];
+        var order = Object.keys(stage.sets).concat(Object.keys(Progress.SHOW_SETS));
+        var seen = slabSetCounts;
+        return order.filter(id => seen[id]).concat(Object.keys(seen).filter(id => order.indexOf(id) < 0).sort());
+    }
+    readonly property var slabSetCounts: {
+        var n = {};
+        allSlabs.forEach(s => n[s.set] = (n[s.set] || 0) + 1);
+        return n;
+    }
+    readonly property var rarities: Tiers.rarityOptions(allSlabs)
     readonly property var orders: Object.keys(p.grading || {}).map(id => Object.assign({ id: id }, p.grading[id]))
                                         .sort((a, b) => a.readyAt - b.readyAt)
     readonly property int gems: allSlabs.filter(s => s.grade === 10).length
@@ -118,8 +166,74 @@ Item {
                 }
             }
         }
-        Flow {   // slab filters: set and grade
+        Row {   // slabs: search and sort
             visible: vault.tab === "slabs" && vault.allSlabs.length > 0
+            anchors.horizontalCenter: parent.horizontalCenter
+            spacing: 8
+            Rectangle {
+                width: 220
+                height: 30
+                radius: 15
+                color: "#151b2c"
+                border.color: searchInput.activeFocus ? "#ffd56b" : "#2c3550"
+                TextInput {
+                    id: searchInput
+                    anchors { fill: parent; leftMargin: 14; rightMargin: 14 }
+                    verticalAlignment: TextInput.AlignVCenter
+                    color: "#e8e8ee"
+                    font.pixelSize: 13
+                    clip: true
+                    text: vault.search
+                    onTextChanged: vault.search = text
+                    Keys.onEscapePressed: event => {   // clear, then let go of the keyboard
+                        if (text) text = "";
+                        else vault.stage.forceActiveFocus();
+                        event.accepted = true;
+                    }
+                    Keys.onReturnPressed: vault.stage.forceActiveFocus()
+                    Text {
+                        anchors.verticalCenter: parent.verticalCenter
+                        visible: !searchInput.text && !searchInput.activeFocus
+                        text: "Search name or number"
+                        color: "#4a5370"
+                        font.pixelSize: 13
+                    }
+                }
+            }
+            PillButton {
+                readonly property int n: vault.activeFilters - (vault.search ? 1 : 0)
+                text: "Filters" + (n > 0 ? " (" + n + ")" : "") + "  F"
+                fontSize: 12
+                accent: vault.filtersOpen || n > 0 ? "#ffd56b" : "#7a8090"
+                onClicked: vault.filtersOpen = !vault.filtersOpen
+            }
+            PillButton {
+                visible: vault.activeFilters > 0
+                text: "clear"
+                fontSize: 12
+                accent: "#ff8a7a"
+                onClicked: vault.clearFilters()
+            }
+            Text {
+                anchors.verticalCenter: parent.verticalCenter
+                text: "   sort:"
+                color: "#7a8090"
+                font.pixelSize: 12
+            }
+            Repeater {
+                model: [["grade", "grade"], ["value", "value"], ["rarity", "rarity"], ["set", "set & number"], ["newest", "newest"]]
+                PillButton {
+                    required property var modelData
+                    readonly property bool current: vault.sortBy === modelData[0]
+                    text: modelData[1] + (current ? (vault.sortUp ? "  ↑" : "  ↓") : "")
+                    fontSize: 12
+                    accent: current ? "#ffd56b" : "#7a8090"
+                    onClicked: vault.sortOn(modelData[0])
+                }
+            }
+        }
+        Flow {   // slab filters: set
+            visible: vault.tab === "slabs" && vault.filtersOpen && vault.slabSets.length > 1
             anchors.horizontalCenter: parent.horizontalCenter
             width: Math.min(vault.width * 0.9, 1100)
             spacing: 6
@@ -133,13 +247,18 @@ Item {
                 model: vault.slabSets
                 PillButton {
                     required property string modelData
-                    text: modelData
+                    text: modelData + "  " + vault.slabSetCounts[modelData]
                     fontSize: 11
                     accent: vault.setFilter === modelData ? "#ffd56b" : "#7a8090"
                     onClicked: vault.setFilter = vault.setFilter === modelData ? "" : modelData
                 }
             }
-            Item { width: 18; height: 1 }
+        }
+        Flow {   // slab filters: grade, where it is
+            visible: vault.tab === "slabs" && vault.filtersOpen && vault.allSlabs.length > 0
+            anchors.horizontalCenter: parent.horizontalCenter
+            width: Math.min(vault.width * 0.9, 1100)
+            spacing: 6
             Repeater {
                 model: [[0, "every grade"], [10, "10"], [9, "9"], [8, "8"], [7, "7 or lower"]]
                 PillButton {
@@ -148,6 +267,68 @@ Item {
                     fontSize: 11
                     accent: vault.gradeFilter === modelData[0] ? (modelData[0] === 10 ? "#ffd700" : "#ffd56b") : "#7a8090"
                     onClicked: vault.gradeFilter = modelData[0]
+                }
+            }
+            Item { width: 18; height: 1 }
+            Repeater {
+                model: [["", "anywhere"], ["free", "not in a case"], ["cased", "in a case"], ["diamond", "Diamond Label"], ["reviewable", "can be reviewed"]]
+                PillButton {
+                    required property var modelData
+                    text: modelData[1]
+                    fontSize: 11
+                    accent: vault.show === modelData[0] ? (modelData[0] === "diamond" ? "#7ae8ff" : "#ffd56b") : "#7a8090"
+                    onClicked: vault.show = vault.show === modelData[0] ? "" : modelData[0]
+                }
+            }
+        }
+        Flow {   // slab filters: rarity (the ones you have slabs of)
+            visible: vault.tab === "slabs" && vault.filtersOpen && vault.rarities.length > 1
+            anchors.horizontalCenter: parent.horizontalCenter
+            width: Math.min(vault.width * 0.9, 1100)
+            spacing: 6
+            PillButton {
+                text: "every rarity"
+                fontSize: 11
+                accent: vault.rarity === "" ? "#ffd56b" : "#7a8090"
+                onClicked: vault.rarity = ""
+            }
+            Repeater {
+                model: vault.rarities
+                PillButton {
+                    required property var modelData
+                    text: modelData[1]
+                    fontSize: 11
+                    accent: vault.rarity === modelData[0] ? "#ffd56b" : "#7a8090"
+                    onClicked: vault.rarity = vault.rarity === modelData[0] ? "" : modelData[0]
+                }
+            }
+        }
+        Text {   // what the filters leave
+            visible: vault.tab === "slabs" && vault.activeFilters > 0 && vault.slabs.length > 0
+            anchors.horizontalCenter: parent.horizontalCenter
+            text: "showing " + vault.slabs.length + " of " + vault.allSlabs.length + "   ·   worth "
+                  + Progress.format(vault.slabs.reduce((n, s) => n + vault.stage.slabValue(s), 0))
+            color: "#9aa0ad"
+            font.pixelSize: 13
+        }
+        Row {   // the registry: sort
+            visible: vault.tab === "registry"
+            anchors.horizontalCenter: parent.horizontalCenter
+            spacing: 8
+            Text {
+                anchors.verticalCenter: parent.verticalCenter
+                text: "sort:"
+                color: "#7a8090"
+                font.pixelSize: 12
+            }
+            Repeater {
+                model: [["score", "score"], ["done", "share graded"], ["gems", "Gem Mint 10s"]]
+                PillButton {
+                    required property var modelData
+                    text: modelData[1]
+                    fontSize: 12
+                    accent: vault.regSort === modelData[0] ? "#ffd56b" : "#7a8090"
+                    onClicked: vault.regSort = modelData[0]
                 }
             }
         }
@@ -193,7 +374,10 @@ Item {
                 card: cell.modelData
                 labelStyle: Progress.slabStyle(vault.p)
                 time: vault.stage ? vault.stage.t : 0
-                onClicked: vault.inspected = cell.modelData
+                onClicked: {
+                    vault.inspected = cell.modelData;
+                    vault.stage.forceActiveFocus();   // keys work again after typing in the search
+                }
             }
             Text {
                 anchors { top: slabView.bottom; topMargin: 6; horizontalCenter: parent.horizontalCenter }
@@ -391,8 +575,11 @@ Item {
             spacing: 10
             readonly property var rows: {
                 var b = vault.p.stats.bySet || {};
-                return Object.keys(b).filter(k => b[k].graded > 0).sort((x, y) => b[y].registry - b[x].registry)
-                             .map(k => Object.assign({ set: k }, b[k]));
+                var share = k => b[k].total ? b[k].graded / b[k].total : 0;
+                var cmp = vault.regSort === "done" ? (x, y) => share(y) - share(x) || b[y].registry - b[x].registry
+                        : vault.regSort === "gems" ? (x, y) => b[y].gem - b[x].gem || b[y].registry - b[x].registry
+                        : (x, y) => b[y].registry - b[x].registry;
+                return Object.keys(b).filter(k => b[k].graded > 0).sort(cmp).map(k => Object.assign({ set: k }, b[k]));
             }
             Note {
                 width: parent.width
@@ -553,6 +740,7 @@ Item {
         anchors { bottom: parent.bottom; bottomMargin: 14; horizontalCenter: parent.horizontalCenter }
         text: vault.inspected ? "Move the mouse to tilt   ·   click or Esc to go back"
               : vault.tab === "sets" ? "← →: switch tabs   ·   save a complete collection in a display case   ·   G or Esc: back"
+              : vault.tab === "slabs" ? "← →: switch tabs   ·   click a slab to see it big   ·   F: filters   ·   G or Esc: back"
               : "← →: switch tabs   ·   click a slab to see it big   ·   G or Esc: back"
         color: "#9aa0ad"
         font.pixelSize: 14
