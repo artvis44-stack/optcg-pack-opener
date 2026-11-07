@@ -403,6 +403,26 @@ function isExpoDay(day) {
     return /-01$/.test(day || "");
 }
 
+// Vintage Day: every Wednesday (unless it's the 1st: the expo wins), the hall is vintage only. The
+// vintage specialists and the Carddass dealers turn out in force, the bargain tables are attics
+// and old binders of the 2005-06 game, the scammers all sell vintage, and a grail is likelier.
+// No modern cards anywhere. (If you have no vintage cards in your pool, it's a normal show.)
+var SHOW_VINTAGE_DAY = { weekday: 3, grail: 0.5, tables: { vintage: 5, carddass: 3, bargain: 2, scammer: 3 } };
+
+function isVintageDay(day) {
+    var m = /^(\d+)-(\d+)-(\d+)$/.exec(day || "");
+    return !!m && !isExpoDay(day) && new Date(+m[1], +m[2] - 1, +m[3], 12).getDay() === SHOW_VINTAGE_DAY.weekday;
+}
+
+// the next Vintage Day ("2026-11-11"): today's if it's one
+function nextVintageDay(now) {
+    for (var i = 0; i < 14; i++) {
+        var day = dayOf(now + i * 86400 * 1000);
+        if (isVintageDay(day)) return day;
+    }
+    return "";
+}
+
 // what it costs to get in today (the expo's dearer)
 function entryFee(now) {
     return isExpoDay(showDay(now)) ? SHOW_EXPO.entry : SHOW_ENTRY;
@@ -636,6 +656,9 @@ var SHOW_NAMES = {
               ["Red Force Collectibles", "Graded and guaranteed."], ["Arlong Park Cards", "Cash deals only. Best in the hall."],
               ["Foxy's Fast Flips", "In and out, great prices."], ["Shells Town Singles", "Every card checked. Mostly."],
               ["Orange Town Trading", "Below market, every card!"], ["Mock Town Grails", "Grails at half price. Ask why."]],
+    vintageBargain: [["Attic find", "Found my old binder from 2005. No idea what's in it."], ["Uncle's old collection", "He played the English game back when. Make an offer."],
+                     ["Thrift store haul", "Bought a shoebox of old cards for five bucks."], ["Retired Shonen Jump reader", "Every issue's freebies, kept in a drawer."],
+                     ["Basement clear-out", "Old cards, old games, all must go."], ["Hand-me-down binder", "Got these from my big brother. Don't need them."]],
     vintageScammer: [["Retro Treasure Chest", "RARE vintage!! 1st print!! Sealed!!"], ["Grand Line Antiques", "Vintage at modern prices. No returns."],
                      ["Golden Age Grails", "Every card a grail. Cash only, today only."], ["First Edition Express", "2005 originals, cheap!"],
                      ["Vintage Vault Outlet", "Sealed vintage, no questions."]]
@@ -954,11 +977,11 @@ function lookalike(name, rnd) {
 
 // a scammer table's identity: the same for a few shows running, then gone (slot: which of the
 // day's scammer tables). { name, blurb, vintage line ("" or "ccg" / "hb"), id }
-function scammerIdentity(day, slot, lines, taken) {
+function scammerIdentity(day, slot, lines, taken, vintageOnly) {
     var d = Math.floor(Date.parse(day + "T12:00:00Z") / 86400000);
     var run = SHOW_SCAM_RUN[0] + (slot % (SHOW_SCAM_RUN[1] - SHOW_SCAM_RUN[0] + 1));
     var era = Math.floor((d + slot * 7) / run), r = hash("scammer " + slot + " " + era);
-    var old = lines.length && r() < SHOW_VINTAGE_SCAMMER ? lines[Math.floor(r() * lines.length)] : "";
+    var old = lines.length && (vintageOnly || r() < SHOW_VINTAGE_SCAMMER) ? lines[Math.floor(r() * lines.length)] : "";
     var nm = null;
     if (r() < SHOW_LOOKALIKE) {
         var like = SHOW_REGULARS.filter(function (x) { return !x.expo && (old ? x.kind === (old === "hb" ? "carddass" : "vintage")
@@ -1030,9 +1053,13 @@ function makeShowStock(day, pool, sealed) {
         return focused[k] = picker(byTier, SHOW_RARITY);
     };
     var expo = isExpoDay(day), kinds = [];
-    var tables = function (k) { return expo ? SHOW_EXPO.tables[k] : SHOW_VENDORS[k].tables; };
+    var vday = !expo && isVintageDay(day) && lines.length > 0;   // Vintage Day: vintage only
+    var tables = function (k) {
+        if (vday) return k === "carddass" && !pickVintage.hb || k === "vintage" && !pickVintage.ccg ? 0 : SHOW_VINTAGE_DAY.tables[k] || 0;
+        return expo ? SHOW_EXPO.tables[k] : SHOW_VENDORS[k].tables;
+    };
     Object.keys(SHOW_VENDORS).forEach(function (k) { for (var i = 0; i < tables(k); i++) kinds.push(k); });
-    var names = { bargain: shuffled(SHOW_NAMES.bargain, rnd) };
+    var names = { bargain: shuffled(SHOW_NAMES[vday ? "vintageBargain" : "bargain"], rnd) };
     // the day's regulars, by kind; a vintage specialist only comes when you have their game
     var regulars = {};
     ["honest", "premium", "vintage", "carddass"].forEach(function (k) {
@@ -1190,11 +1217,12 @@ function makeShowStock(day, pool, sealed) {
             if (cfg.vintage && pickVintage[cfg.vintage]) old = cfg.vintage;   // sells only vintage, of one game
             var focus = reg && reg.focus ? focusPicker(reg.focus) : null;
         } else if (kind === "scammer") {   // a name for a few shows, sometimes a regular's, a letter off
-            who = scammerIdentity(day, scamSlot++, lines, taken);
+            who = scammerIdentity(day, scamSlot++, lines, taken, vday);
             old = who.vintage;
         } else {
             var nm = names[kind].shift() || ["Table " + (v + 1), ""];
             who = { id: "", name: nm[0], blurb: nm[1] };
+            if (vday) old = pickOf(lines);   // an old binder of one game or the other
         }
         taken[who.name] = true;
         var range = old ? SHOW_VINTAGE_LISTINGS : cfg.listings;
@@ -1215,11 +1243,12 @@ function makeShowStock(day, pool, sealed) {
     // now and then a grail: on a premium dealer's table (or a vintage specialist's, for a vintage
     // one), or a scammer's (likely a fake)
     var grailCount = expo ? SHOW_EXPO.grails[0] + Math.floor(rnd() * (SHOW_EXPO.grails[1] - SHOW_EXPO.grails[0] + 1))
-                   : rnd() < SHOW_GRAIL_CHANCE ? 1 : 0;
-    for (var gi = 0; gi < grailCount && grails.length; gi++) {
-        var g = grails[Math.floor(rnd() * grails.length)];
+                   : rnd() < (vday ? SHOW_VINTAGE_DAY.grail : SHOW_GRAIL_CHANCE) ? 1 : 0;
+    var grailPool = vday ? grails.filter(function (x) { return Tiers.isVintage(x.card); }) : grails;
+    for (var gi = 0; gi < grailCount && grailPool.length; gi++) {
+        var g = grailPool[Math.floor(rnd() * grailPool.length)];
         var gline = !Tiers.isVintage(g.card) ? "" : g.card.set === "HYPERBATTLE" ? "hb" : "ccg";
-        var honestKind = gline && rnd() < 0.5 ? (gline === "hb" ? "carddass" : "vintage") : "premium";
+        var honestKind = gline && (vday || rnd() < 0.5) ? (gline === "hb" ? "carddass" : "vintage") : "premium";
         var kind = rnd() < 0.65 ? honestKind : "scammer";
         var where = hall.filter(function (t) { return t.kind === kind && !t.expo && (!t.vintage || t.vintage === gline); });
         var table = where[Math.floor(rnd() * where.length)];
@@ -1412,7 +1441,7 @@ function enterShow(p, now, pool, sealed) {
     if (!canEnterShow(p, now)) return false;
     var s = showState(p);
     if (s.day !== day || !s.stock) {
-        var fee = entryFee(now), expo = isExpoDay(day);
+        var fee = entryFee(now), expo = isExpoDay(day), vday = isVintageDay(day);
         if (!spend(p, fee, "show")) return false;
         var stock = makeShowStock(day, pool, sealed);
         var lv = showLevel(p), sharp = hash("legend " + day);
@@ -1425,7 +1454,8 @@ function enterShow(p, now, pool, sealed) {
         });
         p.show = { day: day, entered: now, left: 0, stock: stock, bought: {}, haggled: {}, looks: 0, checked: {}, asked: {}, paid: fee,
                    clock: 0, early: lv >= 3,   // Insiders come in early
-                   expo: expo, auction: expo ? makeAuction(day, pool, stock) : null };
+                   expo: expo, auction: expo ? makeAuction(day, pool, stock) : null,
+                   vintageDay: vday && stock.every(function (t) { return !!t.vintage; }) };
     }
     else if (!s.entered) p.show.entered = now;
     return true;
