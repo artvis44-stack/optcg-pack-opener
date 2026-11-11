@@ -900,7 +900,19 @@ function showState(p) {
 // you've been to (and left) today's show
 function showVisited(p, day) {
     var s = showState(p);
-    return s.day === day && !!s.left;
+    return s.day === day && !!s.left && !misdealtVintageDay(p, day);
+}
+
+// today's a Vintage Day but the hall was dealt as a normal show (by a device on a version from
+// before Vintage Day, synced in), and you haven't done anything there yet: walking in deals it
+// again, free (you paid at the door already). Once only: a hall dealt again stays as it is
+function misdealtVintageDay(p, day) {
+    var s = showState(p);
+    var none = function (o) { return !o || !Object.keys(o).length; };
+    return s.day === day && isVintageDay(day) && !!s.stock && !s.vintageDay && !s.redealt
+        && s.stock.some(function (t) { return !t.vintage; })
+        && !s.looks && none(s.bought) && none(s.haggled) && none(s.checked) && none(s.asked)
+        && none(s.sold) && none(s.offers) && none(s.reports) && none(s.authed);
 }
 
 // you're at the show now (walked in today, haven't left)
@@ -1439,10 +1451,10 @@ function crudenFake(x, rnd) {
 function enterShow(p, now, pool, sealed) {
     var day = showDay(now);
     if (!canEnterShow(p, now)) return false;
-    var s = showState(p);
-    if (s.day !== day || !s.stock) {
-        var fee = entryFee(now), expo = isExpoDay(day), vday = isVintageDay(day);
-        if (!spend(p, fee, "show")) return false;
+    var s = showState(p), redeal = misdealtVintageDay(p, day);
+    if (s.day !== day || !s.stock || redeal) {
+        var fee = redeal ? s.paid || 0 : entryFee(now), expo = isExpoDay(day), vday = isVintageDay(day);
+        if (!redeal && !spend(p, fee, "show")) return false;
         var stock = makeShowStock(day, pool, sealed);
         var lv = showLevel(p), sharp = hash("legend " + day);
         stock.forEach(function (t) {
@@ -1456,6 +1468,7 @@ function enterShow(p, now, pool, sealed) {
                    clock: 0, early: lv >= 3,   // Insiders come in early
                    expo: expo, auction: expo ? makeAuction(day, pool, stock) : null,
                    vintageDay: vday && stock.every(function (t) { return !!t.vintage; }) };
+        if (redeal) p.show.redealt = true;
     }
     else if (!s.entered) p.show.entered = now;
     return true;

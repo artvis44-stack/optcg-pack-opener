@@ -181,16 +181,21 @@ function mergeShow(b, l, r) {
     if (!isObject(l)) return r;
     if (!isObject(r)) return l;
     if (l.day !== r.day) return l.day > r.day ? l : r;
+    // a Vintage Day hall dealt again (it was dealt as a normal show): the new one, whole
+    if (!!l.redealt !== !!r.redealt) return l.redealt ? l : r;
     var first = function (x, y) { return x && y ? Math.min(x, y) : x || y || 0; };
+    // the hall as first dealt: whoever walked in first (or whichever side has one)
+    var dealt = l.entered && r.entered ? (l.entered <= r.entered ? l : r) : l.entered ? l : r;
+    if (!dealt.stock) dealt = l.stock ? l : r;
     return { day: l.day, entered: first(l.entered, r.entered), left: Math.max(l.left || 0, r.left || 0),
-             stock: (l.entered && r.entered ? (l.entered <= r.entered ? l : r) : l.entered ? l : r).stock || l.stock || r.stock,
+             stock: dealt.stock, vintageDay: !!dealt.vintageDay,
              bought: Object.assign({}, r.bought || {}, l.bought || {}), haggled: Object.assign({}, r.haggled || {}, l.haggled || {}),
              checked: mergeChecked(l.checked, r.checked), asked: Object.assign({}, r.asked || {}, l.asked || {}),
              sold: Object.assign({}, r.sold || {}, l.sold || {}), offers: Object.assign({}, r.offers || {}, l.offers || {}),
              reports: Object.assign({}, r.reports || {}, l.reports || {}), rep: Math.max(l.rep || 0, r.rep || 0),
              taken: Object.assign({}, r.taken || {}, l.taken || {}), clock: Math.max(l.clock || 0, r.clock || 0),
              news: (l.news || []).length >= (r.news || []).length ? l.news : r.news, early: !!(l.early || r.early), paid: l.paid || r.paid || 0,
-             expo: !!(l.expo || r.expo), authed: Object.assign({}, r.authed || {}, l.authed || {}),
+             expo: !!(l.expo || r.expo), redealt: !!(l.redealt || r.redealt), authed: Object.assign({}, r.authed || {}, l.authed || {}),
              auction: auctionAhead(l.auction, r.auction),
              looks: Math.max(l.looks || 0, r.looks || 0) };
 }
