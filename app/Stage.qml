@@ -1042,7 +1042,8 @@ Item {
                 toast("Download a set first (S): the vendors sell cards from the sets you have.");
                 return;
             }
-            var fee = Progress.entryFee(Date.now()), redeal = Progress.misdealtVintageDay(progress, Progress.dayOf(Date.now()));
+            var today = Progress.dayOf(Date.now()), reset = Progress.showResetPending(progress, today);
+            var fee = Progress.entryFee(Date.now()), redeal = reset || Progress.misdealtVintageDay(progress, today);
             if (!redeal && progress.berries < fee) {
                 toast("It's " + Progress.format(fee) + " at the door, and you have " + Progress.format(progress.berries) + ".");
                 return;
@@ -1050,7 +1051,8 @@ Item {
             var walkedIn = false;
             prog(p => { walkedIn = Progress.enterShow(p, Date.now(), pool, vintageSealed()); return []; });
             if (!walkedIn) return;
-            toast(redeal ? "It's Vintage Day after all: the hall's been set up again, old cards only. You paid at the door already."
+            toast(reset ? "Today's show has been reset: the hall's set up afresh, and you're in on the house."
+                  : redeal ? "It's Vintage Day after all: the hall's been set up again, old cards only. You paid at the door already."
                   : Progress.showState(progress).expo ? "Paid " + Progress.format(fee) + " at the door. Welcome to the Grand Line Expo!"
                   : Progress.showState(progress).vintageDay ? "Paid " + Progress.format(fee) + " at the door. It's Vintage Day: old cards only!"
                   : "Paid " + Progress.format(fee) + " at the door.");
@@ -1075,6 +1077,22 @@ Item {
         sfx("coin");
         toast(it.sealed ? "Bought a sealed " + c.name + " for " + Progress.format(paid) + ". It's in the port's Sealed tab."
                         : "Bought " + Tiers.displayName(c) + (it.grade ? " (graded " + it.grade + ")" : "") + " for " + Progress.format(paid));
+        return true;
+    }
+
+    // buy a card out of a table's binder (entry: one of Progress.tableBinder's)
+    function buyFromBinder(entry) {
+        if (!entry) return false;
+        if (!prog(p => Progress.buyFromBinder(p, entry, Date.now()) ? [] : null)) {
+            if (!Progress.binderBought(progress)[entry.id] && progress.berries < entry.ask)
+                toast("Not enough berries: that's " + Progress.format(entry.ask) + ".");
+            return false;
+        }
+        receiveFromShow({ key: entry.key, card: entry.card, cond: entry.cond, grade: 0, fake: false }, entry.id, entry.ask, null);
+        prog(p => Progress.record(p, { type: "bought", count: 1, value: entry.ask }));
+        sfx("coin");
+        toast("Bought " + Tiers.displayName(entry.card) + " for " + Progress.format(entry.ask)
+              + (entry.slip ? ". Wait... that's not a common." : ""));
         return true;
     }
 
@@ -2128,12 +2146,14 @@ Item {
             if (phase === "vault") vaultView.step(-1);
             else if (phase === "port") portView.step(-1);
             else if (phase === "board") boardView.step(-1);
+            else if (phase === "show") showView.step(-1);
             else return;
             break;
         case Qt.Key_Right:
             if (phase === "vault") vaultView.step(1);
             else if (phase === "port") portView.step(1);
             else if (phase === "board") boardView.step(1);
+            else if (phase === "show") showView.step(1);
             else advance();
             break;
         case Qt.Key_Space:

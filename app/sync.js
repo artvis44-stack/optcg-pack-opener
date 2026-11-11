@@ -181,8 +181,9 @@ function mergeShow(b, l, r) {
     if (!isObject(l)) return r;
     if (!isObject(r)) return l;
     if (l.day !== r.day) return l.day > r.day ? l : r;
-    // a Vintage Day hall dealt again (it was dealt as a normal show): the new one, whole
-    if (!!l.redealt !== !!r.redealt) return l.redealt ? l : r;
+    // a hall dealt again (a Vintage Day dealt as a normal show, or a show reset): the latest deal, whole
+    var round = function (x) { return x.round || (x.redealt ? 1 : 0); };
+    if (round(l) !== round(r)) return round(l) > round(r) ? l : r;
     var first = function (x, y) { return x && y ? Math.min(x, y) : x || y || 0; };
     // the hall as first dealt: whoever walked in first (or whichever side has one)
     var dealt = l.entered && r.entered ? (l.entered <= r.entered ? l : r) : l.entered ? l : r;
@@ -195,6 +196,7 @@ function mergeShow(b, l, r) {
              reports: Object.assign({}, r.reports || {}, l.reports || {}), rep: Math.max(l.rep || 0, r.rep || 0),
              taken: Object.assign({}, r.taken || {}, l.taken || {}), clock: Math.max(l.clock || 0, r.clock || 0),
              news: (l.news || []).length >= (r.news || []).length ? l.news : r.news, early: !!(l.early || r.early), paid: l.paid || r.paid || 0,
+             binder: Object.assign({}, r.binder || {}, l.binder || {}), round: Math.max(round(l), round(r)),
              expo: !!(l.expo || r.expo), redealt: !!(l.redealt || r.redealt), authed: Object.assign({}, r.authed || {}, l.authed || {}),
              auction: auctionAhead(l.auction, r.auction),
              looks: Math.max(l.looks || 0, r.looks || 0) };
