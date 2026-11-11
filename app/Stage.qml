@@ -1042,15 +1042,16 @@ Item {
                 toast("Download a set first (S): the vendors sell cards from the sets you have.");
                 return;
             }
-            var fee = Progress.entryFee(Date.now());
-            if (progress.berries < fee) {
+            var fee = Progress.entryFee(Date.now()), redeal = Progress.misdealtVintageDay(progress, Progress.dayOf(Date.now()));
+            if (!redeal && progress.berries < fee) {
                 toast("It's " + Progress.format(fee) + " at the door, and you have " + Progress.format(progress.berries) + ".");
                 return;
             }
             var walkedIn = false;
             prog(p => { walkedIn = Progress.enterShow(p, Date.now(), pool, vintageSealed()); return []; });
             if (!walkedIn) return;
-            toast(Progress.showState(progress).expo ? "Paid " + Progress.format(fee) + " at the door. Welcome to the Grand Line Expo!"
+            toast(redeal ? "It's Vintage Day after all: the hall's been set up again, old cards only. You paid at the door already."
+                  : Progress.showState(progress).expo ? "Paid " + Progress.format(fee) + " at the door. Welcome to the Grand Line Expo!"
                   : Progress.showState(progress).vintageDay ? "Paid " + Progress.format(fee) + " at the door. It's Vintage Day: old cards only!"
                   : "Paid " + Progress.format(fee) + " at the door.");
             sfx("chime");
