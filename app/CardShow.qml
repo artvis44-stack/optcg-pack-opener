@@ -33,6 +33,8 @@ Item {
     property bool binderOpen: false      // your show binder, open
     property bool notesOpen: false       // your notes, open
     property bool auctionOpen: false     // the expo's auction, open
+    property bool tableBinderOpen: false // the table's binder of cheap singles (TableBinder), open
+    property var binderPool: null        // the cards the binders are dealt from (read once a visit)
     readonly property bool expo: !!s.expo
     readonly property bool vintageDay: !!s.vintageDay
     readonly property var auction: Progress.showAuction(p)
@@ -61,6 +63,7 @@ Item {
         else if (auctionOpen) auctionOpen = false;
         else if (confirmReport) confirmReport = "";
         else if (inspected) inspected = "";
+        else if (tableBinderOpen) tableBinderOpen = false;
         else if (binderOpen) binderOpen = false;
         else if (stallId) stallId = "";
         else if (!confirmLeave) confirmLeave = true;
@@ -74,15 +77,22 @@ Item {
         stage.leaveShow();
     }
 
+    // ‹ ›: turn the pages of a table's binder
+    function step(d) {
+        if (tableBinderOpen && !inspected) tableBinderView.step(d);
+    }
+
     function walkTo(id) {
         stallId = id;
+        tableBinderOpen = false;
         confirmLeave = false;
         var v = Object.assign({}, visited);
         v[id] = true;
         visited = v;
     }
 
-    onVisibleChanged: if (visible) { inspected = ""; stallId = ""; confirmLeave = false; binderOpen = false; notesOpen = false; auctionOpen = false; }
+    onVisibleChanged: if (visible) { inspected = ""; stallId = ""; confirmLeave = false; binderOpen = false; notesOpen = false; auctionOpen = false;
+                                     tableBinderOpen = false; binderPool = null; }
 
     // trade for a listing: your binder opens with it as what you're after
     function tradeFor(id) {
@@ -243,13 +253,20 @@ Item {
                 text: "‹  Back to the hall"
                 fontSize: 13
                 accent: "#ffd56b"
-                onClicked: show.stallId = ""
+                onClicked: { show.tableBinderOpen = false; show.stallId = ""; }
+            }
+            PillButton {
+                visible: !!show.stall && !Progress.tableClosed(show.p, show.stall.id)
+                text: "Their binder"
+                fontSize: 13
+                accent: "#c8a060"
+                onClicked: { show.binderOpen = false; show.tableBinderOpen = true; }
             }
             PillButton {
                 text: "Your binder  " + (show.stage ? show.stage.showBinderItems.length : 0)
                 fontSize: 13
                 accent: "#7fd1b9"
-                onClicked: show.binderOpen = true
+                onClicked: { show.tableBinderOpen = false; show.binderOpen = true; }
             }
             PillButton {
                 text: "Notes"
@@ -795,7 +812,7 @@ Item {
                 wrapMode: Text.WordWrap
                 visible: !!recapCol.r
                 readonly property int net: recapCol.r ? recapCol.r.worth - recapCol.r.paid : 0
-                text: !recapCol.r ? "" : !recapCol.r.items.length ? "You didn't buy anything this time."
+                text: !recapCol.r ? "" : !recapCol.r.items.length ? (recapCol.r.binder && recapCol.r.binder.count ? "Nothing off the tables this time." : "You didn't buy anything this time.")
                       : "You paid " + Progress.format(recapCol.r.paid) + " for things worth " + Progress.format(recapCol.r.worth)
                         + " at market:  " + (net >= 0 ? "+" : "−") + Progress.format(Math.abs(net)).slice(1) + " ฿"
                         + (recapCol.r.fakes ? "   ·   " + recapCol.r.fakes + " fake" + (recapCol.r.fakes > 1 ? "s" : "") + " (in the vault)" : "")
@@ -848,6 +865,19 @@ Item {
                       : "Beaten to it: " + recapCol.r.beaten.map(b => (b.listing ? Tiers.displayName(b.listing.card) : "a card")
                                                                     + (b.vendor ? " at " + b.vendor.name : "")).join(", ") + "."
                 color: "#ffb347"
+                font { pixelSize: 14; weight: Font.Bold }
+            }
+            Text {   // out of the tables' binders
+                readonly property var b: recapCol.r ? recapCol.r.binder : null
+                visible: !!b && b.count > 0
+                width: parent.width
+                wrapMode: Text.WordWrap
+                text: !b || !b.count ? ""
+                      : "Out of the binders: " + b.count + " card" + (b.count > 1 ? "s" : "") + " for " + Progress.format(b.paid)
+                        + ", worth " + Progress.format(b.worth) + " at market."
+                        + b.slips.map(x => "  Somebody priced " + Tiers.displayName(x.card) + " like a common: you paid "
+                                            + Progress.format(x.price) + " for a card worth " + Progress.format(x.value) + "!").join("")
+                color: b && b.slips.length ? "#ffd56b" : "#c8ccd6"
                 font { pixelSize: 14; weight: Font.Bold }
             }
             Repeater {   // what you reported
@@ -925,7 +955,7 @@ Item {
         anchors { bottom: parent.bottom; bottomMargin: 12; horizontalCenter: parent.horizontalCenter }
         text: show.recap ? "Esc or Done: back"
               : show.inspected ? "Move the mouse to tilt it   ·   click outside or Esc: put it down"
-              : show.stall ? "Click something to pick it up   ·   Your binder: sell or trade here   ·   Esc: back to the hall"
+              : show.stall ? "Click something to pick it up   ·   Their binder: cheap singles   ·   Your binder: sell or trade here   ·   Esc: back to the hall"
               : "Click a stall to walk over   ·   Esc: leave the show"
         color: "#9aa0ad"
         font.pixelSize: 14
@@ -940,6 +970,16 @@ Item {
         vendor: show.stall
         onClose: show.binderOpen = false
         onInspect: id => show.inspected = id
+    }
+
+    TableBinder {   // a table's binder of cheap singles
+        id: tableBinderView
+        anchors.fill: parent
+        visible: show.tableBinderOpen && !!show.stall && !show.recap && !show.inspected
+        stage: show.stage
+        hall: show
+        vendor: show.stall
+        onClose: show.tableBinderOpen = false
     }
 
     ShowAuction {   // the expo's auction

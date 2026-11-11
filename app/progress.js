@@ -900,7 +900,21 @@ function showState(p) {
 // you've been to (and left) today's show
 function showVisited(p, day) {
     var s = showState(p);
-    return s.day === day && !!s.left && !misdealtVintageDay(p, day);
+    return s.day === day && !!s.left && !misdealtVintageDay(p, day) && !showResetPending(p, day);
+}
+
+// A show reset (a release can reopen a day's show for everyone): a visit to SHOW_RESET.day that
+// began before SHOW_RESET.at doesn't count, and walking in again deals the hall afresh, free.
+var SHOW_RESET = { day: "2026-11-11", at: 1794428217296 };
+
+function showResetPending(p, day) {
+    var s = showState(p);
+    return day === SHOW_RESET.day && s.day === day && !!s.left && (s.entered || 0) < SHOW_RESET.at;
+}
+
+// which deal of the day's hall this is (each re-deal or reset, one more): sync keeps the latest
+function showRound(s) {
+    return s ? s.round || (s.redealt ? 1 : 0) : 0;
 }
 
 // today's a Vintage Day but the hall was dealt as a normal show (by a device on a version from
@@ -912,7 +926,7 @@ function misdealtVintageDay(p, day) {
     return s.day === day && isVintageDay(day) && !!s.stock && !s.vintageDay && !s.redealt
         && s.stock.some(function (t) { return !t.vintage; })
         && !s.looks && none(s.bought) && none(s.haggled) && none(s.checked) && none(s.asked)
-        && none(s.sold) && none(s.offers) && none(s.reports) && none(s.authed);
+        && none(s.sold) && none(s.offers) && none(s.reports) && none(s.authed) && none(s.binder);
 }
 
 // you're at the show now (walked in today, haven't left)
@@ -1451,7 +1465,7 @@ function crudenFake(x, rnd) {
 function enterShow(p, now, pool, sealed) {
     var day = showDay(now);
     if (!canEnterShow(p, now)) return false;
-    var s = showState(p), redeal = misdealtVintageDay(p, day);
+    var s = showState(p), redeal = misdealtVintageDay(p, day) || showResetPending(p, day);
     if (s.day !== day || !s.stock || redeal) {
         var fee = redeal ? s.paid || 0 : entryFee(now), expo = isExpoDay(day), vday = isVintageDay(day);
         if (!redeal && !spend(p, fee, "show")) return false;
@@ -1468,7 +1482,10 @@ function enterShow(p, now, pool, sealed) {
                    clock: 0, early: lv >= 3,   // Insiders come in early
                    expo: expo, auction: expo ? makeAuction(day, pool, stock) : null,
                    vintageDay: vday && stock.every(function (t) { return !!t.vintage; }) };
-        if (redeal) p.show.redealt = true;
+        if (redeal) {
+            p.show.redealt = true;
+            p.show.round = showRound(s) + 1;
+        }
     }
     else if (!s.entered) p.show.entered = now;
     return true;
@@ -1661,6 +1678,84 @@ function takeSealed(p, x, paid, now) {
                       boxes: 0, vintage: true, line: x.sealed.line || "ccg", name: x.sealed.name || "", cards: x.sealed.cards || null,
                       packs: x.sealed.packs, packsTotal: x.sealed.packs, resealed: !!x.fake,
                       paid: paid, at: now, rate: SEALED_RATE[1] };
+}
+
+// ---- the tables' binders: the cheap stuff ----
+//
+// Every table keeps a binder of cheap singles under it, for anyone who wants to flip through: up to
+// TABLE_BINDER.size cards, 9 to a page, everything worth less than TABLE_BINDER.max of the table's
+// own game (a vintage specialist's of the 2005-06 English game, a Carddass dealer's of Hyper
+// Battle, on Vintage Day an old binder of one or the other, the rest modern): the commons,
+// uncommons and low rares no table puts out. It's how you fill the holes in a set. Not stored:
+// it's dealt from the day, the table and your pool whenever it's opened; what you buy is kept
+// (show.binder, by table and card). A bargain table's binder now and then has a chase card in it
+// somebody priced like the rest (TABLE_BINDER.slip, a chase card worth TABLE_BINDER.slipMin or
+// more): 99% off, if you find it.
+var TABLE_BINDER = { max: 500, size: [120, 360], perPage: 9, slip: 0.01, slipMin: 5000, slipOff: 0.99 };
+
+// a table's binder: [{ id, key, card, value, ask, cond, claim, slip }] (the same all day, for the
+// same pool). pool: as makeShowStock's
+function tableBinder(p, tableId, pool) {
+    var s = showState(p), t = (s.stock || []).filter(function (v) { return v.id === tableId; })[0];
+    if (!t || !pool || !pool.length) return [];
+    var cfg = SHOW_VENDORS[t.kind] || SHOW_VENDORS.honest;
+    var line = t.vintage || cfg.vintage || "";
+    var rnd = hash("binder " + s.day + " " + t.id + " " + t.name);
+    var ofLine = function (x) {
+        return line === "hb" ? x.card.set === "HYPERBATTLE" : line ? x.card.set === "VINTAGE" : !isShowSet(x.card.set);
+    };
+    var cheap = pool.filter(function (x) { return x.value > 0 && x.value < TABLE_BINDER.max && ofLine(x); });
+    var n = Math.min(cheap.length, TABLE_BINDER.size[0] + Math.floor(rnd() * (TABLE_BINDER.size[1] - TABLE_BINDER.size[0] + 1)));
+    var picked = shuffled(cheap, rnd).slice(0, n);
+    // a dealer's binder is in order (by set, then number); a bargain table's is however it went in
+    if (t.kind !== "bargain")
+        picked.sort(function (a, b) { return a.card.set < b.card.set ? -1 : a.card.set > b.card.set ? 1 : a.card.id < b.card.id ? -1 : a.card.id > b.card.id ? 1 : 0; });
+    var cond = function () {
+        var r = rnd(), acc = 0;
+        for (var c = 0; c < CONDITIONS.length; c++) {
+            acc += CONDITIONS[c].share;
+            if (r < acc) return CONDITIONS[c].id;
+        }
+        return "decent";
+    };
+    var out = picked.map(function (x) {
+        var c = cond();
+        return { id: t.id + "~" + x.key, key: x.key, card: x.card, value: x.value, cond: c,
+                 claim: t.kind === "bargain" ? "As is" : SHOW_CLAIM[c],
+                 ask: roundPrice(x.value * between(rnd, cfg.price[0], cfg.price[1])), slip: false };
+    });
+    // the slip: a chase card in a bargain binder at a common's price
+    if (t.kind === "bargain" && out.length && rnd() < TABLE_BINDER.slip) {
+        var chase = pool.filter(function (x) {
+            return x.value >= TABLE_BINDER.slipMin && ofLine(x) && !isGrail(x)
+                && (line ? Tiers.isVintage(x.card) && ["V_C", "V_HB"].indexOf(x.card.tier) < 0 : !!SHOW_RARITY[x.card.tier]);
+        });
+        if (chase.length) {
+            var x = chase[Math.floor(rnd() * chase.length)], c = cond();
+            out.splice(Math.floor(rnd() * (out.length + 1)), 0, {
+                id: t.id + "~" + x.key, key: x.key, card: x.card, value: x.value, cond: c, claim: "As is",
+                ask: roundPrice(x.value * (1 - TABLE_BINDER.slipOff)), slip: true });
+        }
+    }
+    return out;
+}
+
+// what you've bought out of the tables' binders today: { "<table>~<key>": { key, card, cond, price, value, slip, at } }
+function binderBought(p) {
+    return showState(p).binder || {};
+}
+
+// buy a card out of a table's binder (entry: one of tableBinder's). False: not at the show,
+// had it already, the table's closed to you, or you can't afford it
+function buyFromBinder(p, entry, now) {
+    var s = showState(p);
+    if (!atShow(p, now) || !entry || binderBought(p)[entry.id] || tableClosed(p, entry.id.split("~")[0])) return false;
+    if (!spend(p, entry.ask, "show")) return false;
+    p.show.binder = p.show.binder || {};
+    p.show.binder[entry.id] = { key: entry.key, card: entry.card, cond: entry.cond, price: entry.ask, value: entry.value,
+                                slip: !!entry.slip, at: now };
+    showTick(p, null);
+    return true;
 }
 
 // ---- selling and trading your show binder ----
@@ -1856,6 +1951,13 @@ function leaveShow(p, now) {
         beaten: Object.keys(s.taken || {}).filter(function (id) {
             return (s.checked || {})[id] || (s.asked || {})[id] || (s.haggled || {})[id];
         }).map(function (id) { return { listing: showListing(p, id), who: s.taken[id].who, vendor: showVendor(p, id) }; }),
+        // out of the tables' binders: the cheap cards, and any slip you found
+        binder: (function () {
+            var b = s.binder || {}, all = Object.keys(b).map(function (id) { return b[id]; });
+            return { count: all.length, paid: all.reduce(function (n, x) { return n + x.price; }, 0),
+                     worth: all.reduce(function (n, x) { return n + x.value; }, 0),
+                     slips: all.filter(function (x) { return x.slip; }) };
+        })(),
         soldFor: sold.reduce(function (n, x) { return n + x.price; }, 0),
         soldWorth: sold.reduce(function (n, x) { return n + x.value; }, 0)
     };
