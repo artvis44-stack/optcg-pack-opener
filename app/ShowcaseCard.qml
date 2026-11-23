@@ -78,7 +78,7 @@ Item {
     readonly property var shortTier: ({
         C: "C", UC: "UC", R: "R", L: "L", SR: "SR", SEC: "SEC", AA: "AA", L_AA: "L·AA",
         SEC_AA: "SEC·AA", SP: "SP", TR: "TR", MANGA: "MANGA", SUPER: "SUPER", SUPER_L: "SUPER",
-        SP_GOLD: "SP", SIGNED: "SIGN", PANDA: "PANDA", TOPPER: "TOP", FOIL: "FOIL", TEX: "TEX",
+        SP_GOLD: "SP", SEC_GOLD: "SEC", SIGNED: "SIGN", PANDA: "PANDA", TOPPER: "TOP", FOIL: "FOIL", TEX: "TEX",
         DON: "DON!!", DON_GOLD: "DON!!", DON_SP: "DON!!"
     })
 

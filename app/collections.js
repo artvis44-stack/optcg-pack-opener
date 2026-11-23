@@ -27,7 +27,7 @@ var PER_SET = [
     ["sp",     "SPs",             ["SP", "SP_GOLD"]],
     ["manga",  "Manga Rares",     ["MANGA", "SIGNED"]],
     ["laa",    "Alt Art Leaders", ["L_AA", "SUPER_L"]],
-    ["sec",    "Secret Rares",    ["SEC", "SEC_AA"]],
+    ["sec",    "Secret Rares",    ["SEC", "SEC_AA", "SEC_GOLD"]],
     ["master", "Master Set",      null]
 ];
 

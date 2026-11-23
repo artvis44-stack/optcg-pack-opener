@@ -23,7 +23,7 @@ Item {
     readonly property string python: host.env("OPTCG_PYTHON") || "python3"   // runs fetch_cards.py
     property var sets: ({})             // sets.json, loaded once at startup
     readonly property string settingsPath: dataDir + "/settings.json"
-    property string setId: host.env("OPTCG_SET") || "OP-17"
+    property string setId: host.env("OPTCG_SET") || "OP-18"
     readonly property var setInfo: sets[setId] || {}
     readonly property var cfg: Tiers.setConfig(setInfo)
     property string downloadLine: ""
