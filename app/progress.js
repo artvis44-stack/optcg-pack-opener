@@ -35,7 +35,7 @@ var BULK_LIMIT = 1000;             // "sell duplicates" only sells copies worth 
 var BASE_VALUE = {
     C: 5, UC: 10, DON: 20, R: 30, FOIL: 40, L: 60, SR: 250, TOPPER: 500, PANDA: 1500,
     AA: 1500, TEX: 1200, SEC: 2500, L_AA: 4000, DON_GOLD: 5000, DON_SP: 5000, SP: 6000,
-    SEC_AA: 8000, TR: 20000, SUPER_L: 30000, SP_GOLD: 30000, SIGNED: 50000, MANGA: 60000,
+    SEC_AA: 8000, TR: 20000, SUPER_L: 30000, SP_GOLD: 30000, SEC_GOLD: 30000, SIGNED: 50000, MANGA: 60000,
     SUPER: 100000,
     PROMO: 500, V_C: 3000, V_FOIL: 10000, V_SR: 15000, V_SILVER: 20000, V_GOLD: 60000, V_PROMO: 200000
 };
@@ -597,7 +597,7 @@ var SHOW_REGULARS = [
     { id: "skypiea", name: "Skypiea Slabs & Singles", blurb: "Every card checked twice.", kind: "honest", come: 0.4, focus: { slabs: 0.55 } },
     { id: "zou", name: "Zou Trading Post", blurb: "Fair and square, every time.", kind: "honest", come: 0.3 },
     { id: "wano", name: "Wano Card House", blurb: "Japanese and English, side by side.", kind: "honest", come: 0.35, focus: { jp: true } },
-    { id: "punkhazard", name: "Punk Hazard Hobby", blurb: "New sets the day they land.", kind: "honest", come: 0.4, focus: { sets: ["OP-16", "OP-17", "OP15-EB04", "EB-05"] } },
+    { id: "punkhazard", name: "Punk Hazard Hobby", blurb: "New sets the day they land.", kind: "honest", come: 0.4, focus: { sets: ["OP-16", "OP-17", "OP15-EB04", "EB-05", "OP-18"] } },
     { id: "enies", name: "Enies Lobby Exchange", blurb: "Trade-ins welcome.", kind: "honest", come: 0.35 },
     { id: "cocoyasi", name: "Cocoyasi Cards", blurb: "Small shop, honest prices.", kind: "honest", come: 0.3, focus: { slabs: 0.2 } },
     { id: "syrup", name: "Syrup Village Singles", blurb: "Started with one binder. Still at it.", kind: "honest", come: 0.25 },
@@ -665,7 +665,7 @@ var SHOW_NAMES = {
 };
 // how likely a chase card of each tier is to be on a table
 var SHOW_RARITY = { SR: 3, AA: 10, TEX: 5, SEC: 10, SEC_AA: 10, L_AA: 12, SP: 18, DON_GOLD: 2, TR: 12, MANGA: 10,
-                    SUPER: 4, SUPER_L: 3, SP_GOLD: 3, SIGNED: 1 };
+                    SUPER: 4, SUPER_L: 3, SP_GOLD: 3, SEC_GOLD: 3, SIGNED: 1 };
 // the show-only sets: their cards come from app/vintage.json (VINTAGE) and optcgapi's promo list (PROMO)
 var SHOW_SETS = {
     VINTAGE: { name: "One Piece CCG (2005-06)", show: true },
@@ -2049,7 +2049,7 @@ function pulled(p, tiers) {
     return tiers.reduce(function (a, t) { return a + (p.stats.pulled[t] || 0); }, 0);
 }
 
-var CHASE_TIERS = ["TR", "SP_GOLD", "MANGA", "SIGNED", "SUPER", "SUPER_L"];
+var CHASE_TIERS = ["TR", "SP_GOLD", "SEC_GOLD", "MANGA", "SIGNED", "SUPER", "SUPER_L"];
 
 // tier groups a set's "own every ..." posters track (Stage works out how much of each you own)
 var SET_GROUPS = {
@@ -3180,8 +3180,8 @@ function eventIs(p, id) {
     return !!(p && p.weekly && p.weekly.event === id && p.weekly.week === weekOf(Date.now()));
 }
 
-var SR_TIERS = ["SR", "AA", "TEX", "SEC", "L_AA", "SP", "SEC_AA", "SUPER_L", "SP_GOLD", "TR", "MANGA", "SIGNED", "SUPER", "PANDA"];
-var AA_TIERS = ["AA", "TEX", "SEC", "L_AA", "SP", "SEC_AA", "SUPER_L", "SP_GOLD", "TR", "MANGA", "SIGNED", "SUPER"];
+var SR_TIERS = ["SR", "AA", "TEX", "SEC", "L_AA", "SP", "SEC_AA", "SUPER_L", "SP_GOLD", "SEC_GOLD", "TR", "MANGA", "SIGNED", "SUPER", "PANDA"];
+var AA_TIERS = ["AA", "TEX", "SEC", "L_AA", "SP", "SEC_AA", "SUPER_L", "SP_GOLD", "SEC_GOLD", "TR", "MANGA", "SIGNED", "SUPER"];
 
 function countTiers(tiers, which) {
     return tiers.filter(function (t) { return which.indexOf(t) >= 0; }).length;

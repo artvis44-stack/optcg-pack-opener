@@ -44,6 +44,7 @@ var info = {
     SEC_AA:  { label: "Secret Rare Alt Art",    holo: 1.0,  gold: 0.5, rank: 10, color: "#ffd34d" },
     SUPER_L: { label: "Super Leader Parallel",  holo: 1.0,  gold: 0.7, rank: 11, color: "#ffd700" },
     SP_GOLD: { label: "Gold / Silver SP",       holo: 1.0,  gold: 1.0, rank: 12, color: "#ffe08a" },
+    SEC_GOLD:{ label: "Gold Secret Rare",       holo: 1.0,  gold: 1.0, rank: 12, color: "#ffd700" },
     TR:      { label: "Treasure Rare",          holo: 1.0,  gold: 1.0, rank: 12, color: "#ffe08a" },
     MANGA:   { label: "Manga Rare",             holo: 1.0,  gold: 0.2, rank: 13, color: "#ffffff" },
     SIGNED:  { label: "Gold-Stamped Signature", holo: 1.0,  gold: 1.0, rank: 13, color: "#ffd700" },
@@ -77,7 +78,7 @@ var RARITY_GROUPS = [
     ["common", "Common", ["C"]], ["uncommon", "Uncommon", ["UC"]], ["rare", "Rare", ["R", "FOIL"]],
     ["leader", "Leader", ["L"]], ["sr", "Super Rare", ["SR"]], ["sec", "Secret Rare", ["SEC"]],
     ["alt", "Alt Art", ["AA", "L_AA", "TEX", "SEC_AA"]], ["sp", "SP", ["SP", "SP_GOLD"]],
-    ["chase", "Chase (TR, Manga, Super)", ["TR", "MANGA", "SUPER", "SUPER_L", "SIGNED"]],
+    ["chase", "Chase (TR, Manga, Super)", ["TR", "MANGA", "SUPER", "SUPER_L", "SIGNED", "SEC_GOLD"]],
     ["special", "Pandaman / topper", ["PANDA", "TOPPER"]], ["don", "DON!!", ["DON", "DON_GOLD", "DON_SP"]]
 ].concat(SHOW_ONLY_TIERS.map(function (t) { return [t, info[t].label, [t]]; }));
 
@@ -132,7 +133,7 @@ function makeVintagePack(cards, resealed) {
 }
 
 // premium tiers that take the hit slot
-var HIT_TIERS = ["AA", "TEX", "SEC", "L_AA", "SEC_AA", "SP", "TR", "SUPER_L", "SP_GOLD", "MANGA", "SIGNED", "SUPER"];
+var HIT_TIERS = ["AA", "TEX", "SEC", "L_AA", "SEC_AA", "SP", "TR", "SUPER_L", "SP_GOLD", "SEC_GOLD", "MANGA", "SIGNED", "SUPER"];
 
 // Per product family: pack layout and case budget (per 12-box case).
 // fixed = about this many per case; lottery = Poisson mean per case.
@@ -229,7 +230,7 @@ function tierOf(card) {
 
 // "Kaido (062) (Super Alternate Art)" -> "Kaido (062)"; the tier label says the rest
 function displayName(card) {
-    return card.name.replace(/\s*\((Alternate Art|Parallel|Manga|SP|SPR|TR|Super .*Alternate Art|Red Super Alternate Art|Pandaman Art|Gold|Silver|Special Foil|Box Topper|Wanted Poster|Full Art|Textured Foil|Jolly Roger Foil|Pirate Foil|Reprint|Gold-Stamped Signature|Gold Stamped)\)/g, "");
+    return card.name.replace(/\s*\((Alternate Art|Parallel|Manga|SP|SPR|TR|Super .*Alternate Art|[^)]*Super-Alt Art|Red Super Alternate Art|Pandaman Art|Gold|Silver|Special Foil|Box Topper|Wanted Poster|Full Art|Textured Foil|Jolly Roger Foil|Pirate Foil|Reprint|Gold-Stamped Signature|Gold Stamped)\)/g, "");
 }
 
 // ---- randomness -------------------------------------------------------------
@@ -387,7 +388,7 @@ function makePack(cards, setInfo, forceHit, opts) {
 // topped up with parallels.
 
 var GOD_PACKS_PER_CASE = 1 / 20;
-var PARALLEL_TIERS = ["AA", "L_AA", "TEX", "SEC", "SEC_AA", "SP", "SP_GOLD", "TR", "MANGA", "SUPER", "SUPER_L"];
+var PARALLEL_TIERS = ["AA", "L_AA", "TEX", "SEC", "SEC_AA", "SP", "SP_GOLD", "SEC_GOLD", "TR", "MANGA", "SUPER", "SUPER_L"];
 var GOD_KINDS = {
     parallel: { name: "God Pack",            tiers: PARALLEL_TIERS },
     manga:    { name: "Manga God Pack",      tiers: ["MANGA"] },

@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Download OPTCG set data + card images into the local cache.
 
-Usage: fetch_cards.py [SET_ID]   one set (default OP-17), e.g. OP-05, EB-01, PRB-02
+Usage: fetch_cards.py [SET_ID]   one set (default OP-18), e.g. OP-05, EB-01, PRB-02
        fetch_cards.py VINTAGE    the card show's vintage cards (app/vintage.json) and their photos
        fetch_cards.py PROMO      the card show's promos: every promo card optcgapi lists
        fetch_cards.py HYPERBATTLE  the card show's Carddass Hyper Battle cards (app/hyperbattle.json):
@@ -26,6 +26,7 @@ this is a personal cache, don't redistribute it.
 """
 import fcntl
 import glob
+import html
 import json
 import os
 import re
@@ -92,13 +93,15 @@ def tier_of(card):
         return "SIGNED"
     if "SP" in tags and tags & {"Gold", "Silver"}:
         return "SP_GOLD"
+    if rarity == "SEC" and "Gold" in tags:   # OP-18's gold-foil alt-art Secret Rares
+        return "SEC_GOLD"
     if "Super Rare Alternate Art" in tags:   # EB-05's name for an SR's plain parallel
         return "AA"
     if "Heroine Leader" in tags:             # the Heroines boosters' Leader parallels
         return "L_AA"
     if tags & GUEST_ARTIST:                  # a parallel drawn by a guest artist
         return "SEC_AA" if rarity == "SEC" else "L_AA" if leader else "AA"
-    if any("Super" in t and "Alternate Art" in t for t in tags):
+    if any("Super" in t and ("Alternate Art" in t or "Alt Art" in t) for t in tags):   # OP-18: "... Super-Alt Art"
         return "SUPER_L" if leader else "SUPER"
     if "Manga" in tags:
         return "MANGA"
@@ -257,10 +260,12 @@ def bandai_english_cards(info):
         names = [card for _, card in sorted(listed.get(number, []), key=lambda x: x[0])]
         if len(names) > len(prints):   # a reprint: only its newest printings are in this set
             names = names[-len(prints):]
+        # every listing a plain card: the printings are art variants, not parallels (OP-18's Sleeptids)
+        variants = bool(names) and all(tier_of(n) == n["rarity"] for n in names)
         for c, named in zip(prints, names if len(names) == len(prints) else [None] * len(prints)):
-            named = named or {"card_name": c["name"], "rarity": c["rarity"], "card_type": c["type"]}
+            named = named or {"card_name": html.unescape(c["name"]), "rarity": c["rarity"], "card_type": c["type"]}
             tier = tier_of(named)
-            if "_p" in c["id"] and tier == named["rarity"]:   # a parallel TCGplayer hasn't tagged
+            if "_p" in c["id"] and tier == named["rarity"] and not variants:   # a parallel TCGplayer hasn't tagged
                 tier = jp_tier(c["id"], c["rarity"])
             if tier is None:
                 continue
@@ -516,7 +521,12 @@ def fetch_set_locked(set_id, info, cache):
         return save_set(set_id, info, cache, cards)
     try:
         raw = json.loads(fetch(API.format(set_id)))
+        if not isinstance(raw, list):   # {"error": "Card was not found!"}: a set optcgapi doesn't list yet
+            raw = []
     except Exception as e:
+        if "series" in info and not os.path.exists(out_path):
+            print(f"optcgapi has no {set_id} yet ({e}); using Bandai's card list", flush=True)
+            return save_set(set_id, info, cache, bandai_english_cards(info))
         if not os.path.exists(out_path):
             raise
         # API down: keep the cached card list, just refresh the DON!! cards
@@ -835,7 +845,7 @@ def background(playmats):
 
 
 def main():
-    arg = sys.argv[1] if len(sys.argv) > 1 else "OP-17"
+    arg = sys.argv[1] if len(sys.argv) > 1 else "OP-18"
     if arg == "background":
         background(json.loads(sys.argv[2]) if len(sys.argv) > 2 else [])
         return

@@ -1059,6 +1059,39 @@
   },
   "note": "Out 30 Oct 2026. Seven Heroine Leader parallels, a Super Leader parallel (Nico Robin), a Manga Rare (Shirahoshi) and Kentaro Yabuki's Nami, also gold-stamped."
  },
+ "OP-18": {
+  "name": "The Dominance of God",
+  "family": "main",
+  "era": "random",
+  "confidence": "rough",
+  "series": "569118",
+  "tcgGroup": 24833,
+  "pack": 712904,
+  "box": 712901,
+  "boxUsd": 189,
+  "dons": [
+   [735288, "DON!! Card (Alternate Art)", "DON"],
+   [735289, "DON!! Card (Alternate Art) (Gold)", "DON_GOLD"]
+  ],
+  "srPerBox": 7,
+  "leadersPerBox": 5,
+  "donPerBox": 2,
+  "hitsPerBox": [1, 4],
+  "case": {
+   "AA": 14,
+   "SEC": 4,
+   "L_AA": 4,
+   "SEC_AA": 2,
+   "SP": 2,
+   "DON_GOLD": 2,
+   "TR": 1,
+   "SEC_GOLD": 0.5,
+   "MANGA": 0.25,
+   "SUPER_L": 0.25,
+   "SUPER": 0.12
+  },
+  "note": "Out 20 Nov 2026. No case data yet: OP-17's random structure, community per-box estimates. Gold alt-art SECs (Saint Shamrock, Loki), a Super Leader parallel and the Holy Knights of God super parallel (Saint Gunko), a Manga Rare (Nico Robin)."
+ },
  "OP-01-JP": {
   "name": "Romance Dawn",
   "nameJp": "ROMANCE DAWN",
@@ -1407,5 +1440,23 @@
    "SUPER_L": 0.1,
    "SIGNED": 0.05
   }
+ },
+ "OP-18-JP": {
+  "name": "The Dominance of God",
+  "nameJp": "神の支配",
+  "lang": "jp",
+  "series": "550118",
+  "en": ["OP-18"],
+  "family": "main",
+  "era": "random",
+  "confidence": "rough",
+  "packPhoto": "https://www.onepiece-cardgame.com/onepiececg/bccard/jp/products/2026/09/17/uqpcLANBkRtwZ4GX/img_item01.webp",
+  "boxPhoto": "https://www.onepiece-cardgame.com/onepiececg/bccard/jp/products/2026/09/17/QjwF7NsILAlRtyFx/img_item02.webp",
+  "boxJpy": 10000,
+  "dons": [],
+  "case": {
+   "SEC_GOLD": 0.1
+  },
+  "note": "Out 21 Nov 2026 (¥5,760 a box at retail)."
  }
 }
